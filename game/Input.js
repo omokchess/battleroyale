@@ -26,7 +26,12 @@ export class Input {
 
     // Detect if device is touch-capable or loaded from stored preference
     const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    const storedPref = localStorage.getItem('joystick_enabled');
+    let storedPref = null;
+    try {
+      storedPref = localStorage.getItem('joystick_enabled');
+    } catch (e) {
+      console.warn('localStorage is blocked or unavailable in this sandbox environment.', e);
+    }
     this.joystickEnabled = storedPref !== null ? storedPref === 'true' : hasTouch;
 
     // Bound listeners for cleanup removal
@@ -162,7 +167,9 @@ export class Input {
       
       this._toggleBtnHandler = () => {
         this.joystickEnabled = !this.joystickEnabled;
-        localStorage.setItem('joystick_enabled', this.joystickEnabled ? 'true' : 'false');
+        try {
+          localStorage.setItem('joystick_enabled', this.joystickEnabled ? 'true' : 'false');
+        } catch (e) {}
         
         const joyOverlay = document.getElementById('mobileJoystickOverlay');
         if (joyOverlay) {

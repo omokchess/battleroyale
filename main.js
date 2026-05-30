@@ -238,6 +238,4 @@ resultLobbyBtn.addEventListener('click', () => {
 });
 
 // Run Setup on page launch
-window.addEventListener('DOMContentLoaded', () => {
-  setupWeaponSelector();
-});
+setupWeaponSelector();

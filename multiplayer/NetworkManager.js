@@ -68,7 +68,14 @@ export class NetworkManager {
       const PeerClass = this._getPeerClass();
       // Host uses targetPeerId specifically as their Peer ID
       this.peer = new PeerClass(targetPeerId, {
-        debug: 1 // only errors and warnings in console
+        debug: 1, // only errors and warnings in console
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+          ]
+        }
       });
     } catch (e) {
       if (this.callbacks.onError) this.callbacks.onError(e.message);
@@ -142,7 +149,14 @@ export class NetworkManager {
       const PeerClass = this._getPeerClass();
       // Client gets a random, unique auto-generated ID
       this.peer = new PeerClass(null, {
-        debug: 1
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+          ]
+        }
       });
     } catch (e) {
       if (this.callbacks.onError) this.callbacks.onError(e.message);

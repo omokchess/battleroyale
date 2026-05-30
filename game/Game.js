@@ -78,6 +78,26 @@ export class Game {
       this.players[this.localPlayerId] = hostPlayer;
       
       this._announce('MATCH STARTED');
+
+      // Preserve active ticking when Host's tab is backgrounded
+      this._visibilityChangeHandler = () => {
+        if (document.hidden) {
+          if (!this.backgroundIntervalId) {
+            this.backgroundIntervalId = setInterval(() => {
+              const nowTime = Date.now();
+              const dt = 0.035; // Fixed ~30 FPS step
+              this._updateHostPhysics(dt, nowTime);
+            }, 35);
+          }
+        } else {
+          if (this.backgroundIntervalId) {
+            clearInterval(this.backgroundIntervalId);
+            this.backgroundIntervalId = null;
+          }
+          this.lastFrameTime = performance.now();
+        }
+      };
+      document.addEventListener('visibilitychange', this._visibilityChangeHandler);
     } else {
       // Guest client: Wait for HOST to reply with ROOM_JOINED
       this._announce('CONNECTING...');
@@ -559,6 +579,15 @@ export class Game {
     cancelAnimationFrame(this.animationFrameId);
     window.removeEventListener('resize', this._resizeBound);
     
+    // Clear background tab active preservation loops
+    if (this._visibilityChangeHandler) {
+      document.removeEventListener('visibilitychange', this._visibilityChangeHandler);
+    }
+    if (this.backgroundIntervalId) {
+      clearInterval(this.backgroundIntervalId);
+      this.backgroundIntervalId = null;
+    }
+
     this.input.cleanUp(this.canvas);
     this.networkManager.stop();
 
