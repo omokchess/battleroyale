@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>P2P Pixel Battle Royale</title>
+    <!-- Tailwind CSS (Vite handles this, but linking Google Fonts and local CSS here) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap font-display" rel="stylesheet">
+    <!-- PeerJS CDN -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="bg-[#0b0c10] text-gray-200 font-sans overflow-hidden select-none">
+    
+    <!-- MAIN LOBBY/START MENU -->
+    <div id="lobbyMenu" class="absolute inset-0 z-50 flex items-center justify-center bg-[#0b0c10] bg-opacity-95 transition-all duration-300">
+      <div class="w-full max-w-xl p-8 bg-[#1f2833] border-4 border-[#45f3ff] rounded-none shadow-[0_0_20px_rgba(69,243,255,0.3)] relative overflow-y-auto max-h-[95vh]">
+        
+        <!-- Retro Header Decoration -->
+        <div class="text-center mb-6">
+          <h1 class="font-display text-4xl font-extrabold tracking-tight text-[#45f3ff] uppercase mb-1 drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]">
+            PIXEL SHOWDOWN
+          </h1>
+          <p class="font-mono text-xs text-[#66fcf1] tracking-wider uppercase">P2P MULTIPLAYER BATTLE ROYALE</p>
+          <div class="h-1 bg-gradient-to-r from-transparent via-[#45f3ff] to-transparent mt-3"></div>
+        </div>
+
+        <!-- 1. Nickname & Weapon Selection -->
+        <div class="space-y-4 mb-6">
+          <div>
+            <label class="block font-mono text-xs text-[#66fcf1] uppercase mb-1">Nickname</label>
+            <input type="text" id="nicknameInput" maxlength="12" placeholder="PLAYER" 
+              class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-4 py-2 rounded-none font-mono text-sm focus:outline-none transition-transform active:scale-[0.99]" />
+          </div>
+
+          <!-- Weapon Selection -->
+          <div>
+            <label class="block font-mono text-xs text-[#66fcf1] uppercase mb-2">Select Your Weapon</label>
+            <div id="weaponCards" class="grid grid-cols-5 gap-2">
+              
+              <!-- Sword -->
+              <button data-weapon="sword" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 13l3 3M19 5l-2 2M18 18l3 3m-1.5-1.5l-2-2" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">Sword</span>
+              </button>
+
+              <!-- Axe -->
+              <button data-weapon="axe" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M14 4h6v6m-6-6s-2 2-4 2-5-2-5-2m2 14c-1 0-2-2-1-4l6-6 4 4-5 6" />
+                    <path d="M11 11l-8 8" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">Axe</span>
+              </button>
+
+              <!-- Bow -->
+              <button data-weapon="bow" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M6 3c12 0 12 18 0 18M3 12h18M18 9l3 3-3 3" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">Bow</span>
+              </button>
+
+              <!-- Spear -->
+              <button data-weapon="spear" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M21 3l-8 8m-5 5L3 21m15-13l3-3-3 3zm-6 6l-3-3 3 3zm1.5-1.5l3 3-3-3z" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">Spear</span>
+              </button>
+
+              <!-- Gauntlet -->
+              <button data-weapon="gauntlet" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <rect x="4" y="6" width="16" height="12" rx="2" />
+                    <circle cx="8" cy="12" r="1.5" />
+                    <circle cx="12" cy="12" r="1.5" />
+                    <circle cx="16" cy="12" r="1.5" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">Gauntlets</span>
+              </button>
+
+            </div>
+            
+            <!-- Weapon Stats Info Display -->
+            <div id="weaponStats" class="mt-2 bg-[#0b0c10] p-3 border border-gray-700 font-mono text-xs text-gray-400 min-h-[56px] flex flex-col justify-center">
+              Select a weapon above to view stats.
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Room Join/Create Controls -->
+        <div class="grid grid-cols-2 gap-4 pt-2 border-t border-gray-700 mt-4">
+          
+          <!-- Host Room Column -->
+          <div class="flex flex-col space-y-3">
+            <span class="font-mono text-xs text-[#66fcf1] uppercase">Create Room</span>
+            <div>
+              <input type="text" id="hostRoomInput" maxlength="10" placeholder="HOST_CODE" 
+                class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-3 py-1.5 rounded-none font-mono text-xs focus:outline-none uppercase" />
+            </div>
+            <button id="hostBtn" class="w-full bg-gradient-to-r from-teal-500 to-[#1f2833] hover:from-teal-400 hover:to-[#223040] border-2 border-teal-300 text-white font-mono text-xs py-2 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
+              Host Game
+            </button>
+          </div>
+
+          <!-- Join Room Column -->
+          <div class="flex flex-col space-y-3">
+            <span class="font-mono text-xs text-[#66fcf1] uppercase">Join Room</span>
+            <div>
+              <input type="text" id="joinRoomInput" maxlength="10" placeholder="ROOM_CODE" 
+                class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-3 py-1.5 rounded-none font-mono text-xs focus:outline-none uppercase" />
+            </div>
+            <button id="joinBtn" class="w-full bg-gradient-to-r from-blue-600 to-[#1f2833] hover:from-blue-500 hover:to-[#223040] border-2 border-blue-400 text-white font-mono text-xs py-2 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
+              Join Game
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Info / Disclaimer -->
+        <div id="statusMsg" class="mt-4 p-2 bg-[#310a14] border border-red-800 text-red-300 font-mono text-[11px] text-center hidden">
+          Error Message Here
+        </div>
+
+        <!-- Controls Guide -->
+        <div class="mt-6 pt-4 border-t border-gray-700 font-mono text-[10px] text-gray-400">
+          <p class="font-bold text-gray-300 mb-1">🎮 GAMEPLAY CONTROLS:</p>
+          <ul class="list-disc pl-4 space-y-1">
+            <li>Move: <span class="text-white">W, A, S, D</span> or <span class="text-white">Arrow Keys</span></li>
+            <li>Aim: <span class="text-white">Mouse Pointer</span></li>
+            <li>Attack: <span class="text-white">Automatic Attack</span> (triggers automatically based on weapon cooldown)</li>
+            <li>Objective: Defeat all other gladiators in the arena. Last survivor wins!</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- GAME CANVAS CONTAINER -->
+    <div id="gameScreen" class="absolute inset-0 z-10 hidden flex items-center justify-center">
+      <canvas id="gameCanvas" class="block bg-[#121214]"></canvas>
+
+      <!-- HUD OVERLAY -->
+      <div class="absolute inset-x-0 top-0 p-4 flex justify-between items-start pointer-events-none select-none z-20 font-mono">
+        
+        <!-- Left Wing: Nickname, Health, Stats -->
+        <div class="bg-[#1f2833] bg-opacity-80 p-3 border-2 border-[#45f3ff] max-w-xs drop-shadow-md pointer-events-auto">
+          <div class="flex justify-between items-center mb-1">
+            <span id="hudName" class="text-white font-bold text-sm truncate max-w-[120px]">GLADIATOR</span>
+            <span id="hudWeapon" class="text-xs bg-[#0b0c10] px-1.5 py-0.5 border border-gray-600 text-[#45f3ff] uppercase ml-2">WEAPON</span>
+          </div>
+          
+          <!-- Healthbar -->
+          <div class="w-48 bg-[#0b0c10] h-4 border border-gray-500 relative overflow-hidden mb-2">
+            <div id="hudHpBar" class="bg-gradient-to-r from-red-600 to-red-500 h-full w-full transition-all duration-100"></div>
+            <div id="hudHpText" class="absolute inset-0 text-center text-[10px] font-bold text-white flex items-center justify-center font-mono">100 / 100</div>
+          </div>
+
+          <div class="flex justify-between text-[11px] text-gray-300">
+            <span>KILLS: <strong id="hudKills" class="text-[#66fcf1]">0</strong></span>
+            <span>ALIVE: <strong id="hudAlive" class="text-green-400">0</strong></span>
+          </div>
+        </div>
+
+        <!-- Right Wing: Room Code, Ping, Leave Game -->
+        <div class="flex flex-col items-end space-y-2 pointer-events-auto">
+          <div class="bg-[#1f2833] bg-opacity-80 p-3 border-2 border-gray-600 text-right drop-shadow-md">
+            <div class="text-[10px] text-gray-400 uppercase">ROOM CODE</div>
+            <div id="hudRoomCode" class="text-sm text-[#45f3ff] font-bold">NONE</div>
+            <div class="text-[9px] text-gray-500 mt-1 flex items-center justify-end space-x-1">
+              <span class="inline-block w-2.5 h-2.5 rounded-full bg-green-500" id="latencyIndicator"></span>
+              <span id="hudPing">Ping: -- ms</span>
+            </div>
+            <div id="hostServerIndicator" class="text-[8px] text-teal-400 hidden uppercase font-bold mt-1">👑 Room Host</div>
+          </div>
+
+          <button id="leaveBtn" class="bg-red-700 hover:bg-red-600 border border-red-500 text-white font-mono text-xs px-3 py-1.5 uppercase cursor-pointer active:scale-95 transition-all">
+            Leave Game
+          </button>
+        </div>
+      </div>
+
+      <!-- IN-GAME LIVE ANNOUNCENTS -->
+      <div id="announcementContainer" class="absolute top-[25%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-30 font-display select-none">
+        <h2 id="announcementText" class="text-yellow-400 text-4xl font-extrabold tracking-widest uppercase origin-center drop-shadow-[0_4px_6px_rgba(0,0,0,0.9)] animate-pulse scale-0 transition-transform duration-300">
+          MATCH STARTED
+        </h2>
+      </div>
+
+      <!-- SPECTATOR BANNER OR MATCH RESULTS SCREEN -->
+      <div id="resultOverlay" class="absolute inset-0 bg-[#0b0c10] bg-opacity-90 flex items-center justify-center z-40 hidden font-mono">
+        <div class="border-4 border-yellow-500 bg-[#1f2833] p-8 text-center max-w-sm w-full shadow-lg">
+          <h2 id="resultTitle" class="text-2xl font-bold text-yellow-400 mb-2 uppercase select-none tracking-widest">VICTORY</h2>
+          
+          <div class="my-4 h-0.5 bg-yellow-600"></div>
+
+          <p id="resultDesc" class="text-gray-300 text-xs leading-relaxed mb-6">
+            Congratulations gladiator! You are the last survivor.
+          </p>
+
+          <button id="resultLobbyBtn" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-2 uppercase border border-yellow-300 active:scale-95 transition-transform cursor-pointer">
+            Return to Lobby
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

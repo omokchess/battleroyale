@@ -1,0 +1,6 @@
+{
+  "name": "P2P Battle Royale Web Game",
+  "description": "PeerJS 기반 실시간 2D 탑뷰 P2P 멀티플레이 배틀로얄 웹 게임",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
