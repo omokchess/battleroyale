@@ -18,8 +18,8 @@ export class Game {
     this.networkManager = networkManager;
     
     // Arena Boundaries
-    this.mapWidth = 1500;
-    this.mapHeight = 1500;
+    this.mapWidth = 700;
+    this.mapHeight = 700;
 
     this.renderer = new Renderer(canvas);
     this.camera = new Camera();

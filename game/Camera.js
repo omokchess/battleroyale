@@ -7,36 +7,25 @@ export class Camera {
   constructor() {
     this.x = 0;
     this.y = 0;
+    this.zoom = 1.0;
     
     // Lerping inertia (0.1 means 10% movement per frame leading to very smooth chase)
     this.lerpSpeed = 0.12;
   }
 
   /**
-   * Smoothly move camera towards local player
+   * Smoothly move camera towards map center with scaling zoom so the entire map is visible
    */
   update(targetX, targetY, viewportWidth, viewportHeight, mapWidth, mapHeight) {
-    // Ideal focus coordinate
-    let focusX = targetX;
-    let focusY = targetY;
+    // Keep camera centered at the map's absolute midpoint
+    const focusX = mapWidth / 2;
+    const focusY = mapHeight / 2;
 
-    // Boundary constraints: clamping so coordinate frame doesn't render beyond map bounds
-    const halfWidth = viewportWidth / 2;
-    const halfHeight = viewportHeight / 2;
-
-    if (mapWidth > viewportWidth) {
-      if (focusX < halfWidth) focusX = halfWidth;
-      else if (focusX > mapWidth - halfWidth) focusX = mapWidth - halfWidth;
-    } else {
-      focusX = mapWidth / 2;
-    }
-
-    if (mapHeight > viewportHeight) {
-      if (focusY < halfHeight) focusY = halfHeight;
-      else if (focusY > mapHeight - halfHeight) focusY = mapHeight - halfHeight;
-    } else {
-      focusY = mapHeight / 2;
-    }
+    // Calculate dynamic zoom to perfectly fit the entire map (with clean margins/padding) inside the window
+    const padding = 60;
+    this.zoom = Math.min(viewportWidth / (mapWidth + padding), viewportHeight / (mapHeight + padding));
+    // Clamp zoom factor between sensible boundaries to prevent extreme rendering dimensions on tiny screens
+    this.zoom = Math.max(0.1, Math.min(2.5, this.zoom));
 
     // Apply linear interpolation
     this.x += (focusX - this.x) * this.lerpSpeed;
@@ -44,22 +33,22 @@ export class Camera {
   }
 
   /**
-   * Map absolute coords to relative viewport coords
+   * Map absolute coords to relative viewport coords taking Zoom factor into consideration
    */
   toScreen(worldX, worldY, viewportWidth, viewportHeight) {
     return {
-      x: worldX - this.x + viewportWidth / 2,
-      y: worldY - this.y + viewportHeight / 2
+      x: (worldX - this.x) * this.zoom + viewportWidth / 2,
+      y: (worldY - this.y) * this.zoom + viewportHeight / 2
     };
   }
 
   /**
-   * Map screen coordinates back to absolute coordinates (useful for mouse target checks)
+   * Map screen coordinates back to absolute coordinates taking Zoom factor into consideration
    */
   toWorld(screenX, screenY, viewportWidth, viewportHeight) {
     return {
-      x: screenX + this.x - viewportWidth / 2,
-      y: screenY + this.y - viewportHeight / 2
+      x: (screenX - viewportWidth / 2) / this.zoom + this.x,
+      y: (screenY - viewportHeight / 2) / this.zoom + this.y
     };
   }
 }

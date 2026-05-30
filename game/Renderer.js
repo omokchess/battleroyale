@@ -606,8 +606,8 @@ export class Renderer {
       ctx.save();
       
       // Glow and Shadow under player
-      ctx.shadowBlur = isLocal ? 8 : 4;
-      ctx.shadowColor = p.color;
+      ctx.shadowBlur = isLocal ? 15 : 4;
+      ctx.shadowColor = isLocal ? '#ef4444' : p.color;
       ctx.fillStyle = p.color;
 
       // Draw Main Player Chassis Circle
@@ -618,16 +618,38 @@ export class Renderer {
       // Outline
       ctx.shadowBlur = 0;
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = isLocal ? '#ffffff' : '#0b0c10';
+      ctx.strokeStyle = isLocal ? '#ef4444' : '#0b0c10';
       ctx.stroke();
 
       // Local Player Highlight Marker Ring
       if (isLocal) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        // Broad pulsing red warning circle representing absolute player presence
+        const pulse = 8 + Math.sin(Date.now() / 120) * 3.5;
+        
+        ctx.save();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, radius + pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // High intensity floating indicator arrow pointing directly to player
+        const arrowOffset = radius + 22 + Math.sin(Date.now() / 120) * 4;
+        ctx.save();
+        ctx.fillStyle = '#ef4444';
+        ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius + 6, 0, Math.PI * 2);
+        ctx.moveTo(scr.x - 7, scr.y - arrowOffset);
+        ctx.lineTo(scr.x + 7, scr.y - arrowOffset);
+        ctx.lineTo(scr.x, scr.y - arrowOffset + 9);
+        ctx.closePath();
+        ctx.fill();
         ctx.stroke();
+        ctx.restore();
       }
 
       // Draw Sight Pointer / Helmet Visor face vector direction
