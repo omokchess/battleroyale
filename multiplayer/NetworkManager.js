@@ -57,6 +57,27 @@ export class NetworkManager {
   }
 
   /**
+   * Check if a PeerJS error is a fatal error that should abort the room/game
+   */
+  _isFatalError(err, duringInit = true) {
+    if (!err) return false;
+    const softErrors = ['socket-error', 'socket-closed', 'disconnected', 'network'];
+    if (softErrors.includes(err.type)) {
+      return false; // Soft signaling error (Websocket connection dropped from peer server)
+    }
+    // Check key phrases in messages as well
+    const msg = (err.message || '').toLowerCase();
+    if (msg.includes('lost connection') || msg.includes('socket error') || msg.includes('websocket') || msg.includes('disconnected')) {
+      return false;
+    }
+    // If we've successfully established connections or initialized localId, non-critical errors are non-fatal
+    if (!duringInit) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Hosting a fresh game lobby
    */
   hostRoom(roomCode) {
@@ -125,8 +146,30 @@ export class NetworkManager {
       });
     });
 
+    this.peer.on('disconnected', () => {
+      console.warn('Peer host disconnected from signaling server. Attempting silent reconnect...');
+      setTimeout(() => {
+        if (this.peer && this.peer.disconnected && !this.peer.destroyed) {
+          try {
+            this.peer.reconnect();
+          } catch (e) {}
+        }
+      }, 3000);
+    });
+
     this.peer.on('error', (err) => {
       console.error('Peer host level error:', err);
+      if (!this._isFatalError(err, !this.localId)) {
+        console.warn(`Soft signaling error ignored: ${err ? (err.type || err.message) : 'unknown'}`);
+        setTimeout(() => {
+          if (this.peer && this.peer.disconnected && !this.peer.destroyed) {
+            try {
+              this.peer.reconnect();
+            } catch (e) {}
+          }
+        }, 3000);
+        return;
+      }
       let errMsg = 'Failed to create room. ';
       if (err.type === 'unavailable-id') {
         errMsg += `Room code "${this.roomCode}" is already taken by someone else!`;
@@ -212,8 +255,30 @@ export class NetworkManager {
       });
     });
 
+    this.peer.on('disconnected', () => {
+      console.warn('Peer client disconnected from signaling server. Attempting silent reconnect...');
+      setTimeout(() => {
+        if (this.peer && this.peer.disconnected && !this.peer.destroyed) {
+          try {
+            this.peer.reconnect();
+          } catch (e) {}
+        }
+      }, 3000);
+    });
+
     this.peer.on('error', (err) => {
       console.error('Peer client level error:', err);
+      if (!this._isFatalError(err, !this.localId)) {
+        console.warn(`Soft signaling error ignored: ${err ? (err.type || err.message) : 'unknown'}`);
+        setTimeout(() => {
+          if (this.peer && this.peer.disconnected && !this.peer.destroyed) {
+            try {
+              this.peer.reconnect();
+            } catch (e) {}
+          }
+        }, 3000);
+        return;
+      }
       let errMsg = 'Failed to join room. ';
       if (err.type === 'peer-not-found') {
         errMsg += `Room code "${this.roomCode}" does not exist. Make sure you entered it correctly!`;
