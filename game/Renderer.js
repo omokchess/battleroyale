@@ -660,6 +660,9 @@ export class Renderer {
       const scr = camera.toScreen(p.x, p.y, cw, ch);
       const isLocal = id === localPlayerId;
 
+      // Draw each player's weapon reach/range with a faint gray highlight underneath them
+      this._drawPlayerAttackRange(ctx, scr, p, isLocal);
+
       ctx.save();
       
       // Glow and Shadow under player
@@ -851,6 +854,84 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(wXLeft, wYLeft, 3.5, 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Draw attack range helper outline and subtle fill
+   */
+  _drawPlayerAttackRange(ctx, scr, player, isLocal) {
+    if (!player || player.isDead) return;
+    const weapon = Weapons[player.weapon];
+    if (!weapon) return;
+
+    ctx.save();
+    
+    // Choose beautiful range colors.
+    // For local player, make it slightly more highlighted or more solid, but still light gray.
+    // For other remote players, make it extremely faint or thin so it doesn't clutter.
+    const fillColor = isLocal ? 'rgba(225, 225, 235, 0.04)' : 'rgba(225, 225, 235, 0.015)';
+    const strokeColor = isLocal ? 'rgba(200, 201, 204, 0.28)' : 'rgba(200, 201, 204, 0.12)';
+    
+    ctx.fillStyle = fillColor;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = isLocal ? 1.5 : 1.0;
+    
+    // We can use a nice dash array. Local player gets [4, 4], remote gets [3, 5] or solid thin
+    ctx.setLineDash(isLocal ? [4, 4] : [3, 5]);
+
+    const range = weapon.range;
+    const angle = player.angle;
+
+    if (weapon.type === 'melee_circle') {
+      // Circle shape (Axe)
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, range, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } 
+    else if (weapon.type === 'melee_arc') {
+      // Arc shape (Sword, Gauntlet)
+      const halfAngleRad = (weapon.angle * Math.PI) / 360;
+      const startAngle = angle - halfAngleRad;
+      const endAngle = angle + halfAngleRad;
+
+      ctx.beginPath();
+      ctx.moveTo(scr.x, scr.y);
+      ctx.arc(scr.x, scr.y, range, startAngle, endAngle);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } 
+    else if (weapon.type === 'melee_line') {
+      // Rectangular line/thrust shape (Spear)
+      const uX = Math.cos(angle);
+      const uY = Math.sin(angle);
+      
+      // Orthogonal offset vector
+      const halfWidth = weapon.width / 2;
+      const pX = -uY * halfWidth;
+      const pY = uX * halfWidth;
+
+      // Draw the four corners of the box
+      ctx.beginPath();
+      ctx.moveTo(scr.x + pX, scr.y + pY);
+      ctx.lineTo(scr.x - pX, scr.y - pY);
+      ctx.lineTo(scr.x - pX + uX * range, scr.y - pY + uY * range);
+      ctx.lineTo(scr.x + pX + uX * range, scr.y + pY + uY * range);
+      ctx.closePath();
+      
+      ctx.fill();
+      ctx.stroke();
+    } 
+    else if (weapon.type === 'projectile') {
+      // For bow or any projectile, show maximum range circle
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, range, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
 
     ctx.restore();
