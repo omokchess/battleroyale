@@ -152,13 +152,21 @@ export class Game {
    * Host specific update routine
    */
   _updateHostPhysics(deltaTime, now) {
-    // 1. Process local input keys directly
-    const local = this.players[this.localPlayerId];
-    if (local && !local.isDead) {
-      local.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
-      local.angle = this.input.aimAngle;
-      Collision.clampToMap(local, this.mapWidth, this.mapHeight);
-    }
+    // 1. Process all active players inputs (including guests)
+    Object.keys(this.players).forEach(id => {
+      const p = this.players[id];
+      if (p.isDead) return;
+
+      if (id === this.localPlayerId) {
+        // Local host input updates
+        p.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
+        p.angle = this.input.aimAngle;
+      } else {
+        // Remote guest input updates
+        p.updatePosition(deltaTime, p.keys || {}, this.mapWidth, this.mapHeight);
+      }
+      Collision.clampToMap(p, this.mapWidth, this.mapHeight);
+    });
 
     // 2. Resolve Player collisions to avoid clipping
     Collision.resolvePlayerCollisions(this.players);
@@ -196,7 +204,7 @@ export class Game {
               const died = target.takeDamage(weaponConfig.damage, p.nickname);
               if (died) {
                 p.kills++;
-                this._announce(`${p.nickname} SLAYED ${target.nickname}`);
+                this._announce(`${p.nickname}님이 ${target.nickname}님을 처치했습니다!`);
               }
             }
           });
@@ -240,9 +248,9 @@ export class Game {
             const killer = this.players[proj.ownerId];
             if (killer) {
               killer.kills++;
-              this._announce(`${killer.nickname} SHOT DOWN ${target.nickname}`);
+              this._announce(`${killer.nickname}님이 활로 ${target.nickname}님을 처치했습니다!`);
             } else {
-              this._announce(`${target.nickname} FAILED TO ESCAPE`);
+              this._announce(`${target.nickname}님이 전사했습니다.`);
             }
           }
         }
@@ -279,7 +287,7 @@ export class Game {
           p.y = spawnP.y;
           p.respawnTime = 0;
           p.respawnRemainingMs = 0;
-          this._announce(`${p.nickname} RE-ENTERED THE ARENA`);
+          this._announce(`${p.nickname}님이 다시 부활했습니다!`);
         }
       } else {
         p.respawnTime = 0;
@@ -416,11 +424,11 @@ export class Game {
     const indicatorEl = document.getElementById('latencyIndicator');
     if (pingEl) {
       if (this.networkManager.isHost) {
-        pingEl.textContent = 'Ping: 0 ms';
+        pingEl.textContent = '지연 시간: 0 ms';
         if (indicatorEl) indicatorEl.className = 'inline-block w-2.5 h-2.5 rounded-full bg-teal-400';
       } else {
         const pingVal = this.networkManager.latency;
-        pingEl.textContent = `Ping: ${pingVal} ms`;
+        pingEl.textContent = `지연 시간: ${pingVal} ms`;
 
         if (indicatorEl) {
           if (pingVal < 80) indicatorEl.className = 'inline-block w-2.5 h-2.5 rounded-full bg-green-500';
@@ -526,12 +534,12 @@ export class Game {
 
       if (winnerName === this.players[this.localPlayerId]?.nickname) {
         title.style.color = '#eab308'; // Gold yellow
-        title.textContent = 'VICTORY';
-        desc.textContent = `Excellent job! You defeated all other combatants in the arena and survived.`;
+        title.textContent = '최후의 승리';
+        desc.textContent = `축하합니다! 전장의 모든 결투자를 물리치고 생존에 성공하셨습니다!`;
       } else {
         title.style.color = '#ef4444'; // Red
-        title.textContent = 'ELIMINATED';
-        desc.textContent = `Winner or survivor is "${winnerName}". Work on your tactics and try again!`;
+        title.textContent = '아쉬운 생존 실패';
+        desc.textContent = `최종 생존자는 "${winnerName}" 입니다. 더 나은 전술을 다듬어 한 번 더 도전해 보세요!`;
       }
     }
   }
@@ -572,7 +580,7 @@ export class Game {
       const guestPlayer = new Player(remoteId, joinPayload.nickname, joinPayload.weapon, spawnP.x, spawnP.y);
       this.players[remoteId] = guestPlayer;
 
-      this._announce(`${guestPlayer.nickname} ENTERED THE ARENA`);
+      this._announce(`${guestPlayer.nickname}님이 전장에 입장했습니다!`);
 
       // 3. Serialise existing player lists to supply to joining guest as initial context
       const existingPlayers = {};
@@ -597,7 +605,7 @@ export class Game {
 
     // GUEST JOINS SUCCESSFULLY
     this.networkManager.on('onConnected', () => {
-      this._announce('CONNECTED! SYNCING...');
+      this._announce('서버 연결 성공! 동기화 중...');
     });
 
     // NETWORK EXCHANGES (CLIENT + HOST ROUTING SEPARATIONS)
@@ -632,7 +640,7 @@ export class Game {
             this.players[id] = p;
           });
 
-          this._announce('MATCH STARTED');
+          this._announce('전투가 시작되었습니다!');
         } 
         
         else if (data.type === MsgType.PLAYER_JOINED) {
@@ -641,7 +649,7 @@ export class Game {
             const newcomer = new Player(snap.id, snap.nickname, snap.weapon, snap.x, snap.y);
             newcomer.deserialize(snap);
             this.players[snap.id] = newcomer;
-            this._announce(`${newcomer.nickname} ENTERED THE ARENA`);
+            this._announce(`${newcomer.nickname}님이 전장에 입장했습니다!`);
           }
         } 
         
@@ -736,7 +744,7 @@ export class Game {
     this.networkManager.on('onPlayerLeft', (remoteId) => {
       const p = this.players[remoteId];
       if (p) {
-        this._announce(`${p.nickname} ESCAPED THE ARENA`);
+        this._announce(`${p.nickname}님이 전장에서 후퇴했습니다.`);
         // If Host, kill player object
         if (this.networkManager.isHost) {
           p.isDead = true;

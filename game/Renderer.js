@@ -9,6 +9,9 @@ export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.particles = [];
+    this.lastTime = Date.now();
+    this.lastPlayersInfo = {};
   }
 
   /**
@@ -19,12 +22,23 @@ export class Renderer {
     const cw = this.canvas.width;
     const ch = this.canvas.height;
 
+    const nowTime = Date.now();
+    const dt = Math.min((nowTime - this.lastTime) / 1000, 0.1);
+    this.lastTime = nowTime;
+
+    // Particle logic updates & triggers
+    this._triggerInstantSparks(gameState, dt);
+    this._updateParticles(dt);
+
     // Clear Screen
     ctx.fillStyle = '#0f1015';
     ctx.fillRect(0, 0, cw, ch);
 
     // Grid rendering (only draw grids that are within viewport margins)
     this._drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight);
+
+    // Floor particles rendering (Dust trails, projectile flows)
+    this._drawParticles(ctx, camera, cw, ch, 'floor');
 
     // Draw Map Borders
     this._drawBorders(ctx, camera, cw, ch, mapWidth, mapHeight);
@@ -43,6 +57,193 @@ export class Renderer {
     if (gameState.players) {
       this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId);
     }
+
+    // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
+    this._drawParticles(ctx, camera, cw, ch, 'onTop');
+  }
+
+  /**
+   * Process dynamic triggers for particle bursts
+   */
+  _triggerInstantSparks(gameState, dt) {
+    if (!gameState || !gameState.players) return;
+
+    Object.keys(gameState.players).forEach(id => {
+      const p = gameState.players[id];
+      const prev = this.lastPlayersInfo[id];
+
+      if (p.isDead) {
+        // Just died check
+        if (prev && !prev.isDead) {
+          // Play colossal death core smoke and sparks ring
+          for (let i = 0; i < 30; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 110 + 20;
+            this.particles.push({
+              x: p.x,
+              y: p.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              color: i % 2 === 0 ? p.color : '#374151',
+              size: Math.random() * 4 + 2,
+              alpha: 1.0,
+              decay: Math.random() * 1.5 + 0.8,
+              shape: 'circle',
+              layer: 'onTop'
+            });
+          }
+        }
+        this.lastPlayersInfo[id] = { hp: p.hp, isDead: p.isDead, x: p.x, y: p.y };
+        return;
+      }
+
+      // 1. Hurt check (Spatter bloody/shield shards)
+      if (prev && prev.hp > p.hp) {
+        const dmgGap = prev.hp - p.hp;
+        const count = Math.min(25, Math.ceil(dmgGap * 0.8) + 6);
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 150 + 50;
+          this.particles.push({
+            x: p.x,
+            y: p.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            color: i % 3 === 0 ? '#ef4444' : i % 3 === 1 ? p.color : '#ffffff',
+            size: Math.random() * 3 + 1,
+            alpha: 1.0,
+            decay: Math.random() * 2.2 + 1.2,
+            shape: i % 2 === 0 ? 'rect' : 'circle',
+            layer: 'onTop'
+          });
+        }
+      }
+
+      // 2. Dust trails when moving
+      if (prev && (Math.abs(prev.x - p.x) > 0.4 || Math.abs(prev.y - p.y) > 0.4)) {
+        if (Math.random() < 0.22) {
+          const oppositeAngle = Math.atan2(prev.y - p.y, prev.x - p.x) + (Math.random() * 0.4 - 0.2);
+          const speed = Math.random() * 20 + 5;
+          this.particles.push({
+            x: p.x + (Math.random() * 8 - 4),
+            y: p.y + 11, // At the feet
+            vx: Math.cos(oppositeAngle) * speed,
+            vy: Math.sin(oppositeAngle) * speed,
+            color: 'rgba(255, 255, 255, 0.12)',
+            size: Math.random() * 2.5 + 1.0,
+            alpha: 0.5,
+            decay: Math.random() * 2.0 + 1.5,
+            shape: 'circle',
+            layer: 'floor'
+          });
+        }
+      }
+
+      this.lastPlayersInfo[id] = { hp: p.hp, isDead: p.isDead, x: p.x, y: p.y };
+    });
+
+    // 3. Melee Swing slash sparks trails
+    if (gameState.effects) {
+      gameState.effects.forEach(e => {
+        const weapon = Weapons[e.weapon] || Weapons.sword;
+        if (Math.random() < 0.55) {
+          let px = e.x;
+          let py = e.y;
+          let angle = e.angle;
+          
+          if (e.type === 'melee_arc') {
+            const spread = (weapon.angle * Math.PI) / 360;
+            const ranAngle = e.angle + (Math.random() * spread * 2 - spread);
+            const dist = weapon.range * (0.35 + Math.random() * 0.65);
+            px += Math.cos(ranAngle) * dist;
+            py += Math.sin(ranAngle) * dist;
+            angle = ranAngle + Math.PI / 2;
+          } else if (e.type === 'melee_circle') {
+            const ranAngle = Math.random() * Math.PI * 2;
+            const dist = weapon.range * e.progress;
+            px += Math.cos(ranAngle) * dist;
+            py += Math.sin(ranAngle) * dist;
+            angle = ranAngle;
+          } else if (e.type === 'melee_line') {
+            const dist = weapon.range * e.progress;
+            px += Math.cos(e.angle) * dist;
+            py += Math.sin(e.angle) * dist;
+          }
+
+          const spd = Math.random() * 30 + 10;
+          this.particles.push({
+            x: px,
+            y: py,
+            vx: Math.cos(angle) * spd + (Math.random() * 10 - 5),
+            vy: Math.sin(angle) * spd + (Math.random() * 10 - 5),
+            color: Math.random() < 0.25 ? '#ffffff' : weapon.color,
+            size: Math.random() * 2.2 + 1.0,
+            alpha: 0.8,
+            decay: Math.random() * 2.5 + 1.5,
+            shape: 'circle',
+            layer: 'onTop'
+          });
+        }
+      });
+    }
+
+    // 4. Bow arrows trace stardust sparkling trails
+    if (gameState.projectiles) {
+      gameState.projectiles.forEach(proj => {
+        if (!proj.isDead && Math.random() < 0.35) {
+          this.particles.push({
+            x: proj.x,
+            y: proj.y,
+            vx: (Math.random() * 10 - 5) - proj.vx * 0.05,
+            vy: (Math.random() * 10 - 5) - proj.vy * 0.05,
+            color: '#a3ff45',
+            size: Math.random() * 1.8 + 0.8,
+            alpha: 0.7,
+            decay: Math.random() * 3.0 + 1.8,
+            shape: 'circle',
+            layer: 'floor'
+          });
+        }
+      });
+    }
+  }
+
+  /**
+   * Propagate particle positions and decay lifetimes
+   */
+  _updateParticles(dt) {
+    this.particles.forEach(p => {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.alpha -= p.decay * dt;
+    });
+    this.particles = this.particles.filter(p => p.alpha > 0);
+  }
+
+  /**
+   * Render active particle traces
+   */
+  _drawParticles(ctx, camera, cw, ch, layerType) {
+    ctx.save();
+    this.particles.forEach(p => {
+      if (p.layer !== layerType) return;
+
+      const scr = camera.toScreen(p.x, p.y, cw, ch);
+      if (scr.x < -20 || scr.x > cw + 20 || scr.y < -20 || scr.y > ch + 20) return;
+
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha));
+
+      if (p.shape === 'rect') {
+        const sz = p.size;
+        ctx.fillRect(scr.x - sz / 2, scr.y - sz / 2, sz, sz);
+      } else {
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+    ctx.restore();
   }
 
   /**

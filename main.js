@@ -58,24 +58,24 @@ function displayWeaponStats(weaponType) {
 
   let extraDetails = '';
   if (cfg.type === 'melee_arc') {
-    extraDetails = `• Area: Frontal Arc (${cfg.angle}° angle)`;
+    extraDetails = `• 범위: 전방 부채꼴 (${cfg.angle}° 각도)`;
   } else if (cfg.type === 'melee_circle') {
-    extraDetails = '• Area: Circular 360° Blast';
+    extraDetails = '• 범위: 주변 360° 회전';
   } else if (cfg.type === 'melee_line') {
-    extraDetails = `• Area: Straight Pierce (${cfg.width}px width)`;
+    extraDetails = `• 범위: 정방향 직선 (${cfg.width}px 폭)`;
   } else if (cfg.type === 'projectile') {
-    extraDetails = `• Arrow Velocity: ${cfg.speed}px/s`;
+    extraDetails = `• 화살 속도: ${cfg.speed}px/s`;
   }
 
   weaponStats.innerHTML = `
     <div class="flex justify-between text-[#45f3ff] font-bold mb-1">
       <span>${cfg.name.toUpperCase()}</span>
-      <span>COOLDOWN: ${(cfg.cooldown / 1000).toFixed(2)}s</span>
+      <span>재사용 대기시간: ${(cfg.cooldown / 1000).toFixed(2)}초</span>
     </div>
     <p class="text-[10px] text-gray-400 mb-1 leading-snug">${cfg.description}</p>
     <div class="grid grid-cols-3 gap-1 font-mono text-[10px] text-gray-300">
-      <span>⚔️ DMG: <strong class="text-white">${cfg.damage}</strong></span>
-      <span>📏 RANGE: <strong class="text-white">${cfg.range}px</strong></span>
+      <span>⚔️ 공격력: <strong class="text-white">${cfg.damage}</strong></span>
+      <span>📏 사거리: <strong class="text-white">${cfg.range}px</strong></span>
       <span class="truncate">${extraDetails}</span>
     </div>
   `;
@@ -113,24 +113,24 @@ hostBtn.addEventListener('click', () => {
   const roomCode = hostRoomInput.value.trim();
 
   if (!nickname) {
-    showError('Please select a nickname before hosting.');
+    showError('방을 만들기 전에 닉네임을 입력해 주세요.');
     return;
   }
   if (!roomCode || roomCode.length < 3) {
-    showError('Please enter a room code of at least 3 characters.');
+    showError('방 코드는 최소 3글자 이상이어야 합니다.');
     return;
   }
 
   hideError();
   hostBtn.disabled = true;
-  hostBtn.textContent = 'Allocating Peer...';
+  hostBtn.textContent = 'P2P 세션 할당 중...';
 
   // Instantiate network manager
   netManager = new NetworkManager();
 
   netManager.on('onInit', (allocatedCode) => {
     hostBtn.disabled = false;
-    hostBtn.textContent = 'Host Game';
+    hostBtn.textContent = '방 만들기';
 
     // Transition overlay styles
     lobbyMenu.classList.add('hidden');
@@ -147,7 +147,7 @@ hostBtn.addEventListener('click', () => {
 
   netManager.on('onError', (err) => {
     hostBtn.disabled = false;
-    hostBtn.textContent = 'Host Game';
+    hostBtn.textContent = '방 만들기';
     showError(err);
     netManager.stop();
   });
@@ -165,17 +165,17 @@ joinBtn.addEventListener('click', () => {
   const chosenWeapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
 
   if (!nickname) {
-    showError('Please select a nickname before joining.');
+    showError('방에 참가하기 전에 닉네임을 입력해 주세요.');
     return;
   }
   if (!roomCode || roomCode.length < 3) {
-    showError('Please enter a room code of at least 3 characters.');
+    showError('방 코드는 최소 3글자 이상이어야 합니다.');
     return;
   }
 
   hideError();
   joinBtn.disabled = true;
-  joinBtn.textContent = 'Connecting...';
+  joinBtn.textContent = '연결 중...';
 
   netManager = new NetworkManager();
 
@@ -184,7 +184,7 @@ joinBtn.addEventListener('click', () => {
 
   netManager.on('onConnected', () => {
     joinBtn.disabled = false;
-    joinBtn.textContent = 'Join Game';
+    joinBtn.textContent = '방 참가하기';
 
     lobbyMenu.classList.add('hidden');
     gameScreen.classList.remove('hidden');
@@ -198,7 +198,7 @@ joinBtn.addEventListener('click', () => {
 
   netManager.on('onError', (err) => {
     joinBtn.disabled = false;
-    joinBtn.textContent = 'Join Game';
+    joinBtn.textContent = '방 참가하기';
     showError(err);
     netManager.stop();
   });
@@ -224,7 +224,7 @@ function showLobbyScreen() {
 }
 
 leaveBtn.addEventListener('click', () => {
-  if (confirm('Are you sure you want to exit the battleground? This counts as a defeat!')) {
+  if (confirm('정말 전장에서 이탈하시겠습니까? 이번 판은 패배 처리됩니다!')) {
     if (activeGame) {
       activeGame.quit();
     }
