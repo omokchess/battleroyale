@@ -17,8 +17,8 @@ export class Input {
     };
 
     this.mouse = {
-      x: 0,
-      y: 0
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2
     };
 
     this.aimAngle = 0;
@@ -60,7 +60,7 @@ export class Input {
       this.mouse.x = e.clientX - rect.left;
       this.mouse.y = e.clientY - rect.top;
 
-      // Calculate directional radians from player center (canvas center)
+      // Calculate directional radians from player center (canvas center) as fallback
       const centerY = canvas.height / 2;
       const centerX = canvas.width / 2;
       
@@ -70,6 +70,17 @@ export class Input {
     document.addEventListener('keydown', this._keyDownHandler);
     document.addEventListener('keyup', this._keyUpHandler);
     canvas.addEventListener('mousemove', this._mouseMoveHandler);
+  }
+
+  /**
+   * Dynamically calibrate aim angle taking clamping boundaries & active camera offsets into consideration
+   */
+  updateAimAngle(player, camera, canvasWidth, canvasHeight) {
+    if (!player || !camera) return;
+    const screenPos = camera.toScreen(player.x, player.y, canvasWidth, canvasHeight);
+    
+    // Calculate accurate direction from player's exact screen coordinate to current mouse cursor
+    this.aimAngle = Math.atan2(this.mouse.y - screenPos.y, this.mouse.x - screenPos.x);
   }
 
   /**

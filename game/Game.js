@@ -111,13 +111,16 @@ export class Game {
 
     if (this.networkManager.isHost) {
       // --- HOST (AUTHORITATIVE) ROUTE ---
-      this._updateHostPhysics(deltaTime, now);
-      
-      // Update camera directly over host coordinates
+      // Update camera over host coordinates
       const hp = this.players[this.localPlayerId];
       if (hp) {
         this.camera.update(hp.x, hp.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
+        if (!hp.isDead) {
+          this.input.updateAimAngle(hp, this.camera, this.canvas.width, this.canvas.height);
+        }
       }
+
+      this._updateHostPhysics(deltaTime, now);
       
       // Render frame
       this._renderFrame();
@@ -129,6 +132,12 @@ export class Game {
       // Transmit inputs to host
       const localPlayer = this.players[this.localPlayerId];
       if (localPlayer && !localPlayer.isDead) {
+        // Update camera position to follow local player
+        this.camera.update(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
+
+        // Calibrate accurate aiming angle taking camera boundaries into account
+        this.input.updateAimAngle(localPlayer, this.camera, this.canvas.width, this.canvas.height);
+
         // Optimistic local update for zero input latency feel
         localPlayer.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
         localPlayer.angle = this.input.aimAngle;
@@ -137,8 +146,6 @@ export class Game {
         // Send to host
         this.networkManager.sendToHost(Protocol.clientInput(this.input.keys));
         this.networkManager.sendToHost(Protocol.clientAim(this.input.aimAngle));
-        
-        this.camera.update(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
       }
 
       this._renderFrame();

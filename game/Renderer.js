@@ -165,7 +165,18 @@ export class Renderer {
             py += Math.sin(ranAngle) * dist;
             angle = ranAngle;
           } else if (e.type === 'melee_line') {
-            const dist = weapon.range * e.progress;
+            let ext = 0;
+            if (e.progress < 0.15) {
+              const t = e.progress / 0.15;
+              ext = 1 - (1 - t) * (1 - t);
+            } else if (e.progress < 0.35) {
+              const t = (e.progress - 0.15) / 0.20;
+              ext = 1.0 - t * 0.1;
+            } else {
+              const t = (e.progress - 0.35) / 0.65;
+              ext = 0.9 * (1 - t);
+            }
+            const dist = weapon.range * ext;
             px += Math.cos(e.angle) * dist;
             py += Math.sin(e.angle) * dist;
           }
@@ -323,29 +334,73 @@ export class Renderer {
    */
   _drawProjectiles(ctx, camera, cw, ch, projectiles) {
     ctx.save();
-    ctx.strokeStyle = '#a3ff45';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
 
     projectiles.forEach(p => {
       if (p.isDead) return;
 
       const scr = camera.toScreen(p.x, p.y, cw, ch);
-      
-      // Calculate travel trace line
-      const angle = Math.atan2(p.vy, p.vx);
-      const length = 18;
+      if (scr.x < -40 || scr.x > cw + 40 || scr.y < -40 || scr.y > ch + 40) return;
 
+      const angle = Math.atan2(p.vy, p.vx);
+      const length = 22;
+
+      // 1. Draw glowing outer energy trace aura
+      ctx.strokeStyle = 'rgba(163, 255, 69, 0.4)';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(scr.x, scr.y);
       ctx.lineTo(scr.x - Math.cos(angle) * length, scr.y - Math.sin(angle) * length);
       ctx.stroke();
 
-      // Sharp arrowhead SVG alternative
-      ctx.fillStyle = '#a3ff45';
+      // 2. Draw solid primary energetic arrow shaft (neon lime)
+      ctx.strokeStyle = '#a3ff45';
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(scr.x, scr.y, 3, 0, Math.PI * 2);
+      ctx.moveTo(scr.x, scr.y);
+      ctx.lineTo(scr.x - Math.cos(angle) * length, scr.y - Math.sin(angle) * length);
+      ctx.stroke();
+
+      // 3. Draw bright white core shaft line
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.moveTo(scr.x, scr.y);
+      ctx.lineTo(scr.x - Math.cos(angle) * (length * 0.75), scr.y - Math.sin(angle) * (length * 0.75));
+      ctx.stroke();
+
+      // 4. Draw a beautifully styled arrowhead triangle
+      ctx.save();
+      ctx.translate(scr.x, scr.y);
+      ctx.rotate(angle);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#a3ff45';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(4, 0);
+      ctx.lineTo(-6, -4);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-6, 4);
+      ctx.closePath();
       ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // 5. Draw arrow tail fletching wings
+      ctx.save();
+      const tailX = scr.x - Math.cos(angle) * length;
+      const tailY = scr.y - Math.sin(angle) * length;
+      ctx.translate(tailX, tailY);
+      ctx.rotate(angle);
+      ctx.strokeStyle = '#a3ff45';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      // Draw fletch lines branching backwards
+      ctx.moveTo(-2, -3);
+      ctx.lineTo(2, 0);
+      ctx.lineTo(-2, 3);
+      ctx.stroke();
+      ctx.restore();
     });
 
     ctx.restore();
@@ -416,25 +471,116 @@ export class Renderer {
         const length = weapon.range;
         const width = weapon.width;
 
-        const tipX = scr.x + Math.cos(e.angle) * length * e.progress;
-        const tipY = scr.y + Math.sin(e.angle) * length * e.progress;
+        // Custom snappy thrust easing curve:
+        // 0.0 -> 0.15: ultra fast thrust to max length
+        // 0.15 -> 0.35: slight hold & vibrate
+        // 0.35 -> 1.0: fade and retract
+        let ext = 0;
+        let shake = 0;
+        if (e.progress < 0.15) {
+          const t = e.progress / 0.15;
+          ext = 1 - (1 - t) * (1 - t); // Quadratic ease out
+        } else if (e.progress < 0.35) {
+          const t = (e.progress - 0.15) / 0.20;
+          ext = 1.0 - t * 0.1;
+          shake = Math.sin(e.progress * 130) * 1.5; // Tiny rapid high-frequency buzz for vibration feel
+        } else {
+          const t = (e.progress - 0.35) / 0.65;
+          ext = 0.9 * (1 - t);
+        }
 
+        const angleWithShake = e.angle + (shake * Math.PI / 180);
+        const startX = scr.x;
+        const startY = scr.y;
+        const tipX = scr.x + Math.cos(angleWithShake) * length * ext;
+        const tipY = scr.y + Math.sin(angleWithShake) * length * ext;
+
+        // 1. Draw a subtle warning/trajectory zone under the spear (during the first half) to help judge range!
+        // This is a thin transparent laser beam or rectangle extending to the absolute range.
+        if (e.progress < 0.5) {
+          const zoneAlpha = 0.18 * (1 - e.progress * 2);
+          ctx.save();
+          ctx.strokeStyle = this._hexToRGB(weapon.color, zoneAlpha);
+          ctx.fillStyle = this._hexToRGB(weapon.color, zoneAlpha * 0.4);
+          ctx.lineWidth = 1;
+          
+          // Draw a long thin capsule/rectangle representing the full attack range/width
+          ctx.beginPath();
+          const targetLength = length;
+          const leftAngle = e.angle - Math.PI / 2;
+          const rightAngle = e.angle + Math.PI / 2;
+          const hw = width / 2;
+          
+          const p1x = scr.x + Math.cos(leftAngle) * hw;
+          const p1y = scr.y + Math.sin(leftAngle) * hw;
+          const p2x = scr.x + Math.cos(rightAngle) * hw;
+          const p2y = scr.y + Math.sin(rightAngle) * hw;
+          const p3x = p2x + Math.cos(e.angle) * targetLength;
+          const p3y = p2y + Math.sin(e.angle) * targetLength;
+          const p4x = p1x + Math.cos(e.angle) * targetLength;
+          const p4y = p1y + Math.sin(e.angle) * targetLength;
+          
+          ctx.moveTo(p1x, p1y);
+          ctx.lineTo(p2x, p2y);
+          ctx.lineTo(p3x, p3y);
+          ctx.lineTo(p4x, p4y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 2. Draw outer energetic spear shaft aura
         ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
-        ctx.lineWidth = width * (1 - e.progress);
+        ctx.lineWidth = width * (1 - e.progress * 0.7);
         ctx.lineCap = 'round';
         
         ctx.beginPath();
-        ctx.moveTo(scr.x, scr.y);
+        ctx.moveTo(startX, startY);
         ctx.lineTo(tipX, tipY);
         ctx.stroke();
 
-        // Critical visual core
-        ctx.strokeStyle = this._hexToRGB('#ffffff', alpha);
-        ctx.lineWidth = 3;
+        // 3. Highlight spear tip with a diamond/glowing head shape!
+        const headSize = Math.max(6, width * 0.6) * (1 - e.progress * 0.5);
+        ctx.fillStyle = this._hexToRGB('#ffffff', alpha);
+        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
+        ctx.lineWidth = 2;
+        
+        ctx.save();
+        ctx.translate(tipX, tipY);
+        ctx.rotate(angleWithShake);
         ctx.beginPath();
-        ctx.moveTo(scr.x, scr.y);
-        ctx.lineTo(tipX, tipY);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-headSize * 1.5, -headSize / 2);
+        ctx.lineTo(-headSize * 2, 0);
+        ctx.lineTo(-headSize * 1.5, headSize / 2);
+        ctx.closePath();
+        ctx.fill();
         ctx.stroke();
+        ctx.restore();
+
+        // 4. Draw critical white spear hot-core line
+        ctx.strokeStyle = this._hexToRGB('#ffffff', alpha);
+        ctx.lineWidth = 4 * (1 - e.progress * 0.5);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        // Slightly shorter than tip to keep head clean
+        const innerTipX = scr.x + Math.cos(angleWithShake) * length * Math.max(0, ext - 0.1);
+        const innerTipY = scr.y + Math.sin(angleWithShake) * length * Math.max(0, ext - 0.1);
+        ctx.lineTo(innerTipX, innerTipY);
+        ctx.stroke();
+
+        // 5. Draw circular impact rings at the base of thrust (thrust puff!)
+        if (e.progress < 0.25) {
+          const puffSize = (width * 1.5) * (e.progress / 0.25);
+          const puffAlpha = 0.5 * (1 - e.progress / 0.25);
+          ctx.strokeStyle = this._hexToRGB('#ffffff', puffAlpha);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(scr.x + Math.cos(e.angle) * 10, scr.y + Math.sin(e.angle) * 10, puffSize, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
     });
 
