@@ -84,6 +84,9 @@ export class NetworkManager {
       // Connect callbacks for guest connects
       const remoteId = conn.peer;
       
+      // Register immediately to prevent race conditions during early data packets!
+      this.connections[remoteId] = conn;
+
       conn.on('open', () => {
         this.connections[remoteId] = conn;
       });
@@ -153,6 +156,9 @@ export class NetworkManager {
       const conn = this.peer.connect(hostPeerId, {
         reliable: true
       });
+
+      // Register immediately to prevent race conditions during initialization
+      this.connections[hostPeerId] = conn;
 
       conn.on('open', () => {
         this.connections[hostPeerId] = conn;
@@ -252,8 +258,14 @@ export class NetworkManager {
     if (!this.isHost) return;
     for (const key in this.connections) {
       const conn = this.connections[key];
-      if (conn && conn.open) {
-        conn.send(payload);
+      if (conn) {
+        if (conn.open) {
+          conn.send(payload);
+        } else {
+          try {
+            conn.send(payload);
+          } catch (e) {}
+        }
       }
     }
   }
@@ -263,8 +275,14 @@ export class NetworkManager {
    */
   sendTo(targetId, payload) {
     const conn = this.connections[targetId];
-    if (conn && conn.open) {
-      conn.send(payload);
+    if (conn) {
+      if (conn.open) {
+        conn.send(payload);
+      } else {
+        try {
+          conn.send(payload);
+        } catch (e) {}
+      }
     }
   }
 
@@ -275,8 +293,14 @@ export class NetworkManager {
     if (this.isHost) return;
     const hostId = this._prefixRoom(this.roomCode);
     const conn = this.connections[hostId];
-    if (conn && conn.open) {
-      conn.send(payload);
+    if (conn) {
+      if (conn.open) {
+        conn.send(payload);
+      } else {
+        try {
+          conn.send(payload);
+        } catch (e) {}
+      }
     }
   }
 

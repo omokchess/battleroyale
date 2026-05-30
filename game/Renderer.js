@@ -444,26 +444,83 @@ export class Renderer {
       } 
       
       else if (e.type === 'melee_circle') {
-        const radius = weapon.range * e.progress; // Spreads outwards
+        // Axe spin snappy expansion easing
+        let scale = 0;
+        if (e.progress < 0.2) {
+          const t = e.progress / 0.2;
+          scale = 1 - (1 - t) * (1 - t); // Rapid start
+        } else {
+          const t = (e.progress - 0.2) / 0.8;
+          scale = 1.0 + t * 0.05; // Gentle expanding hold
+        }
+        const radius = weapon.range * scale;
 
-        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
-        ctx.lineWidth = 6 * alpha;
+        // 1. Draw solid shaded battleground hazard area representing the axe swing boundary
+        const areaAlpha = 0.15 * alpha;
+        ctx.fillStyle = this._hexToRGB(weapon.color, areaAlpha);
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. Thick Outer Red Fire Storm Ring
+        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha * 0.75);
+        ctx.lineWidth = 10 * (1 - e.progress);
         ctx.beginPath();
         ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Spin ticks
+        // 3. Bright White Hot-Core Blade Sharpness Ring
+        ctx.strokeStyle = this._hexToRGB('#ffffff', alpha);
+        ctx.lineWidth = 3 * (1 - e.progress);
         ctx.beginPath();
-        const tickCount = 4;
-        const tickLength = 12;
-        for (let i = 0; i < tickCount; i++) {
-          const tickAngle = e.angle + (i * Math.PI / 2) + (e.progress * Math.PI);
-          const startR = radius - tickLength;
-          const endR = radius + tickLength;
-          ctx.moveTo(scr.x + Math.cos(tickAngle) * startR, scr.y + Math.sin(tickAngle) * startR);
-          ctx.lineTo(scr.x + Math.cos(tickAngle) * endR, scr.y + Math.sin(tickAngle) * endR);
-        }
+        ctx.arc(scr.x, scr.y, radius - 1.5, 0, Math.PI * 2);
         ctx.stroke();
+
+        // 4. Twin Crescent Spinning Blade Swooshes (rotating wind slashes)
+        // Spin angle progresses over progress of the animation
+        const spinAngle = e.angle + e.progress * Math.PI * 3.5;
+        ctx.save();
+        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha * 0.9);
+        ctx.lineWidth = 4 * (1 - e.progress * 0.5);
+        ctx.lineCap = 'round';
+        
+        // Blade 1
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, radius * 0.82, spinAngle, spinAngle + Math.PI * 0.7);
+        ctx.stroke();
+
+        // Blade 2 (opposite side)
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, radius * 0.82, spinAngle + Math.PI, spinAngle + Math.PI + Math.PI * 0.7);
+        ctx.stroke();
+
+        // Inner white high-speed cores for the twin blades
+        ctx.strokeStyle = this._hexToRGB('#ffffff', alpha * 0.8);
+        ctx.lineWidth = 1.5 * (1 - e.progress * 0.5);
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, radius * 0.82, spinAngle + 0.1, spinAngle + Math.PI * 0.5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, radius * 0.82, spinAngle + Math.PI + 0.1, spinAngle + Math.PI + Math.PI * 0.5);
+        ctx.stroke();
+        ctx.restore();
+
+        // 5. Shatter / Impact Radial Spikes (indicating ground strike impact)
+        if (e.progress > 0.1 && e.progress < 0.6) {
+          const spikeAlpha = 0.6 * (1 - (e.progress - 0.1) / 0.5);
+          ctx.strokeStyle = this._hexToRGB('#ffffff', spikeAlpha);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          const spikeCount = 8;
+          for (let i = 0; i < spikeCount; i++) {
+            const angleVal = (i * Math.PI * 2) / spikeCount + (e.progress * 0.2);
+            const innerR = radius * 0.85;
+            const outerR = radius * (1.05 + Math.sin(e.progress * 40 + i) * 0.05);
+            ctx.moveTo(scr.x + Math.cos(angleVal) * innerR, scr.y + Math.sin(angleVal) * innerR);
+            ctx.lineTo(scr.x + Math.cos(angleVal) * outerR, scr.y + Math.sin(angleVal) * outerR);
+          }
+          ctx.stroke();
+        }
       } 
       
       else if (e.type === 'melee_line') {

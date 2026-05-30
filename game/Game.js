@@ -741,7 +741,11 @@ export class Game {
         } 
         
         else if (data.type === MsgType.ERROR) {
-          alert(data.message);
+          const statusEl = document.getElementById('statusMsg');
+          if (statusEl) {
+            statusEl.textContent = data.message;
+            statusEl.classList.remove('hidden');
+          }
           this.quit();
         }
       }
@@ -766,7 +770,12 @@ export class Game {
 
     // GUEST COLD DROP
     this.networkManager.on('onDisconnected', (reason) => {
-      alert(reason || 'Disconnected from matchmaking server.');
+      const errMsg = reason || '매치메이킹 서버와의 연결이 끊어졌습니다.';
+      const statusEl = document.getElementById('statusMsg');
+      if (statusEl) {
+        statusEl.textContent = errMsg;
+        statusEl.classList.remove('hidden');
+      }
       this.quit();
     });
 
