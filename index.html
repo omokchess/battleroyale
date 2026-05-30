@@ -144,7 +144,7 @@
             <li>Move: <span class="text-white">W, A, S, D</span> or <span class="text-white">Arrow Keys</span></li>
             <li>Aim: <span class="text-white">Mouse Pointer</span></li>
             <li>Attack: <span class="text-white">Automatic Attack</span> (triggers automatically based on weapon cooldown)</li>
-            <li>Objective: Defeat all other gladiators in the arena. Last survivor wins!</li>
+            <li>Objective: Defeat other gladiators in the arena. Earn kills, respawn endlessly, and fight back!</li>
           </ul>
         </div>
 
@@ -200,6 +200,18 @@
         <h2 id="announcementText" class="text-yellow-400 text-4xl font-extrabold tracking-widest uppercase origin-center drop-shadow-[0_4px_6px_rgba(0,0,0,0.9)] animate-pulse scale-0 transition-transform duration-300">
           MATCH STARTED
         </h2>
+      </div>
+
+      <!-- RESPAWN SCREEN OVERLAY -->
+      <div id="respawnOverlay" class="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center z-35 hidden font-mono">
+        <div class="text-center select-none p-6">
+          <div class="text-red-500 text-3xl font-extrabold tracking-widest uppercase mb-2 animate-pulse">YOU DIED</div>
+          <div class="text-gray-400 text-xs uppercase tracking-wider mb-6">PREPARING GEAR & RE-SPAWNING...</div>
+          <div id="respawnProgressContainer" class="w-48 bg-[#0b0c10] h-2 border border-gray-600 overflow-hidden mx-auto mb-2 relative">
+            <div id="respawnProgressBar" class="bg-gradient-to-r from-red-650 to-teal-400 h-full w-full transition-all duration-100"></div>
+          </div>
+          <div id="respawnTimerText" class="text-[#45f3ff] text-lg font-bold">2.5s</div>
+        </div>
       </div>
 
       <!-- SPECTATOR BANNER OR MATCH RESULTS SCREEN -->

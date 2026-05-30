@@ -259,24 +259,33 @@ export class Game {
     });
     this.effects = this.effects.filter(e => e.progress < 1);
 
-    // 5. Update game standing counts & Victory constraints
+    // 5. Update game standing counts & Host P2P Respawn Loop
     const alivePlayers = Object.values(this.players).filter(p => !p.isDead);
     this.remainingPlayersCount = alivePlayers.length;
 
-    const totalActivePlayers = Object.keys(this.players).length;
-
-    // Trigger Victory check if there are multiple contestants and only 1 remains alive
-    if (totalActivePlayers > 1 && this.remainingPlayersCount === 1 && !this.gameOver) {
-      this.gameOver = true;
-      this.winnerNickname = alivePlayers[0].nickname;
-      this._endGame(true, this.winnerNickname);
-    } 
-    // Edge-case Solo Host testing sandbox wins
-    else if (totalActivePlayers === 1 && alivePlayers.length === 0 && !this.gameOver) {
-      this.gameOver = true;
-      this.winnerNickname = 'NONE';
-      this._endGame(false, 'Grave');
-    }
+    // Process resurrection/respawn times for dead competitors
+    Object.keys(this.players).forEach(id => {
+      const p = this.players[id];
+      if (p.isDead) {
+        if (!p.respawnTime) {
+          p.respawnTime = now + 2500; // 2.5 seconds spawn time
+        }
+        p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
+        if (now >= p.respawnTime) {
+          const spawnP = this._getRandomSpawnPoint();
+          p.isDead = false;
+          p.hp = p.maxHp;
+          p.x = spawnP.x;
+          p.y = spawnP.y;
+          p.respawnTime = 0;
+          p.respawnRemainingMs = 0;
+          this._announce(`${p.nickname} RE-ENTERED THE ARENA`);
+        }
+      } else {
+        p.respawnTime = 0;
+        p.respawnRemainingMs = 0;
+      }
+    });
 
     // 6. Broadcast state ticks to guests
     this.serverTickTimer += deltaTime * 1000;
@@ -418,6 +427,27 @@ export class Game {
           else if (pingVal < 185) indicatorEl.className = 'inline-block w-2.5 h-2.5 rounded-full bg-yellow-500';
           else indicatorEl.className = 'inline-block w-2.5 h-2.5 rounded-full bg-red-600';
         }
+      }
+    }
+
+    // Respawn Countdown Overlay
+    const respawnOverlay = document.getElementById('respawnOverlay');
+    const respawnProgressBar = document.getElementById('respawnProgressBar');
+    const respawnTimerText = document.getElementById('respawnTimerText');
+    
+    if (respawnOverlay) {
+      if (local.isDead) {
+        respawnOverlay.classList.remove('hidden');
+        if (respawnTimerText) {
+          const remainingSec = ((local.respawnRemainingMs || 0) / 1000).toFixed(1);
+          respawnTimerText.textContent = `${remainingSec}s`;
+        }
+        if (respawnProgressBar) {
+          const pct = Math.min(100, Math.max(0, ((local.respawnRemainingMs || 0) / 2500) * 100));
+          respawnProgressBar.style.width = `${pct}%`;
+        }
+      } else {
+        respawnOverlay.classList.add('hidden');
       }
     }
   }
@@ -691,15 +721,8 @@ export class Game {
             };
           });
 
-          // 4. Update Victory overlays
-          const aliveTotal = Object.values(this.players).filter(p => !p.isDead);
-          const totalConnected = Object.keys(this.players).length;
-
-          if (totalConnected > 1 && aliveTotal.length === 1 && !this.gameOver) {
-            this.gameOver = true;
-            this.winnerNickname = aliveTotal[0].nickname;
-            this._endGame(true, this.winnerNickname);
-          }
+          // 4. Removed Legacy Battle Royale Victory/Elimination triggers
+          // (Now operating in dynamic infinite deathmatch respawn loop)
         } 
         
         else if (data.type === MsgType.ERROR) {

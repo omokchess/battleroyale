@@ -21,6 +21,7 @@ export class Player {
     this.angle = 0; // aim angle in radians
     this.kills = 0;
     this.isDead = false;
+    this.respawnRemainingMs = 0;
     
     // Cool down tracker
     this.lastAttackTime = 0;
@@ -116,6 +117,7 @@ export class Player {
       angle: this.angle,
       kills: this.kills,
       isDead: this.isDead,
+      respawnRemainingMs: this.respawnRemainingMs || 0,
       color: this.color,
       accentColor: this.accentColor
     };
@@ -130,6 +132,7 @@ export class Player {
     this.hp = data.hp;
     this.kills = data.kills;
     this.isDead = data.isDead;
+    this.respawnRemainingMs = data.respawnRemainingMs || 0;
     this.color = data.color;
     this.accentColor = data.accentColor;
     
