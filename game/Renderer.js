@@ -39,14 +39,14 @@ export class Renderer {
     this._drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight);
 
     // Floor particles rendering (Dust trails, projectile flows)
-    this._drawParticles(ctx, camera, cw, ch, 'floor');
+    this._drawParticles(ctx, camera, cw, ch, 'floor', gameState.players);
 
     // Draw Map Borders
     this._drawBorders(ctx, camera, cw, ch, mapWidth, mapHeight);
 
     // Draw Active Attack Visual Effects
     if (activeEffects.length) {
-      this._drawEffects(ctx, camera, cw, ch, activeEffects);
+      this._drawEffects(ctx, camera, cw, ch, activeEffects, gameState.players);
     }
 
     // Draw Bow Projectiles
@@ -60,7 +60,7 @@ export class Renderer {
     }
 
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
-    this._drawParticles(ctx, camera, cw, ch, 'onTop');
+    this._drawParticles(ctx, camera, cw, ch, 'onTop', gameState.players);
   }
 
   /**
@@ -147,6 +147,7 @@ export class Renderer {
     if (gameState.effects) {
       gameState.effects.forEach(e => {
         const weapon = Weapons[e.weapon] || Weapons.sword;
+        const anchoredEffect = this._resolveEffectAttachment(e, gameState.players);
         if (e.type === 'projectile_shot') {
           if (Math.random() < 0.75) {
             const dist = 16 + Math.random() * 8;
@@ -190,13 +191,13 @@ export class Renderer {
         }
 
         if (Math.random() < 0.45) {
-          let px = e.x;
-          let py = e.y;
-          let angle = e.angle;
+          let px = anchoredEffect.x;
+          let py = anchoredEffect.y;
+          let angle = anchoredEffect.angle;
           
           if (e.type === 'melee_arc') {
             const spread = (weapon.angle * Math.PI) / 360;
-            const ranAngle = e.angle + (Math.random() * spread * 2 - spread);
+            const ranAngle = anchoredEffect.angle + (Math.random() * spread * 2 - spread);
             const dist = weapon.range * (0.35 + Math.random() * 0.65);
             px += Math.cos(ranAngle) * dist;
             py += Math.sin(ranAngle) * dist;
@@ -220,12 +221,12 @@ export class Renderer {
               ext = 0.9 * (1 - t);
             }
             const dist = weapon.range * ext;
-            px += Math.cos(e.angle) * dist;
-            py += Math.sin(e.angle) * dist;
+            px += Math.cos(anchoredEffect.angle) * dist;
+            py += Math.sin(anchoredEffect.angle) * dist;
           }
 
           const spd = Math.random() * 30 + 10;
-          this.particles.push({
+          const particle = {
             x: px,
             y: py,
             vx: Math.cos(angle) * spd + (Math.random() * 10 - 5),
@@ -233,10 +234,18 @@ export class Renderer {
             color: Math.random() < 0.25 ? '#ffffff' : weapon.color,
             size: Math.random() * 2.2 + 1.0,
             alpha: 0.8,
-            decay: Math.random() * 2.5 + 1.5,
+            decay: Math.random() * 5.0 + 4.5,
             shape: 'circle',
             layer: 'onTop'
-          });
+          };
+
+          if (this._isPlayerBoundEffect(e)) {
+            particle.anchorId = e.attackerId;
+            particle.offsetX = px - anchoredEffect.x;
+            particle.offsetY = py - anchoredEffect.y;
+          }
+
+          this.particles.push(particle);
         }
       });
     }
@@ -269,6 +278,10 @@ export class Renderer {
     this.particles.forEach(p => {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      if (p.anchorId) {
+        p.offsetX = (p.offsetX || 0) + p.vx * dt;
+        p.offsetY = (p.offsetY || 0) + p.vy * dt;
+      }
       p.alpha -= p.decay * dt;
     });
     this.particles = this.particles.filter(p => p.alpha > 0);
@@ -277,12 +290,13 @@ export class Renderer {
   /**
    * Render active particle traces
    */
-  _drawParticles(ctx, camera, cw, ch, layerType) {
+  _drawParticles(ctx, camera, cw, ch, layerType, players = {}) {
     ctx.save();
     this.particles.forEach(p => {
       if (p.layer !== layerType) return;
 
-      const scr = camera.toScreen(p.x, p.y, cw, ch);
+      const pos = this._resolveParticlePosition(p, players);
+      const scr = camera.toScreen(pos.x, pos.y, cw, ch);
       if (scr.x < -20 || scr.x > cw + 20 || scr.y < -20 || scr.y > ch + 20) return;
 
       ctx.fillStyle = p.color;
@@ -452,13 +466,14 @@ export class Renderer {
   /**
    * Fading graphic slices for melee collisions
    */
-  _drawEffects(ctx, camera, cw, ch, effects) {
+  _drawEffects(ctx, camera, cw, ch, effects, players = {}) {
     ctx.save();
 
     effects.forEach(e => {
       if (!e || !Number.isFinite(e.progress)) return;
 
-      const scr = camera.toScreen(e.x, e.y, cw, ch);
+      const anchoredEffect = this._resolveEffectAttachment(e, players);
+      const scr = camera.toScreen(anchoredEffect.x, anchoredEffect.y, cw, ch);
       const weapon = Weapons[e.weapon] || Weapons.sword;
       const alpha = clamp01(1 - e.progress);
 
@@ -471,18 +486,18 @@ export class Renderer {
 
       if (e.type === 'melee_arc') {
         if (e.weapon === 'gauntlet') {
-          this._drawPunchCombo(ctx, scr, e, weapon, alpha);
+          this._drawPunchCombo(ctx, scr, anchoredEffect, weapon, alpha);
         } else {
-          this._drawArcSlash(ctx, scr, e, weapon, alpha);
+          this._drawArcSlash(ctx, scr, anchoredEffect, weapon, alpha);
         }
       } 
       
       else if (e.type === 'melee_circle') {
-        this._drawAxeSpin(ctx, scr, e, weapon, alpha);
+        this._drawAxeSpin(ctx, scr, anchoredEffect, weapon, alpha);
       } 
       
       else if (e.type === 'melee_line') {
-        this._drawSpearThrust(ctx, scr, e, weapon, alpha);
+        this._drawSpearThrust(ctx, scr, anchoredEffect, weapon, alpha);
       }
 
       else if (e.type === 'projectile_shot') {
@@ -779,6 +794,7 @@ export class Renderer {
 
     effects.forEach(effect => {
       if (!effect.attackerId || effect.progress >= 1) return;
+      if (!this._isWeaponMotionEffect(effect)) return;
       const current = active[effect.attackerId];
       if (!current || effect.timestamp >= current.timestamp) {
         active[effect.attackerId] = effect;
@@ -786,6 +802,50 @@ export class Renderer {
     });
 
     return active;
+  }
+
+  _isWeaponMotionEffect(effect) {
+    return Boolean(effect) && (
+      effect.type === 'projectile_shot' ||
+      effect.type === 'melee_arc' ||
+      effect.type === 'melee_circle' ||
+      effect.type === 'melee_line'
+    );
+  }
+
+  _isPlayerBoundEffect(effect) {
+    return Boolean(effect && effect.attackerId) &&
+      effect.type !== 'projectile_shot' &&
+      effect.type !== 'projectile_burst';
+  }
+
+  _resolveEffectAttachment(effect, players = {}) {
+    if (!this._isPlayerBoundEffect(effect)) return effect;
+
+    const attacker = players[effect.attackerId];
+    if (!attacker || attacker.isDead) return effect;
+
+    return {
+      ...effect,
+      x: attacker.x,
+      y: attacker.y
+    };
+  }
+
+  _resolveParticlePosition(particle, players = {}) {
+    if (!particle.anchorId) {
+      return { x: particle.x, y: particle.y };
+    }
+
+    const anchor = players[particle.anchorId];
+    if (!anchor || anchor.isDead) {
+      return { x: particle.x, y: particle.y };
+    }
+
+    return {
+      x: anchor.x + (particle.offsetX || 0),
+      y: anchor.y + (particle.offsetY || 0)
+    };
   }
 
   _getAttackMotion(player, effect) {
