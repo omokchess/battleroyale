@@ -269,6 +269,8 @@ export class Renderer {
 
           if (this._isPlayerBoundEffect(e)) {
             particle.anchorId = e.attackerId;
+            particle.anchorAngle = anchoredEffect.angle;
+            particle.rotateWithAnchor = true;
             particle.offsetX = px - anchoredEffect.x;
             particle.offsetY = py - anchoredEffect.y;
           }
@@ -1062,7 +1064,8 @@ export class Renderer {
     return {
       ...effect,
       x: attacker.x,
-      y: attacker.y
+      y: attacker.y,
+      angle: Number.isFinite(attacker.angle) ? attacker.angle : effect.angle
     };
   }
 
@@ -1076,9 +1079,21 @@ export class Renderer {
       return { x: particle.x, y: particle.y };
     }
 
+    let offsetX = particle.offsetX || 0;
+    let offsetY = particle.offsetY || 0;
+    if (particle.rotateWithAnchor && Number.isFinite(particle.anchorAngle) && Number.isFinite(anchor.angle)) {
+      const delta = anchor.angle - particle.anchorAngle;
+      const cos = Math.cos(delta);
+      const sin = Math.sin(delta);
+      const rotatedX = offsetX * cos - offsetY * sin;
+      const rotatedY = offsetX * sin + offsetY * cos;
+      offsetX = rotatedX;
+      offsetY = rotatedY;
+    }
+
     return {
-      x: anchor.x + (particle.offsetX || 0),
-      y: anchor.y + (particle.offsetY || 0)
+      x: anchor.x + offsetX,
+      y: anchor.y + offsetY
     };
   }
 
@@ -1093,7 +1108,9 @@ export class Renderer {
     if (!effect) return empty;
 
     const progress = clamp01(effect.progress);
-    const angle = Number.isFinite(effect.angle) ? effect.angle : player.angle;
+    const angle = this._isPlayerBoundEffect(effect) && Number.isFinite(player.angle)
+      ? player.angle
+      : (Number.isFinite(effect.angle) ? effect.angle : player.angle);
     let lunge = 0;
     let weaponReach = 0;
     let weaponAngle = angle;
@@ -1252,26 +1269,28 @@ export class Renderer {
         ctx.restore();
       }
 
-      // Draw Sight Pointer / Helmet Visor face vector direction
-      ctx.strokeStyle = '#0b0c10';
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(bodyScr.x, bodyScr.y);
-      ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
-      ctx.stroke();
+      if (p.weapon !== 'axe') {
+        // Draw Sight Pointer / Helmet Visor face vector direction
+        ctx.strokeStyle = '#0b0c10';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(bodyScr.x, bodyScr.y);
+        ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
+        ctx.stroke();
 
-      // Highlight core represent eye visor
-      ctx.strokeStyle = p.accentColor;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      // Side ticks showing helmet look direction
-      const leftVisor = p.angle - 0.4;
-      const rightVisor = p.angle + 0.4;
-      ctx.moveTo(bodyScr.x + Math.cos(leftVisor) * (radius - 4), bodyScr.y + Math.sin(leftVisor) * (radius - 4));
-      ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
-      ctx.lineTo(bodyScr.x + Math.cos(rightVisor) * (radius - 4), bodyScr.y + Math.sin(rightVisor) * (radius - 4));
-      ctx.stroke();
+        // Highlight core represent eye visor
+        ctx.strokeStyle = p.accentColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Side ticks showing helmet look direction
+        const leftVisor = p.angle - 0.4;
+        const rightVisor = p.angle + 0.4;
+        ctx.moveTo(bodyScr.x + Math.cos(leftVisor) * (radius - 4), bodyScr.y + Math.sin(leftVisor) * (radius - 4));
+        ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
+        ctx.lineTo(bodyScr.x + Math.cos(rightVisor) * (radius - 4), bodyScr.y + Math.sin(rightVisor) * (radius - 4));
+        ctx.stroke();
+      }
 
       // Draw Weapon Frame
       this._drawPlayerWeapon(ctx, bodyScr, p, motion);
@@ -1305,7 +1324,7 @@ export class Renderer {
       ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
 
       // Hp Bar Filled portion
-      const hpPct = Math.max(0, p.hp / 100);
+      const hpPct = Math.max(0, p.hp / (p.maxHp || 100));
       ctx.fillStyle = hpPct > 0.5 ? '#10b981' : hpPct > 0.25 ? '#f59e0b' : '#ef4444';
       ctx.fillRect(barX, barY, barW * hpPct, barH);
 
@@ -1469,6 +1488,7 @@ export class Renderer {
     const baseWeapon = getEffectiveWeapon(player.weapon, player.buffType);
     if (!baseWeapon) return;
     if (!isLocal && !isAttacking) return;
+    if (!isAttacking && baseWeapon.type !== 'projectile') return;
 
     // Scale the world-space reach to screen pixels so the guide matches the
     // real hitbox at any zoom (and reflects active skill buffs).

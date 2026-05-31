@@ -85,6 +85,7 @@ function displayWeaponStats(weaponType) {
     <p class="text-[10px] text-gray-400 mb-1 leading-snug break-keep whitespace-normal">${cfg.description}</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px] text-gray-300 leading-snug">
       <span class="min-w-0 whitespace-nowrap">⚔️ 공격력: <strong class="text-white">${cfg.damage}</strong></span>
+      <span class="min-w-0 whitespace-nowrap">❤️ 체력: <strong class="text-white">${cfg.maxHp || 100}</strong></span>
       <span class="min-w-0 whitespace-nowrap">📏 사거리: <strong class="text-white">${rangeLabel}</strong></span>
       <span class="min-w-0 whitespace-nowrap">🏃 이동속도: <strong class="text-white">${moveSpeedLabel}</strong></span>
       <span class="min-w-0 break-keep whitespace-normal">${extraDetails}</span>

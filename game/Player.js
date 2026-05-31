@@ -10,12 +10,13 @@ export class Player {
     this.id = id;
     this.nickname = nickname || 'Gladiator';
     this.weapon = weaponType in Weapons ? weaponType : 'sword';
+    const weaponConfig = Weapons[this.weapon] || Weapons.sword;
     this.x = x;
     this.y = y;
 
     // Core parameters
-    this.hp = 100;
-    this.maxHp = 100;
+    this.maxHp = weaponConfig.maxHp || 100;
+    this.hp = this.maxHp;
     this.speed = 180; // px/s
     this.radius = 14;
     this.angle = 0; // aim angle in radians
@@ -194,6 +195,7 @@ export class Player {
       id: this.id,
       nickname: this.nickname,
       weapon: this.weapon,
+      maxHp: this.maxHp,
       x: this.x,
       y: this.y,
       hp: this.hp,
@@ -218,7 +220,8 @@ export class Player {
   deserialize(data) {
     this.nickname = data.nickname;
     this.weapon = data.weapon;
-    this.hp = data.hp;
+    this.maxHp = Number.isFinite(data.maxHp) ? data.maxHp : (Weapons[this.weapon]?.maxHp || this.maxHp || 100);
+    this.hp = Number.isFinite(data.hp) ? Math.min(data.hp, this.maxHp) : this.maxHp;
     this.kills = data.kills;
     this.isDead = data.isDead;
     this.respawnRemainingMs = data.respawnRemainingMs || 0;

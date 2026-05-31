@@ -8,6 +8,7 @@ export const Weapons = {
   sword: {
     name: '검',
     damage: 24,
+    maxHp: 120,
     cooldown: 550, // milliseconds
     moveSpeed: 1.1,
     range: 70,     // pixels
@@ -20,6 +21,7 @@ export const Weapons = {
   axe: {
     name: '도끼',
     damage: 40,
+    maxHp: 150,
     cooldown: 900,
     moveSpeed: 0.8,
     range: 58,
@@ -32,8 +34,9 @@ export const Weapons = {
   bow: {
     name: '활',
     damage: 33,
+    maxHp: 80,
     cooldown: 800,
-    moveSpeed: 0.65,
+    moveSpeed: 1,
     range: Infinity,
     speed: 640,    // Projectile speed (px/s)
     type: 'projectile',
@@ -44,6 +47,7 @@ export const Weapons = {
   spear: {
     name: '창',
     damage: 17,
+    maxHp: 100,
     cooldown: 500,
     moveSpeed: 1,
     range: 120,
@@ -56,6 +60,7 @@ export const Weapons = {
   gauntlet: {
     name: '건틀릿',
     damage: 19,
+    maxHp: 110,
     cooldown: 160,
     moveSpeed: 1.3,
     range: 58,
@@ -84,11 +89,11 @@ DashConfig.speed = DashConfig.distance / (DashConfig.durationMs / 1000); // px/s
 export const SkillConfig = {
   sword: {
     cooldownMs: 4000,
-    waveSpeed: 600,        // sword-energy projectile speed (px/s)
+    waveSpeed: 800,        // sword-energy projectile speed (px/s)
     directDamage: 24,      // damage on direct contact
     explosionRadius: 70,   // explosion AoE radius (px)
     explosionDamage: 20,   // explosion AoE damage
-    spins: 3               // visual full rotations while casting
+    spins: 100               // visual full rotations while casting
   },
   axe: {
     cooldownMs: 6000,      // starts AFTER the buff ends

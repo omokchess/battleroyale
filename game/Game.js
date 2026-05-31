@@ -1172,11 +1172,12 @@ export class Game {
               this.players[id] = p;
             }
 
-            p.hp = snap.hp;
             p.kills = snap.kills;
             p.isDead = snap.isDead;
             p.nickname = snap.nickname || p.nickname;
             p.weapon = Weapons[snap.weapon] ? snap.weapon : p.weapon;
+            p.maxHp = positiveFinite(snap.maxHp) ? snap.maxHp : (Weapons[p.weapon]?.maxHp || p.maxHp || 100);
+            p.hp = Number.isFinite(snap.hp) ? Math.min(snap.hp, p.maxHp) : p.maxHp;
             p.respawnRemainingMs = snap.respawnRemainingMs || 0;
             p.iframeTimeLeft = (snap.iframeMs || 0) / 1000;
             p.buffType = snap.buffType || null;

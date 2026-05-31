@@ -415,8 +415,10 @@ export class Input {
    * Dynamically calibrate aim angle taking clamping boundaries & active camera offsets into consideration
    */
   updateAimAngle(player, camera, canvasWidth, canvasHeight) {
-    if (this.isRightJoystickActive) {
-      // Aim angle is authoritatively governed by the virtual right joystick slider
+    if (this.joystickEnabled) {
+      // With virtual controls enabled, the right joystick owns aim. Keeping the
+      // last angle after release prevents touch devices from snapping aim to
+      // the stale mouse/canvas position.
       return;
     }
     if (!player || !camera) return;

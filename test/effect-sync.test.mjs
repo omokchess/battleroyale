@@ -34,11 +34,12 @@ test('renderer can anchor effects when player map keys differ from peer ids', ()
     progress: 0.2
   };
   const players = {
-    guestSlot: { id: 'peer-a', x: 120, y: 90, isDead: false }
+    guestSlot: { id: 'peer-a', x: 120, y: 90, angle: 1.4, isDead: false }
   };
 
   const anchored = renderer._resolveEffectAttachment(effect, players);
 
   assert.equal(anchored.x, 120);
   assert.equal(anchored.y, 90);
+  assert.equal(anchored.angle, 1.4);
 });

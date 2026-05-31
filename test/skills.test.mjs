@@ -23,7 +23,7 @@ test('an invincible player ignores damage', () => {
   const p = new Player('p2', 'Ghost', 'sword', 0, 0);
   p.startDash(1, 0);
   assert.equal(p.takeDamage(50), false);
-  assert.equal(p.hp, 100);
+  assert.equal(p.hp, p.maxHp);
 });
 
 test('dash is gated by its cooldown', () => {
