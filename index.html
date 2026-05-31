@@ -186,7 +186,7 @@
       <div id="gameHudOverlay" class="absolute inset-x-0 top-0 p-4 flex justify-between items-start pointer-events-none select-none z-20 font-mono">
         
         <!-- Left Wing: Nickname, Health, Stats -->
-        <div id="hudPlayerPanel" class="bg-[#1f2833] bg-opacity-80 p-3 border-2 border-[#45f3ff] max-w-xs drop-shadow-md pointer-events-auto">
+        <div id="hudPlayerPanel" class="hud-editable bg-[#1f2833] bg-opacity-80 p-3 border-2 border-[#45f3ff] max-w-xs drop-shadow-md pointer-events-auto">
           <div class="flex justify-between items-center mb-1">
             <span id="hudName" class="text-white font-bold text-sm truncate max-w-[120px]">글래디에이터</span>
             <span id="hudWeapon" class="text-xs bg-[#0b0c10] px-1.5 py-0.5 border border-gray-600 text-[#45f3ff] uppercase ml-2">무기</span>
@@ -205,7 +205,7 @@
         </div>
 
         <!-- Right Wing: Room Code, Ping, Leave Game -->
-        <div class="flex flex-col items-end space-y-2 pointer-events-auto">
+        <div id="hudRightCluster" class="hud-editable flex flex-col items-end space-y-2 pointer-events-auto">
           <div id="hudRoomPanel" class="bg-[#1f2833] bg-opacity-80 p-3 border-2 border-gray-600 text-right drop-shadow-md">
             <div class="text-[10px] text-gray-400 uppercase">방 코드</div>
             <div id="hudRoomCode" class="text-sm text-[#45f3ff] font-bold">NONE</div>
@@ -281,7 +281,7 @@
       </div>
 
       <!-- ABILITY COOLDOWNS (F skill / Space dash) -->
-      <div id="abilityHud" class="absolute bottom-4 left-4 z-20 bg-[#1f2833] bg-opacity-80 p-3 border-2 border-[#45f3ff] font-mono pointer-events-none select-none w-44 drop-shadow-md">
+      <div id="abilityHud" class="hud-editable absolute bottom-4 left-4 z-20 bg-[#1f2833] bg-opacity-80 p-3 border-2 border-[#45f3ff] font-mono pointer-events-none select-none w-44 drop-shadow-md">
         <div class="flex justify-between items-center text-[10px] text-gray-300 mb-1">
           <span><strong class="text-[#45f3ff]">F</strong> 스킬</span>
           <span id="hudSkillState" class="text-white">준비!</span>

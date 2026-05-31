@@ -8,7 +8,12 @@ export class Camera {
     this.x = 0;
     this.y = 0;
     this.zoom = 1.0;
-    
+    this.shakeStart = 0;
+    this.shakeEnd = 0;
+    this.shakeMagnitude = 0;
+    this.shakeOffsetX = 0;
+    this.shakeOffsetY = 0;
+
     // Lerping inertia (0.1 means 10% movement per frame leading to very smooth chase)
     this.lerpSpeed = 0.12;
   }
@@ -30,6 +35,29 @@ export class Camera {
     // Apply linear interpolation
     this.x += (focusX - this.x) * this.lerpSpeed;
     this.y += (focusY - this.y) * this.lerpSpeed;
+  }
+
+  startShake(magnitude = 8, durationMs = 220, now = performance.now()) {
+    this.shakeStart = now;
+    this.shakeEnd = Math.max(this.shakeEnd, now + durationMs);
+    this.shakeMagnitude = Math.max(this.shakeMagnitude, magnitude);
+  }
+
+  getShakeOffset(now = performance.now()) {
+    if (now >= this.shakeEnd || this.shakeMagnitude <= 0) {
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+      this.shakeMagnitude = 0;
+      return { x: 0, y: 0 };
+    }
+
+    const duration = Math.max(1, this.shakeEnd - this.shakeStart);
+    const progress = Math.max(0, Math.min(1, (now - this.shakeStart) / duration));
+    const strength = this.shakeMagnitude * (1 - progress);
+    const wobble = now * 0.09;
+    this.shakeOffsetX = Math.cos(wobble * 1.7) * strength + Math.sin(wobble * 0.7) * strength * 0.45;
+    this.shakeOffsetY = Math.sin(wobble * 1.9) * strength + Math.cos(wobble * 0.8) * strength * 0.45;
+    return { x: this.shakeOffsetX, y: this.shakeOffsetY };
   }
 
   /**

@@ -84,7 +84,7 @@ canvas {
   }
 
   #hudPlayerPanel,
-  #hudRoomPanel,
+  #hudRightCluster,
   #abilityHud {
     transform: scale(1.12);
   }
@@ -93,7 +93,7 @@ canvas {
     transform-origin: top left;
   }
 
-  #hudRoomPanel {
+  #hudRightCluster {
     transform-origin: top right;
   }
 
@@ -122,5 +122,45 @@ canvas {
   #weaponStats {
     font-size: 0.84rem;
     min-height: 7rem;
+  }
+}
+
+@media (pointer: fine) {
+  .hud-editable.hud-layout-active {
+    pointer-events: auto;
+    cursor: move;
+    touch-action: none;
+    will-change: left, top, transform;
+  }
+
+  .hud-editable.hud-layout-dragging {
+    opacity: 0.94;
+    box-shadow: 0 0 0 1px rgba(102, 252, 241, 0.7), 0 0 18px rgba(69, 243, 255, 0.3);
+  }
+
+  .hud-editable .hud-resize-handle {
+    position: absolute;
+    right: -7px;
+    bottom: -7px;
+    width: 15px;
+    height: 15px;
+    border: 1px solid #66fcf1;
+    background: linear-gradient(135deg, transparent 0 42%, #66fcf1 43% 57%, transparent 58%);
+    box-shadow: 0 0 8px rgba(102, 252, 241, 0.55);
+    cursor: nwse-resize;
+    opacity: 0;
+    pointer-events: auto;
+    transition: opacity 0.12s ease;
+  }
+
+  .hud-editable:hover .hud-resize-handle,
+  .hud-editable.hud-layout-dragging .hud-resize-handle {
+    opacity: 1;
+  }
+}
+
+@media (pointer: coarse) {
+  .hud-resize-handle {
+    display: none;
   }
 }

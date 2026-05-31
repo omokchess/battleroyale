@@ -123,6 +123,30 @@ test('bow railgun vibration only fires for the local caster once', () => {
   assert.deepEqual(calls[0], [35, 20, 55]);
 });
 
+test('spear throw screen shake only fires for the local caster once', () => {
+  const game = Object.create(Game.prototype);
+  const shakes = [];
+  const vibrations = [];
+  game.localPlayerId = 'spear-player';
+  game.shakenSpearThrowIds = new Set();
+  game.camera = { startShake: (magnitude, durationMs) => shakes.push([magnitude, durationMs]) };
+  game._vibrateDevice = pattern => vibrations.push(pattern);
+
+  const effect = {
+    id: 'spear-throw-1',
+    attackerId: 'spear-player',
+    weapon: 'spear',
+    type: 'railbeam',
+    timestamp: 1000
+  };
+  game._triggerLocalSpearThrowFeedback(effect);
+  game._triggerLocalSpearThrowFeedback(effect);
+  game._triggerLocalSpearThrowFeedback({ ...effect, id: 'remote-spear', attackerId: 'other-player' });
+
+  assert.deepEqual(shakes, [[9, 260]]);
+  assert.deepEqual(vibrations, [[45, 25, 35]]);
+});
+
 test('bow arrows build capped stacks that fuel timed railgun bursts', () => {
   const game = Object.create(Game.prototype);
   game.players = {};

@@ -35,6 +35,12 @@ export class Renderer {
     ctx.fillStyle = '#0f1015';
     ctx.fillRect(0, 0, cw, ch);
 
+    const shake = typeof camera.getShakeOffset === 'function'
+      ? camera.getShakeOffset(nowTime)
+      : { x: 0, y: 0 };
+    ctx.save();
+    ctx.translate(shake.x || 0, shake.y || 0);
+
     // Grid rendering (only draw grids that are within viewport margins)
     this._drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight);
 
@@ -61,6 +67,8 @@ export class Renderer {
 
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
     this._drawParticles(ctx, camera, cw, ch, 'onTop', gameState.players);
+
+    ctx.restore();
   }
 
   /**
@@ -1466,30 +1474,34 @@ export class Renderer {
       const idleX = scr.x + Math.cos(idleHoldAngle) * (radius + 2);
       const idleY = scr.y + Math.sin(idleHoldAngle) * (radius + 2);
       const rageActive = player.buffType === 'axe_rage';
-      const rageX = scr.x + Math.cos(player.angle) * (radius + 3 + Math.max(0, reach * 0.28));
-      const rageY = scr.y + Math.sin(player.angle) * (radius + 3 + Math.max(0, reach * 0.28));
+      const rageX = scr.x + Math.cos(player.angle) * (radius + 1 + Math.max(0, reach * 0.08));
+      const rageY = scr.y + Math.sin(player.angle) * (radius + 1 + Math.max(0, reach * 0.08));
       const axeX = rageActive ? rageX : idleX;
       const axeY = rageActive ? rageY : idleY;
       const axeAngle = rageActive ? weaponAngle : idleHoldAngle;
+      const shaftStart = rageActive ? 0 : -8;
+      const shaftEnd = rageActive ? 19 + Math.max(0, reach * 0.24) : 9 + Math.max(0, reach * 0.18);
+      const bladeRoot = rageActive ? shaftEnd - 6 : 4;
+      const bladeTip = rageActive ? shaftEnd + 5 : 13;
 
       ctx.translate(axeX, axeY);
       ctx.rotate(axeAngle);
       ctx.strokeStyle = '#d1d5db';
       ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(-8, 0);
-      ctx.lineTo(9 + Math.max(0, reach * 0.18), 0);
+      ctx.moveTo(shaftStart, 0);
+      ctx.lineTo(shaftEnd, 0);
       ctx.stroke();
 
       ctx.strokeStyle = player.accentColor;
       ctx.fillStyle = '#111216';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(4, -9);
-      ctx.lineTo(13, -5);
-      ctx.lineTo(13, 5);
-      ctx.lineTo(4, 9);
-      ctx.quadraticCurveTo(9, 0, 4, -9);
+      ctx.moveTo(bladeRoot, -9);
+      ctx.lineTo(bladeTip, -5);
+      ctx.lineTo(bladeTip, 5);
+      ctx.lineTo(bladeRoot, 9);
+      ctx.quadraticCurveTo(shaftEnd, 0, bladeRoot, -9);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
