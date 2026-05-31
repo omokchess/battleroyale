@@ -57,6 +57,21 @@ export class Input {
     this._windowTouchCancel = null;
   }
 
+  _renderJoystickToggleLabel() {
+    return `
+      <span class="inline-flex items-center gap-1">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 12h4" />
+          <path d="M8 10v4" />
+          <path d="M15 13h.01" />
+          <path d="M18 11h.01" />
+          <path d="M5.5 8h13a3 3 0 0 1 2.9 3.8l-1.1 4.2a3 3 0 0 1-5 1.3L14 16H10l-1.3 1.3a3 3 0 0 1-5-1.3l-1.1-4.2A3 3 0 0 1 5.5 8z" />
+        </svg>
+        <span>조이스틱 ${this.joystickEnabled ? 'ON' : 'OFF'}</span>
+      </span>
+    `;
+  }
+
   /**
    * Bind event handles to document and viewport canvas
    */
@@ -185,8 +200,8 @@ export class Input {
     // Configure HUD controller toggle button
     const toggleBtn = document.getElementById('toggleControlsBtn');
     if (toggleBtn) {
-      toggleBtn.innerHTML = `<span>🎮 조이스틱 ${this.joystickEnabled ? 'ON' : 'OFF'}</span>`;
-      
+      toggleBtn.innerHTML = this._renderJoystickToggleLabel();
+
       this._toggleBtnHandler = () => {
         this.joystickEnabled = !this.joystickEnabled;
         try {
@@ -201,7 +216,7 @@ export class Input {
             joyOverlay.classList.add('hidden');
           }
         }
-        toggleBtn.innerHTML = `<span>🎮 조이스틱 ${this.joystickEnabled ? 'ON' : 'OFF'}</span>`;
+        toggleBtn.innerHTML = this._renderJoystickToggleLabel();
       };
       
       toggleBtn.addEventListener('click', this._toggleBtnHandler);

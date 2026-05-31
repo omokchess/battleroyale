@@ -38,6 +38,22 @@ let activeGame = null;
 // Cross-device room presence (broker-backed, localStorage fallback).
 const roomRegistry = new RoomRegistry();
 
+const UI_ICONS = {
+  attack: '<path d="M14.5 3.5l6 6"/><path d="M2.5 21.5l7-7"/><path d="M8.5 13.5l2 2"/><path d="M12.5 9.5l2 2"/><path d="M9.5 14.5l5-5"/>',
+  hp: '<path d="M12 21s-7.5-4.8-9.4-9.2C1.1 8.3 3.2 5 6.8 5c2 0 3.4 1.1 4.2 2.3C11.8 6.1 13.2 5 15.2 5c3.6 0 5.7 3.3 4.2 6.8C19.5 16.2 12 21 12 21z" fill="currentColor" stroke="none"/>',
+  range: '<path d="M4 18L18 4"/><path d="M8 20l12-12"/><path d="M5 14l5 5"/><path d="M9 10l5 5"/><path d="M13 6l5 5"/>',
+  speed: '<path d="M4 13a8 8 0 0 1 15.4-3"/><path d="M12 13l5-5"/><path d="M4 17h5"/><path d="M3 21h8"/>',
+  online: '<circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8"/><path d="M3.6 15h16.8"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/>',
+  storage: '<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.4-4.1 4.2-6 8-6s6.6 1.9 8 6"/>',
+  play: '<path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/>',
+  users: '<circle cx="9" cy="8" r="3"/><path d="M3 21c1-3.5 3.2-5 6-5s5 1.5 6 5"/><path d="M16 11a3 3 0 1 0-1.4-5.7"/><path d="M18 21c-.4-1.7-1.2-3-2.4-3.9"/>'
+};
+
+function uiIcon(name, className = 'inline-block w-3 h-3 align-[-2px] mr-1 shrink-0') {
+  return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${UI_ICONS[name] || ''}</svg>`;
+}
+
 /**
  * 1. Weapon Selector UI setup
  */
@@ -84,10 +100,10 @@ function displayWeaponStats(weaponType) {
     </div>
     <p class="text-[10px] text-gray-400 mb-1 leading-snug break-keep whitespace-normal">${cfg.description}</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px] text-gray-300 leading-snug">
-      <span class="min-w-0 whitespace-nowrap">⚔️ 공격력: <strong class="text-white">${cfg.damage}</strong></span>
-      <span class="min-w-0 whitespace-nowrap">❤️ 체력: <strong class="text-white">${cfg.maxHp || 100}</strong></span>
-      <span class="min-w-0 whitespace-nowrap">📏 사거리: <strong class="text-white">${rangeLabel}</strong></span>
-      <span class="min-w-0 whitespace-nowrap">🏃 이동속도: <strong class="text-white">${moveSpeedLabel}</strong></span>
+      <span class="min-w-0 whitespace-nowrap">${uiIcon('attack')}공격력: <strong class="text-white">${cfg.damage}</strong></span>
+      <span class="min-w-0 whitespace-nowrap">${uiIcon('hp')}체력: <strong class="text-white">${cfg.maxHp || 100}</strong></span>
+      <span class="min-w-0 whitespace-nowrap">${uiIcon('range')}사거리: <strong class="text-white">${rangeLabel}</strong></span>
+      <span class="min-w-0 whitespace-nowrap">${uiIcon('speed')}이동속도: <strong class="text-white">${moveSpeedLabel}</strong></span>
       <span class="min-w-0 break-keep whitespace-normal">${extraDetails}</span>
     </div>
     <p class="mt-2 pt-2 border-t border-gray-700 text-[10px] leading-snug break-keep whitespace-normal" style="color:${cfg.color}">${cfg.skill || ''}</p>
@@ -287,9 +303,9 @@ function stopLobbyBrowsing() {
 
 function updateRoomListStatus() {
   if (!roomListStatus) return;
-  roomListStatus.textContent = roomRegistry.online
-    ? '🌐 온라인 — 다른 기기의 방도 표시됩니다'
-    : '💾 로컬 모드 — 같은 브라우저 탭만 표시';
+  roomListStatus.innerHTML = roomRegistry.online
+    ? `${uiIcon('online')}온라인 - 다른 기기의 방도 표시됩니다`
+    : `${uiIcon('storage')}로컬 모드 - 같은 브라우저 탭만 표시`;
 }
 
 let lastRoomSig = null;
@@ -318,11 +334,11 @@ function renderRoomList(rooms) {
       <button class="room-row w-full text-left bg-[#0b0c10] border-2 border-gray-700 hover:border-[#66fcf1] p-2.5 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2" data-code="${code}">
         <div class="min-w-0">
           <div class="font-mono text-sm text-white font-bold truncate">${code}</div>
-          <div class="font-mono text-[10px] text-gray-400 truncate">👤 ${host} · <span style="color:${cfg.color}">${cfg.name}</span></div>
+          <div class="font-mono text-[10px] text-gray-400 truncate">${uiIcon('user')} ${host} · <span style="color:${cfg.color}">${cfg.name}</span></div>
         </div>
         <div class="text-right shrink-0">
-          <div class="font-mono text-[10px] text-[#66fcf1] font-bold">▶ 참가</div>
-          <div class="font-mono text-[10px] text-green-400">👥 ${players}명</div>
+          <div class="font-mono text-[10px] text-[#66fcf1] font-bold">${uiIcon('play')}참가</div>
+          <div class="font-mono text-[10px] text-green-400">${uiIcon('users')}${players}명</div>
         </div>
       </button>`;
   }).join('');

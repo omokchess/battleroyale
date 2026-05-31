@@ -90,6 +90,8 @@ export const SkillConfig = {
   sword: {
     cooldownMs: 4000,
     waveSpeed: 800,        // sword-energy projectile speed (px/s)
+    waveCount: 3,          // blades fired by one cast
+    waveSpread: 0.28,      // radians between adjacent blades
     directDamage: 24,      // damage on direct contact
     explosionRadius: 70,   // explosion AoE radius (px)
     explosionDamage: 20,   // explosion AoE damage

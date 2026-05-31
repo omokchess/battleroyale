@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { Player } from '../game/Player.js';
 import { Collision } from '../game/Collision.js';
 import { getEffectiveWeapon, SkillConfig, DashConfig, Weapons } from '../game/Weapons.js';
-import { rebaseEffectSnapshot } from '../game/Game.js';
+import { Game, rebaseEffectSnapshot } from '../game/Game.js';
 
 test('dash grants i-frames and bursts the player along the held direction', () => {
   const p = new Player('p1', 'Dasher', 'sword', 100, 100);
@@ -49,6 +49,22 @@ test('gauntlet lance buff turns the punch into a straight spear-like thrust', ()
   assert.equal(buffed.damage, 30);
   assert.equal(buffed.range, 115);
   assert.equal(buffed.width, 22);
+});
+
+test('sword skill fires the configured swordwave volley', () => {
+  const game = Object.create(Game.prototype);
+  game.projectiles = [];
+  game.effects = [];
+
+  const player = new Player('p4', 'Blade', 'sword', 100, 100);
+  player.angle = Math.PI / 4;
+  game._castSwordSkill(player, 1000);
+
+  const waves = game.projectiles.filter(p => p.kind === 'swordwave');
+  assert.equal(waves.length, SkillConfig.sword.waveCount);
+  assert.equal(new Set(waves.map(p => p.id)).size, waves.length);
+  assert.equal(game.effects.filter(e => e.type === 'sword_skill').length, 1);
+  assert.equal(player.skillCdLeft, SkillConfig.sword.cooldownMs / 1000);
 });
 
 test('railgun hitscan reports the closest contact distance and misses cleanly', () => {

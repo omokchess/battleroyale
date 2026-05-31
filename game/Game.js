@@ -498,26 +498,33 @@ export class Game {
   }
 
   /**
-   * Sword skill: spinning cast + a sword-energy projectile that explodes on
+   * Sword skill: spinning cast + sword-energy projectiles that explode on
    * contact with a wall or a player.
    */
   _castSwordSkill(player, now) {
     const sk = SkillConfig.sword;
     const spawnDist = player.radius + 4;
-    const proj = new Projectile(
-      `${player.id}-wave-${now}`,
-      player.id,
-      player.x + Math.cos(player.angle) * spawnDist,
-      player.y + Math.sin(player.angle) * spawnDist,
-      player.angle,
-      sk.waveSpeed,
-      Infinity,
-      sk.directDamage,
-      'swordwave'
-    );
-    proj.explosionRadius = sk.explosionRadius;
-    proj.explosionDamage = sk.explosionDamage;
-    this.projectiles.push(proj);
+    const waveCount = Math.max(1, Math.floor(sk.waveCount || 1));
+    const waveSpread = Number.isFinite(sk.waveSpread) ? sk.waveSpread : 0;
+    const startAngle = player.angle - ((waveCount - 1) * waveSpread) / 2;
+
+    for (let i = 0; i < waveCount; i++) {
+      const angle = startAngle + waveSpread * i;
+      const proj = new Projectile(
+        `${player.id}-wave-${now}-${i}`,
+        player.id,
+        player.x + Math.cos(angle) * spawnDist,
+        player.y + Math.sin(angle) * spawnDist,
+        angle,
+        sk.waveSpeed,
+        Infinity,
+        sk.directDamage,
+        'swordwave'
+      );
+      proj.explosionRadius = sk.explosionRadius;
+      proj.explosionDamage = sk.explosionDamage;
+      this.projectiles.push(proj);
+    }
 
     this.effects.push({
       attackerId: player.id,
