@@ -74,8 +74,10 @@ export class Player {
     // Normalize diagonal velocity vectors
     if (dx !== 0 || dy !== 0) {
       const length = Math.sqrt(dx * dx + dy * dy);
-      this.x += (dx / length) * this.speed * deltaTime;
-      this.y += (dy / length) * this.speed * deltaTime;
+      const weaponConfig = Weapons[this.weapon] || Weapons.sword;
+      const moveSpeed = this.speed * (weaponConfig.moveSpeed ?? 1);
+      this.x += (dx / length) * moveSpeed * deltaTime;
+      this.y += (dy / length) * moveSpeed * deltaTime;
     }
   }
 

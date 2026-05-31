@@ -9,6 +9,7 @@ export const Weapons = {
     name: '검',
     damage: 24,
     cooldown: 550, // milliseconds
+    moveSpeed: 1,
     range: 70,     // pixels
     angle: 110,    // degrees
     type: 'melee_arc',
@@ -19,6 +20,7 @@ export const Weapons = {
     name: '도끼',
     damage: 34,
     cooldown: 900,
+    moveSpeed: 0.8,
     range: 58,
     angle: 360,    // Full circle
     type: 'melee_circle',
@@ -29,6 +31,7 @@ export const Weapons = {
     name: '활',
     damage: 38,
     cooldown: 800,
+    moveSpeed: 0.6,
     range: Infinity,
     speed: 520,    // Projectile speed (px/s)
     type: 'projectile',
@@ -39,6 +42,7 @@ export const Weapons = {
     name: '창',
     damage: 22,
     cooldown: 500,
+    moveSpeed: 1,
     range: 115,
     width: 22,     // Width of straight thrust box
     type: 'melee_line',
@@ -49,6 +53,7 @@ export const Weapons = {
     name: '건틀릿',
     damage: 15,
     cooldown: 180,
+    moveSpeed: 1.3,
     range: 58,
     angle: 100,
     type: 'melee_arc',

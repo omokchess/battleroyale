@@ -67,19 +67,26 @@ function displayWeaponStats(weaponType) {
     extraDetails = `• 화살 속도: ${cfg.speed}px/s`;
   }
   const rangeLabel = Number.isFinite(cfg.range) ? `${cfg.range}px` : '벽까지';
+  const moveSpeedLabel = formatSpeedRatio(cfg.moveSpeed);
 
   weaponStats.innerHTML = `
-    <div class="flex justify-between text-[#45f3ff] font-bold mb-1">
-      <span>${cfg.name.toUpperCase()}</span>
-      <span>재사용 대기시간: ${(cfg.cooldown / 1000).toFixed(2)}초</span>
+    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[#45f3ff] font-bold mb-1">
+      <span class="whitespace-nowrap">${cfg.name.toUpperCase()}</span>
+      <span class="whitespace-nowrap">재사용 대기시간: ${(cfg.cooldown / 1000).toFixed(2)}초</span>
     </div>
-    <p class="text-[10px] text-gray-400 mb-1 leading-snug">${cfg.description}</p>
-    <div class="grid grid-cols-3 gap-1 font-mono text-[10px] text-gray-300">
-      <span>⚔️ 공격력: <strong class="text-white">${cfg.damage}</strong></span>
-      <span>📏 사거리: <strong class="text-white">${rangeLabel}</strong></span>
-      <span class="truncate">${extraDetails}</span>
+    <p class="text-[10px] text-gray-400 mb-1 leading-snug break-keep whitespace-normal">${cfg.description}</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px] text-gray-300 leading-snug">
+      <span class="min-w-0 whitespace-nowrap">⚔️ 공격력: <strong class="text-white">${cfg.damage}</strong></span>
+      <span class="min-w-0 whitespace-nowrap">📏 사거리: <strong class="text-white">${rangeLabel}</strong></span>
+      <span class="min-w-0 whitespace-nowrap">🏃 이동속도: <strong class="text-white">${moveSpeedLabel}</strong></span>
+      <span class="min-w-0 break-keep whitespace-normal">${extraDetails}</span>
     </div>
   `;
+}
+
+function formatSpeedRatio(value) {
+  const ratio = Number.isFinite(value) ? value : 1;
+  return `${Number.isInteger(ratio) ? ratio.toFixed(0) : ratio.toFixed(1)}x`;
 }
 
 /**
