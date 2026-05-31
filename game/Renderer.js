@@ -551,33 +551,46 @@ export class Renderer {
   }
 
   _drawSwordWave(ctx, scr, angle, zoom) {
-    const r = 18 * Math.max(0.7, zoom);
+    const radius = Math.max(26, Weapons.sword.range * 0.56) * Math.max(0.7, zoom);
+    const halfAngle = ((Weapons.sword.angle || 110) * Math.PI) / 360;
+    const apexX = -radius;
 
     ctx.save();
     ctx.translate(scr.x, scr.y);
     ctx.rotate(angle);
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 14;
     ctx.shadowColor = '#45f3ff';
     ctx.lineCap = 'round';
 
-    // Crescent energy blade facing the direction of travel.
-    ctx.strokeStyle = 'rgba(69, 243, 255, 0.5)';
-    ctx.lineWidth = 9;
+    // Pizza-slice blade energy: the projectile sits on the far edge of the sword arc.
+    ctx.fillStyle = 'rgba(69, 243, 255, 0.16)';
     ctx.beginPath();
-    ctx.arc(0, 0, r, -Math.PI * 0.6, Math.PI * 0.6);
-    ctx.stroke();
+    ctx.moveTo(apexX, 0);
+    ctx.arc(apexX, 0, radius, -halfAngle, halfAngle);
+    ctx.closePath();
+    ctx.fill();
 
-    ctx.strokeStyle = '#45f3ff';
-    ctx.lineWidth = 4.5;
+    ctx.strokeStyle = 'rgba(69, 243, 255, 0.72)';
+    ctx.lineWidth = 5.5;
     ctx.beginPath();
-    ctx.arc(0, 0, r, -Math.PI * 0.6, Math.PI * 0.6);
+    ctx.arc(apexX, 0, radius, -halfAngle, halfAngle);
     ctx.stroke();
 
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.arc(0, 0, r, -Math.PI * 0.5, Math.PI * 0.5);
+    ctx.arc(apexX, 0, radius - 5, -halfAngle * 0.9, halfAngle * 0.9);
     ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.46)';
+    ctx.lineWidth = 1.5;
+    [-halfAngle, halfAngle].forEach(edge => {
+      ctx.beginPath();
+      ctx.moveTo(apexX + Math.cos(edge) * 8, Math.sin(edge) * 8);
+      ctx.lineTo(apexX + Math.cos(edge) * (radius - 3), Math.sin(edge) * (radius - 3));
+      ctx.stroke();
+    });
+
     ctx.restore();
   }
 
@@ -629,8 +642,6 @@ export class Renderer {
         this._drawShotFlash(ctx, scr, e, weapon, alpha);
       } else if (e.type === 'projectile_burst') {
         this._drawProjectileBurst(ctx, scr, e, weapon, alpha);
-      } else if (e.type === 'sword_skill') {
-        this._drawSwordSkillSpin(ctx, scr, e, weapon, alpha, zoom);
       } else if (e.type === 'explosion') {
         this._drawExplosion(ctx, scr, e, weapon, alpha, zoom);
       } else if (e.type === 'railbeam') {
@@ -969,32 +980,6 @@ export class Renderer {
       ctx.beginPath();
       ctx.moveTo(scr.x + Math.cos(angle) * inner, scr.y + Math.sin(angle) * inner);
       ctx.lineTo(scr.x + Math.cos(angle) * outer, scr.y + Math.sin(angle) * outer);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  _drawSwordSkillSpin(ctx, scr, e, weapon, alpha, zoom) {
-    const progress = clamp01(e.progress);
-    const spins = e.spins || 3;
-    const baseR = Math.max(weapon.range, 60 * zoom);
-    const radius = baseR * (0.4 + 0.6 * easeOutCubic(progress));
-    const spin = progress * Math.PI * 2 * spins;
-
-    ctx.save();
-    ctx.fillStyle = this._hexToRGB(weapon.color, 0.08 * alpha);
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Three rotating blade arcs sweep around the caster.
-    for (let i = 0; i < 3; i++) {
-      const a = spin + i * (Math.PI * 2 / 3);
-      ctx.strokeStyle = i === 0 ? this._hexToRGB('#ffffff', 0.9 * alpha) : this._hexToRGB(weapon.color, 0.85 * alpha);
-      ctx.lineWidth = (i === 0 ? 5 : 3.4) * (0.4 + alpha * 0.6);
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius, a, a + Math.PI * 0.5);
       ctx.stroke();
     }
     ctx.restore();

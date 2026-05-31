@@ -516,34 +516,21 @@ export class Game {
   }
 
   /**
-   * Sword skill: three timed spins, each releasing one sword-energy projectile.
+   * Sword skill: release three sword-energy projectiles on a short cadence.
    */
   _castSwordSkill(player, now) {
     const sk = SkillConfig.sword;
-    const spinCount = Math.max(1, Math.floor(sk.spinCount || sk.waveCount || 1));
-    const spinIntervalMs = Math.max(0, sk.spinIntervalMs || 0);
+    const waveCount = Math.max(1, Math.floor(sk.waveCount || 1));
+    const waveIntervalMs = Math.max(0, sk.waveIntervalMs || 0);
 
-    for (let i = 0; i < spinCount; i++) {
+    for (let i = 0; i < waveCount; i++) {
       this.pendingSwordWaves.push({
         playerId: player.id,
         castAt: now,
-        releaseAt: now + spinIntervalMs * i,
+        releaseAt: now + waveIntervalMs * i,
         sequence: i
       });
     }
-
-    this.effects.push({
-      attackerId: player.id,
-      x: player.x,
-      y: player.y,
-      angle: player.angle,
-      weapon: 'sword',
-      type: 'sword_skill',
-      spins: sk.spins || spinCount,
-      progress: 0,
-      timestamp: now,
-      lifetime: Math.max(250, spinIntervalMs * spinCount)
-    });
 
     player.skillCdLeft = sk.cooldownMs / 1000;
   }
@@ -1473,7 +1460,7 @@ export function rebaseEffectSnapshot(effectSnap, now = Date.now()) {
 
   progress = clamp01(progress);
 
-  // Spread the snapshot so newer effect fields (x2/y2, radius, spins, buffType)
+  // Spread the snapshot so newer effect fields (x2/y2, radius, buffType)
   // survive the rebase, then override only the timing fields.
   return {
     ...(effectSnap || {}),

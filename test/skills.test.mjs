@@ -57,7 +57,7 @@ test('gauntlet lance buff turns the punch into a straight spear-like thrust', ()
   assert.equal(buffed.width, 22);
 });
 
-test('sword skill releases one swordwave per timed spin', () => {
+test('sword skill releases timed swordwaves without a spin effect', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.projectiles = [];
@@ -70,27 +70,25 @@ test('sword skill releases one swordwave per timed spin', () => {
   game._castSwordSkill(player, 1000);
 
   assert.equal(game.projectiles.length, 0);
-  assert.equal(game.pendingSwordWaves.length, SkillConfig.sword.spinCount);
-  assert.equal(game.effects.filter(e => e.type === 'sword_skill').length, 1);
-  assert.equal(game.effects[0].spins, SkillConfig.sword.spinCount);
-  assert.equal(game.effects[0].lifetime, SkillConfig.sword.spinCount * SkillConfig.sword.spinIntervalMs);
+  assert.equal(game.pendingSwordWaves.length, SkillConfig.sword.waveCount);
+  assert.equal(game.effects.filter(e => e.type === 'sword_skill').length, 0);
   assert.equal(player.skillCdLeft, SkillConfig.sword.cooldownMs / 1000);
 
   game._releaseDueSwordWaves(1000);
   assert.equal(game.projectiles.filter(p => p.kind === 'swordwave').length, 1);
 
-  game._releaseDueSwordWaves(1000 + SkillConfig.sword.spinIntervalMs - 1);
+  game._releaseDueSwordWaves(1000 + SkillConfig.sword.waveIntervalMs - 1);
   assert.equal(game.projectiles.filter(p => p.kind === 'swordwave').length, 1);
 
   player.angle = Math.PI / 2;
-  game._releaseDueSwordWaves(1000 + SkillConfig.sword.spinIntervalMs);
+  game._releaseDueSwordWaves(1000 + SkillConfig.sword.waveIntervalMs);
   const wavesAfterSecondSpin = game.projectiles.filter(p => p.kind === 'swordwave');
   assert.equal(wavesAfterSecondSpin.length, 2);
   assert.equal(wavesAfterSecondSpin[1].angle, Math.PI / 2);
 
-  game._releaseDueSwordWaves(1000 + SkillConfig.sword.spinIntervalMs * 2);
+  game._releaseDueSwordWaves(1000 + SkillConfig.sword.waveIntervalMs * 2);
   const waves = game.projectiles.filter(p => p.kind === 'swordwave');
-  assert.equal(waves.length, SkillConfig.sword.spinCount);
+  assert.equal(waves.length, SkillConfig.sword.waveCount);
   assert.equal(new Set(waves.map(p => p.id)).size, waves.length);
   assert.equal(game.pendingSwordWaves.length, 0);
 });
