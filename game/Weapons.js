@@ -41,7 +41,7 @@ export const Weapons = {
     speed: 640,    // Projectile speed (px/s)
     type: 'projectile',
     description: '벽에 닿을 때까지 날아가는 장거리 무기입니다. 강력한 피해를 주지만 조준이 까다롭습니다.',
-    skill: 'F 스킬: 50000px/s 초고속 레일건 화살 (직선 즉시 명중) · 쿨타임 8초',
+    skill: 'F 스킬: 화살 적중마다 스택 +1(최대 5), 사용 시 스택 수만큼 0.25초 간격 레일건 발사 · 쿨타임 8초',
     color: '#a3ff45'
   },
   spear: {
@@ -54,7 +54,7 @@ export const Weapons = {
     width: 16,     // Width of straight thrust box
     type: 'melee_line',
     description: '직선으로 가하는 찌르기 공격입니다. 사거리가 길고 좌우 범위가 좁습니다.',
-    skill: 'F 스킬: 투창! 던진 창이 벽까지 날아갔다 2초 후 부메랑처럼 돌아와 회수 · 쿨타임 회수 후 2초',
+    skill: 'F 스킬: 벽까지 즉시 투창 후 돌아오며 닿는 적 전체에게 35 피해 · 쿨타임 회수 후 2초',
     color: '#ffa345'
   },
   gauntlet: {
@@ -108,14 +108,17 @@ export const SkillConfig = {
   bow: {
     cooldownMs: 8000,
     speed: 50000,          // label only — resolved as an instant hitscan
-    damage: 60
+    damage: 60,
+    maxStacks: 5,
+    burstIntervalMs: 250
   },
   spear: {
     cooldownMs: 2000,      // starts AFTER retrieval
-    damage: 50,
-    throwSpeed: 700,       // px/s outward
-    outMs: 1000,           // outward flight window before it boomerangs back
-    totalMs: 2000          // total airborne time before forced retrieval
+    damage: 35,
+    returnDamage: 35,
+    throwSpeed: 50000,     // label only — outbound throw resolves instantly
+    returnSpeed: 760,
+    returnMs: 1800
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends

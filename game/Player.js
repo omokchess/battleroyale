@@ -40,6 +40,7 @@ export class Player {
     this.buffType = null;     // 'axe_rage' | 'gauntlet_lance' | null
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
+    this.arrowStacks = 0;     // bow skill charges earned by landing arrows
 
     // Generate unique colors based on hash of peer ID
     const colors = this._generateColorsFromId(id);
@@ -158,6 +159,7 @@ export class Player {
     this.buffType = null;
     this.buffTimeLeft = 0;
     this.spearThrown = false;
+    this.arrowStacks = 0;
   }
 
   /**
@@ -209,6 +211,7 @@ export class Player {
       skillCdMs: Math.round(this.skillCdLeft * 1000),
       dashCdMs: Math.round(this.dashCdLeft * 1000),
       spearThrown: this.spearThrown,
+      arrowStacks: this.arrowStacks || 0,
       color: this.color,
       accentColor: this.accentColor
     };
@@ -231,6 +234,7 @@ export class Player {
     this.skillCdLeft = (data.skillCdMs || 0) / 1000;
     this.dashCdLeft = (data.dashCdMs || 0) / 1000;
     this.spearThrown = Boolean(data.spearThrown);
+    this.arrowStacks = Math.max(0, Math.floor(data.arrowStacks || 0));
     this.color = data.color;
     this.accentColor = data.accentColor;
 

@@ -124,6 +124,7 @@ test('bow railgun vibration only fires for the local caster once', () => {
   game._triggerLocalBowSkillVibration({
     id: 'remote-beam',
     attackerId: 'remote-player',
+    weapon: 'bow',
     type: 'railbeam',
     timestamp: 1000
   });
@@ -132,6 +133,7 @@ test('bow railgun vibration only fires for the local caster once', () => {
   const localBeam = {
     id: 'local-beam',
     attackerId: 'local-player',
+    weapon: 'bow',
     type: 'railbeam',
     timestamp: 1000
   };
@@ -140,6 +142,85 @@ test('bow railgun vibration only fires for the local caster once', () => {
 
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0], [35, 20, 55]);
+});
+
+test('bow arrows build capped stacks that fuel timed railgun bursts', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingRailguns = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._triggerLocalBowSkillVibration = () => {};
+
+  const player = new Player('bow-player', 'Archer', 'bow', 100, 100);
+  player.angle = 0;
+  game.players[player.id] = player;
+
+  for (let i = 0; i < SkillConfig.bow.maxStacks + 2; i++) {
+    game._awardBowArrowStack(player);
+  }
+  assert.equal(player.arrowStacks, SkillConfig.bow.maxStacks);
+  assert.equal(game._canUseSkill(player), true);
+
+  game._castRailgun(player, 1000);
+  assert.equal(player.arrowStacks, 0);
+  assert.equal(player.skillCdLeft, SkillConfig.bow.cooldownMs / 1000);
+  assert.equal(game.pendingRailguns.length, SkillConfig.bow.maxStacks);
+
+  game._releaseDueBowRailguns(1000);
+  assert.equal(game.effects.filter(e => e.type === 'railbeam' && e.weapon === 'bow').length, 1);
+
+  game._releaseDueBowRailguns(1000 + SkillConfig.bow.burstIntervalMs - 1);
+  assert.equal(game.effects.filter(e => e.type === 'railbeam' && e.weapon === 'bow').length, 1);
+
+  game._releaseDueBowRailguns(1000 + SkillConfig.bow.burstIntervalMs);
+  assert.equal(game.effects.filter(e => e.type === 'railbeam' && e.weapon === 'bow').length, 2);
+});
+
+test('bow arrow stacks survive serialization', () => {
+  const player = new Player('bow-sync', 'Archer', 'bow', 0, 0);
+  player.arrowStacks = 4;
+
+  const restored = new Player('bow-sync', 'Archer', 'bow', 0, 0);
+  restored.deserialize(player.serialize());
+
+  assert.equal(restored.arrowStacks, 4);
+});
+
+test('spear skill starts at the wall and damages enemies on return', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.projectiles = [];
+  game.effects = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+
+  const owner = new Player('spear-owner', 'Lancer', 'spear', 100, 100);
+  owner.angle = 0;
+  const firstTarget = new Player('target-1', 'TargetOne', 'sword', 672, 100);
+  const secondTarget = new Player('target-2', 'TargetTwo', 'sword', 649, 100);
+  game.players[owner.id] = owner;
+  game.players[firstTarget.id] = firstTarget;
+  game.players[secondTarget.id] = secondTarget;
+
+  game._throwSpear(owner, 1000);
+  assert.equal(owner.spearThrown, true);
+  assert.equal(game.projectiles.length, 1);
+  assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'spear'), true);
+
+  const spear = game.projectiles[0];
+  assert.equal(spear.phase, 'return');
+  assert.ok(spear.x > 690);
+  assert.equal(spear.damage, SkillConfig.spear.returnDamage);
+
+  game._updateThrownSpear(spear, 0.03, 1030);
+  assert.equal(firstTarget.hp, firstTarget.maxHp - SkillConfig.spear.returnDamage);
+  assert.equal(secondTarget.hp, secondTarget.maxHp);
+
+  game._updateThrownSpear(spear, 0.03, 1060);
+  assert.equal(firstTarget.hp, firstTarget.maxHp - SkillConfig.spear.returnDamage);
+  assert.equal(secondTarget.hp, secondTarget.maxHp - SkillConfig.spear.returnDamage);
 });
 
 test('railgun hitscan reports the closest contact distance and misses cleanly', () => {

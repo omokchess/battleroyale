@@ -29,6 +29,7 @@ export class Game {
     this.players = {};
     this.projectiles = [];
     this.pendingSwordWaves = [];
+    this.pendingRailguns = [];
     this.axeRageSpinNextAt = {};
     this.vibratedRailbeamIds = new Set();
     this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
@@ -69,6 +70,7 @@ export class Game {
     this.players = {};
     this.projectiles = [];
     this.pendingSwordWaves = [];
+    this.pendingRailguns = [];
     this.axeRageSpinNextAt = {};
     this.vibratedRailbeamIds = new Set();
     this.effects = [];
@@ -256,6 +258,7 @@ export class Game {
     });
 
     this._releaseDueSwordWaves(now);
+    this._releaseDueBowRailguns(now);
     this._emitAxeRageSpinEffects(now);
 
     // 3. Process Automatic attack queues
@@ -378,6 +381,7 @@ export class Game {
           }
 
           proj.isDead = true;
+          this._awardBowArrowStack(this.players[proj.ownerId]);
           const died = target.takeDamage(proj.damage, 'arrow');
           if (died) this._creditKill(proj.ownerId, target, '활로');
         }
@@ -406,6 +410,7 @@ export class Game {
           p.respawnTime = now + 2500; // 2.5 seconds spawn time
           p.clearCombatTimers(); // drop buffs/dash/skill state on death
           this._clearPendingSwordWavesFor(p.id);
+          this._clearPendingRailgunsFor(p.id);
           this._clearAxeRageSpinFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
@@ -471,8 +476,14 @@ export class Game {
   }
 
   _canUseSkill(player) {
-    return Boolean(player) && !player.isDead &&
-      player.buffTimeLeft <= 0 && player.skillCdLeft <= 0 && !player.spearThrown;
+    if (!player || player.isDead ||
+        player.buffTimeLeft > 0 || player.skillCdLeft > 0 || player.spearThrown) {
+      return false;
+    }
+    if (player.weapon === 'bow') {
+      return (player.arrowStacks || 0) > 0;
+    }
+    return true;
   }
 
   /**
@@ -583,6 +594,11 @@ export class Game {
     this.pendingSwordWaves = this.pendingSwordWaves.filter(wave => wave.playerId !== playerId);
   }
 
+  _clearPendingRailgunsFor(playerId) {
+    if (!this.pendingRailguns?.length) return;
+    this.pendingRailguns = this.pendingRailguns.filter(shot => shot.playerId !== playerId);
+  }
+
   _emitAxeRageSpinEffects(now) {
     if (!this.axeRageSpinNextAt) this.axeRageSpinNextAt = {};
 
@@ -619,6 +635,12 @@ export class Game {
     delete this.axeRageSpinNextAt[playerId];
   }
 
+  _awardBowArrowStack(player) {
+    if (!player || player.isDead || player.weapon !== 'bow') return;
+    const maxStacks = SkillConfig.bow.maxStacks || 5;
+    player.arrowStacks = Math.min(maxStacks, (player.arrowStacks || 0) + 1);
+  }
+
   _explodeSwordWave(proj, now) {
     proj.isDead = true;
     this.effects.push({
@@ -646,10 +668,45 @@ export class Game {
   }
 
   /**
-   * Bow skill: instant 50000px/s railgun resolved as a hitscan that strikes the
-   * first enemy on the line; a beam effect is drawn out to the hit point/wall.
+   * Bow skill: spend arrow stacks, then fire one railgun per stack.
    */
   _castRailgun(player, now) {
+    const sk = SkillConfig.bow;
+    const stackCount = Math.min(sk.maxStacks || 5, Math.max(0, Math.floor(player.arrowStacks || 0)));
+    if (stackCount <= 0) return;
+
+    player.arrowStacks = 0;
+    const interval = Math.max(0, sk.burstIntervalMs || 0);
+    for (let i = 0; i < stackCount; i++) {
+      this.pendingRailguns.push({
+        playerId: player.id,
+        castAt: now,
+        releaseAt: now + interval * i,
+        sequence: i
+      });
+    }
+
+    player.skillCdLeft = sk.cooldownMs / 1000;
+  }
+
+  _releaseDueBowRailguns(now) {
+    if (!this.pendingRailguns?.length) return;
+
+    const waiting = [];
+    for (const shot of this.pendingRailguns) {
+      if (shot.releaseAt > now) {
+        waiting.push(shot);
+        continue;
+      }
+
+      const player = this.players[shot.playerId];
+      if (!player || player.isDead || player.weapon !== 'bow') continue;
+      this._fireRailgun(player, now, shot.castAt, shot.sequence);
+    }
+    this.pendingRailguns = waiting;
+  }
+
+  _fireRailgun(player, now, castAt = now, sequence = 0) {
     const sk = SkillConfig.bow;
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
@@ -673,7 +730,7 @@ export class Game {
     }
 
     const effect = {
-      id: `${player.id}-railbeam-${now}`,
+      id: `${player.id}-railbeam-${castAt}-${sequence}`,
       attackerId: player.id,
       x: player.x,
       y: player.y,
@@ -688,8 +745,6 @@ export class Game {
     };
     this.effects.push(effect);
     this._triggerLocalBowSkillVibration(effect);
-
-    player.skillCdLeft = sk.cooldownMs / 1000;
   }
 
   _triggerLocalBowSkillVibrations(effects) {
@@ -697,7 +752,7 @@ export class Game {
   }
 
   _triggerLocalBowSkillVibration(effect) {
-    if (!effect || effect.type !== 'railbeam' || effect.attackerId !== this.localPlayerId) return;
+    if (!effect || effect.type !== 'railbeam' || effect.weapon !== 'bow' || effect.attackerId !== this.localPlayerId) return;
 
     if (!this.vibratedRailbeamIds) this.vibratedRailbeamIds = new Set();
     const effectId = effect.id || `${effect.attackerId}-${effect.timestamp}`;
@@ -722,35 +777,59 @@ export class Game {
   }
 
   /**
-   * Spear skill: throw a javelin that flies to the wall, then boomerangs back
-   * to the owner. Cooldown only starts once it is retrieved.
+   * Spear skill: instantly throw to the wall, then return to the owner.
+   * Cooldown only starts once it is retrieved.
    */
   _throwSpear(player, now) {
     const sk = SkillConfig.spear;
     player.spearThrown = true;
-    const spawnDist = player.radius + 6;
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+    const travelDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    const endX = Math.max(5, Math.min(this.mapWidth - 5, player.x + dirX * travelDist));
+    const endY = Math.max(5, Math.min(this.mapHeight - 5, player.y + dirY * travelDist));
     const proj = new Projectile(
       `${player.id}-javelin-${now}`,
       player.id,
-      player.x + Math.cos(player.angle) * spawnDist,
-      player.y + Math.sin(player.angle) * spawnDist,
-      player.angle,
-      sk.throwSpeed,
+      endX,
+      endY,
+      player.angle + Math.PI,
+      sk.returnSpeed || 760,
       Infinity,
-      sk.damage,
+      sk.returnDamage || sk.damage,
       'thrownspear'
     );
     proj.bornAt = now;
-    proj.phase = 'out';
+    proj.returnStartedAt = now;
+    proj.phase = 'return';
     proj.stuck = false;
     proj.hitSet = new Set();
+    proj.vx = -dirX * (sk.returnSpeed || 760);
+    proj.vy = -dirY * (sk.returnSpeed || 760);
+    proj.angle = player.angle + Math.PI;
     this.projectiles.push(proj);
+
+    this.effects.push({
+      id: `${player.id}-spear-rail-${now}`,
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      x2: endX,
+      y2: endY,
+      angle: player.angle,
+      weapon: 'spear',
+      type: 'railbeam',
+      progress: 0,
+      timestamp: now,
+      lifetime: 260
+    });
   }
 
   _updateThrownSpear(proj, deltaTime, now) {
     const owner = this.players[proj.ownerId];
     const sk = SkillConfig.spear;
-    const elapsed = now - proj.bornAt;
+    const elapsed = now - (proj.returnStartedAt || proj.bornAt || now);
 
     // Owner left or died → drop the spear and free the skill.
     if (!owner || owner.isDead) {
@@ -762,56 +841,37 @@ export class Game {
       return;
     }
 
-    if (proj.phase === 'out') {
-      if (!proj.stuck) {
-        proj.x += proj.vx * deltaTime;
-        proj.y += proj.vy * deltaTime;
-        // Stick into the wall instead of disappearing.
-        if (proj.x <= proj.radius || proj.x >= this.mapWidth - proj.radius ||
-            proj.y <= proj.radius || proj.y >= this.mapHeight - proj.radius) {
-          proj.x = Math.max(proj.radius, Math.min(this.mapWidth - proj.radius, proj.x));
-          proj.y = Math.max(proj.radius, Math.min(this.mapHeight - proj.radius, proj.y));
-          proj.stuck = true;
-          proj.vx = 0;
-          proj.vy = 0;
-        }
-      }
-      if (elapsed >= sk.outMs) {
-        proj.phase = 'return';
-        proj.stuck = false;
-      }
+    if (proj.phase !== 'return') proj.phase = 'return';
+    if (!proj.hitSet) proj.hitSet = new Set();
+
+    const dx = owner.x - proj.x;
+    const dy = owner.y - proj.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 20 || elapsed >= (sk.returnMs || 1800)) {
+      proj.isDead = true;
+      owner.spearThrown = false;
+      owner.skillCdLeft = sk.cooldownMs / 1000;
+      return;
     }
 
-    if (proj.phase === 'return') {
-      const dx = owner.x - proj.x;
-      const dy = owner.y - proj.y;
-      const dist = Math.hypot(dx, dy);
+    const timeLeft = Math.max(0.001, ((sk.returnMs || 1800) - elapsed) / 1000);
+    const speed = Math.max(sk.returnSpeed || 760, dist / timeLeft);
+    const ux = dx / dist;
+    const uy = dy / dist;
+    proj.vx = ux * speed;
+    proj.vy = uy * speed;
+    proj.angle = Math.atan2(uy, ux);
+    proj.x += proj.vx * deltaTime;
+    proj.y += proj.vy * deltaTime;
 
-      if (dist < 20 || elapsed >= sk.totalMs) {
-        proj.isDead = true;
-        owner.spearThrown = false;
-        owner.skillCdLeft = sk.cooldownMs / 1000;
-        return;
-      }
-
-      const timeLeft = Math.max(0.001, (sk.totalMs - elapsed) / 1000);
-      const speed = Math.max(sk.throwSpeed, dist / timeLeft); // arrive by totalMs
-      const ux = dx / dist;
-      const uy = dy / dist;
-      proj.vx = ux * speed;
-      proj.vy = uy * speed;
-      proj.angle = Math.atan2(uy, ux);
-      proj.x += proj.vx * deltaTime;
-      proj.y += proj.vy * deltaTime;
-    }
-
-    // Damage each enemy at most once for the whole throw.
+    // Damage each enemy at most once while the javelin returns.
     Object.keys(this.players).forEach(tid => {
       const target = this.players[tid];
       if (target.id === proj.ownerId || target.isDead || target.isInvincible() || proj.hitSet.has(target.id)) return;
       if (Collision.checkProjectileHit(proj, target)) {
         proj.hitSet.add(target.id);
-        const died = target.takeDamage(sk.damage, 'javelin');
+        const died = target.takeDamage(sk.returnDamage || sk.damage, 'javelin');
         if (died) this._creditKill(proj.ownerId, target, '투창으로');
       }
     });
@@ -1034,6 +1094,11 @@ export class Game {
         skillState.textContent = `${local.skillCdLeft.toFixed(1)}s`;
         skillBar.style.width = `${clamp01(1 - local.skillCdLeft / total) * 100}%`;
         skillBar.style.background = '#4b5563';
+      } else if (local.weapon === 'bow') {
+        const stacks = Math.min(sk?.maxStacks || 5, local.arrowStacks || 0);
+        skillState.textContent = `${stacks}/${sk?.maxStacks || 5} 스택`;
+        skillBar.style.width = `${clamp01(stacks / (sk?.maxStacks || 5)) * 100}%`;
+        skillBar.style.background = stacks > 0 ? weaponColor : '#4b5563';
       } else {
         skillState.textContent = '준비!';
         skillBar.style.width = '100%';
@@ -1166,6 +1231,7 @@ export class Game {
     }
 
     this.pendingSwordWaves = [];
+    this.pendingRailguns = [];
     this.axeRageSpinNextAt = {};
     this.vibratedRailbeamIds = new Set();
     this.input.cleanUp(this.canvas);
@@ -1304,6 +1370,7 @@ export class Game {
             p.skillCdLeft = (snap.skillCdMs || 0) / 1000;
             p.dashCdLeft = (snap.dashCdMs || 0) / 1000;
             p.spearThrown = Boolean(snap.spearThrown);
+            p.arrowStacks = Math.max(0, Math.floor(snap.arrowStacks || 0));
             p.color = snap.color;
             p.accentColor = snap.accentColor;
 
