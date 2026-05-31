@@ -93,7 +93,17 @@ export class NetworkManager {
   }
 
   _prefixRoom(roomCode) {
-    return `${ROOM_PREFIX}${this._normalizeRoomCode(roomCode)}`;
+    const normalized = this._normalizeRoomCode(roomCode);
+    if (/^[A-Z0-9]+$/.test(normalized)) {
+      return `${ROOM_PREFIX}${normalized}`;
+    }
+
+    return `${ROOM_PREFIX}u-${this._encodeRoomCode(normalized)}`;
+  }
+
+  _encodeRoomCode(roomCode) {
+    const bytes = new TextEncoder().encode(roomCode);
+    return [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('');
   }
 
   _peerOptions() {

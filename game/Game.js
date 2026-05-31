@@ -213,7 +213,7 @@ export class Game {
       
       // Automatic Attack on cooldown trigger
       if (p.canAttack(now)) {
-        p.triggerAttack(now);
+        const swingDirection = p.triggerAttack(now);
 
         // Melee trigger
         if (weaponConfig.type !== 'projectile') {
@@ -225,6 +225,7 @@ export class Game {
             angle: p.angle,
             weapon: p.weapon,
             type: weaponConfig.type,
+            swingDirection,
             progress: 0,
             timestamp: now,
             lifetime: weaponConfig.cooldown * 0.75 // Effect decays before next weapon ready
@@ -281,6 +282,20 @@ export class Game {
       if (proj.isDead) return;
 
       proj.update(deltaTime);
+      if (proj.checkWallCollision(this.mapWidth, this.mapHeight)) {
+        this.effects.push({
+          attackerId: proj.ownerId,
+          x: proj.x,
+          y: proj.y,
+          angle: Math.atan2(proj.vy, proj.vx),
+          weapon: 'bow',
+          type: 'projectile_burst',
+          progress: 0,
+          timestamp: now,
+          lifetime: 320
+        });
+        return;
+      }
 
       // Check hit detections
       Object.keys(this.players).forEach(tid => {
@@ -398,7 +413,10 @@ export class Game {
     });
 
     // Client ticks local projectile moves
-    this.projectiles.forEach(p => p.update(deltaTime));
+    this.projectiles.forEach(p => {
+      p.update(deltaTime);
+      p.checkWallCollision(this.mapWidth, this.mapHeight);
+    });
     this.projectiles = this.projectiles.filter(p => !p.isDead);
 
     // Client decays melee overlay effects locally for perfect visuals
@@ -804,9 +822,9 @@ export class Game {
               snap.x,
               snap.y,
               angle,
-              Weapons.bow.speed,
-              Weapons.bow.range,
-              Weapons.bow.damage
+              snap.speed || Weapons.bow.speed,
+              snap.maxRange === null ? Infinity : (snap.maxRange ?? Weapons.bow.range),
+              snap.damage || Weapons.bow.damage
             );
             proj.isDead = snap.isDead;
             return proj;
@@ -822,6 +840,7 @@ export class Game {
               weapon: effectSnap.weapon,
               type: effectSnap.type,
               attackerId: effectSnap.attackerId,
+              swingDirection: effectSnap.swingDirection,
               progress: effectSnap.progress,
               timestamp: effectSnap.timestamp,
               lifetime: effectSnap.lifetime

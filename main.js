@@ -66,6 +66,7 @@ function displayWeaponStats(weaponType) {
   } else if (cfg.type === 'projectile') {
     extraDetails = `• 화살 속도: ${cfg.speed}px/s`;
   }
+  const rangeLabel = Number.isFinite(cfg.range) ? `${cfg.range}px` : '벽까지';
 
   weaponStats.innerHTML = `
     <div class="flex justify-between text-[#45f3ff] font-bold mb-1">
@@ -75,7 +76,7 @@ function displayWeaponStats(weaponType) {
     <p class="text-[10px] text-gray-400 mb-1 leading-snug">${cfg.description}</p>
     <div class="grid grid-cols-3 gap-1 font-mono text-[10px] text-gray-300">
       <span>⚔️ 공격력: <strong class="text-white">${cfg.damage}</strong></span>
-      <span>📏 사거리: <strong class="text-white">${cfg.range}px</strong></span>
+      <span>📏 사거리: <strong class="text-white">${rangeLabel}</strong></span>
       <span class="truncate">${extraDetails}</span>
     </div>
   `;
@@ -86,13 +87,13 @@ function displayWeaponStats(weaponType) {
  */
 [hostRoomInput, joinRoomInput].forEach(inp => {
   inp.addEventListener('input', () => {
-    inp.value = inp.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    inp.value = inp.value.replace(/[^\p{L}\p{N}]/gu, '').toUpperCase();
     hideError();
   });
 });
 
 nicknameInput.addEventListener('input', () => {
-  nicknameInput.value = nicknameInput.value.replace(/[^a-zA-Z0-9가-힣 ]/g, ''); // Alpha, numbers, Korean and spacing
+  nicknameInput.value = nicknameInput.value.replace(/[^\p{L}\p{N}_ -]/gu, '');
   hideError();
 });
 

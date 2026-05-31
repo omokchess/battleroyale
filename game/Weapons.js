@@ -29,10 +29,10 @@ export const Weapons = {
     name: '활',
     damage: 38,
     cooldown: 800,
-    range: 520,
+    range: Infinity,
     speed: 520,    // Projectile speed (px/s)
     type: 'projectile',
-    description: '장거리 저격 무기입니다. 강력한 피해를 주지만 조준이 까다롭습니다.',
+    description: '벽에 닿을 때까지 날아가는 장거리 무기입니다. 강력한 피해를 주지만 조준이 까다롭습니다.',
     color: '#a3ff45'
   },
   spear: {

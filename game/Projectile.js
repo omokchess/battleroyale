@@ -31,14 +31,34 @@ export class Projectile {
     this.x += this.vx * deltaTime;
     this.y += this.vy * deltaTime;
 
-    // Range checking
-    const dx = this.x - this.startX;
-    const dy = this.y - this.startY;
-    const distanceTraveled = Math.sqrt(dx * dx + dy * dy);
+    if (Number.isFinite(this.maxRange)) {
+      const dx = this.x - this.startX;
+      const dy = this.y - this.startY;
+      const distanceTraveled = Math.sqrt(dx * dx + dy * dy);
 
-    if (distanceTraveled >= this.maxRange) {
-      this.isDead = true;
+      if (distanceTraveled >= this.maxRange) {
+        this.isDead = true;
+      }
     }
+  }
+
+  checkWallCollision(mapWidth, mapHeight) {
+    if (this.isDead) return false;
+
+    if (
+      this.x <= this.radius ||
+      this.x >= mapWidth - this.radius ||
+      this.y <= this.radius ||
+      this.y >= mapHeight - this.radius
+    ) {
+      this.x = Math.max(this.radius, Math.min(mapWidth - this.radius, this.x));
+      this.y = Math.max(this.radius, Math.min(mapHeight - this.radius, this.y));
+      this.isDead = true;
+      this.hitWall = true;
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -52,6 +72,9 @@ export class Projectile {
       y: this.y,
       vx: this.vx,
       vy: this.vy,
+      speed: this.speed,
+      maxRange: Number.isFinite(this.maxRange) ? this.maxRange : null,
+      damage: this.damage,
       isDead: this.isDead
     };
   }

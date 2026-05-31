@@ -128,6 +128,18 @@ test('joining a missing room fails instead of waiting forever', () => {
   assert.match(errors.at(-1), /not found/i);
 });
 
+test('unicode room codes are encoded into stable PeerJS-safe ids', () => {
+  const network = new NetworkManager();
+
+  network.joinRoom('한글방', Protocol.joinRoom('손님', 'sword'));
+
+  const peer = FakePeer.instances.at(-1);
+  peer.emit('open', 'guest-peer');
+
+  assert.equal(peer.lastConnectId, 'ais-br-bg-room-u-ed959ceab880ebb0a9');
+  network.stop({ notifyGuests: false });
+});
+
 test('host accepts join packets and responds to client pings', () => {
   const network = new NetworkManager();
   let joinedPlayer = null;

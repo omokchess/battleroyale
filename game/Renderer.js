@@ -56,7 +56,7 @@ export class Renderer {
 
     // Draw All Connected Players
     if (gameState.players) {
-      this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects);
+      this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects, mapWidth, mapHeight);
     }
 
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
@@ -163,6 +163,28 @@ export class Renderer {
               shape: 'circle',
               layer: 'onTop'
             });
+          }
+          return;
+        }
+
+        if (e.type === 'projectile_burst') {
+          if (e.progress < 0.35 && Math.random() < 0.8) {
+            for (let i = 0; i < 3; i++) {
+              const burstAngle = e.angle + Math.PI + (Math.random() * 1.6 - 0.8);
+              const speed = 25 + Math.random() * 85;
+              this.particles.push({
+                x: e.x,
+                y: e.y,
+                vx: Math.cos(burstAngle) * speed,
+                vy: Math.sin(burstAngle) * speed,
+                color: Math.random() < 0.45 ? '#ffffff' : weapon.color,
+                size: Math.random() * 2.4 + 1.0,
+                alpha: 0.9,
+                decay: Math.random() * 2.4 + 2.0,
+                shape: 'circle',
+                layer: 'onTop'
+              });
+            }
           }
           return;
         }
@@ -466,6 +488,10 @@ export class Renderer {
       else if (e.type === 'projectile_shot') {
         this._drawShotFlash(ctx, scr, e, weapon, alpha);
       }
+
+      else if (e.type === 'projectile_burst') {
+        this._drawProjectileBurst(ctx, scr, e, weapon, alpha);
+      }
     });
 
     ctx.restore();
@@ -478,8 +504,14 @@ export class Renderer {
     const halfAngleRad = (weapon.angle * Math.PI) / 360;
     const startAngle = e.angle - halfAngleRad;
     const endAngle = e.angle + halfAngleRad;
-    const leadingAngle = startAngle + (endAngle - startAngle) * sweep;
-    const trailAngle = Math.max(startAngle, leadingAngle - halfAngleRad * 0.62);
+    const swingDirection = e.swingDirection === -1 ? -1 : 1;
+    const arcSize = endAngle - startAngle;
+    const leadingAngle = swingDirection > 0
+      ? startAngle + arcSize * sweep
+      : endAngle - arcSize * sweep;
+    const trailAngle = swingDirection > 0
+      ? Math.max(startAngle, leadingAngle - halfAngleRad * 0.62)
+      : Math.min(endAngle, leadingAngle + halfAngleRad * 0.62);
 
     ctx.save();
 
@@ -494,13 +526,13 @@ export class Renderer {
     ctx.lineWidth = 10 * (0.35 + alpha * 0.65);
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, trailAngle, leadingAngle);
+    ctx.arc(scr.x, scr.y, radius, trailAngle, leadingAngle, swingDirection < 0);
     ctx.stroke();
 
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
     ctx.lineWidth = 3.2 * alpha;
     ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius - 4, trailAngle + 0.05, leadingAngle);
+    ctx.arc(scr.x, scr.y, radius - 4, trailAngle + 0.05 * swingDirection, leadingAngle, swingDirection < 0);
     ctx.stroke();
 
     const hitX = scr.x + Math.cos(leadingAngle) * radius;
@@ -526,7 +558,8 @@ export class Renderer {
     const thrust = progress < 0.38
       ? easeOutBack(progress / 0.38)
       : Math.max(0, 1 - (progress - 0.38) / 0.62);
-    const reach = weapon.range * (0.45 + 0.65 * thrust);
+    const fistRadius = 5.5;
+    const reach = Math.min(weapon.range - fistRadius, weapon.range * (0.35 + 0.5 * thrust));
     const offsets = [-0.22, 0.22];
 
     ctx.save();
@@ -538,13 +571,13 @@ export class Renderer {
       const x2 = scr.x + Math.cos(angle) * reach;
       const y2 = scr.y + Math.sin(angle) * reach;
 
-      this._drawCapsuleLine(ctx, x1, y1, x2, y2, 14 * alpha, this._hexToRGB(weapon.color, 0.48 * alpha));
+      this._drawCapsuleLine(ctx, x1, y1, x2, y2, 10 * alpha, this._hexToRGB(weapon.color, 0.48 * alpha));
       this._drawCapsuleLine(ctx, x1, y1, x2, y2, 5 * alpha, this._hexToRGB('#ffffff', 0.75 * alpha));
 
       ctx.strokeStyle = this._hexToRGB(weapon.color, 0.65 * alpha);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(x2, y2, 8 + 8 * (1 - alpha), 0, Math.PI * 2);
+      ctx.arc(x2, y2, fistRadius, 0, Math.PI * 2);
       ctx.stroke();
     });
 
@@ -562,7 +595,7 @@ export class Renderer {
     const scale = progress < 0.22
       ? easeOutCubic(progress / 0.22)
       : 1 + (progress - 0.22) * 0.06;
-    const radius = weapon.range * scale;
+    const radius = Math.max(2, weapon.range * scale);
     const spinAngle = e.angle + progress * Math.PI * 4.4;
 
     ctx.save();
@@ -579,9 +612,11 @@ export class Renderer {
 
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.7 * alpha);
     ctx.lineWidth = 2.2 * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius - 5, 0, Math.PI * 2);
-    ctx.stroke();
+    if (radius > 7) {
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, radius - 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     for (let i = 0; i < 3; i++) {
       const a = spinAngle + i * (Math.PI * 2 / 3);
@@ -617,10 +652,13 @@ export class Renderer {
       this._drawAttackLane(ctx, scr.x, scr.y, e.angle, length, width, this._hexToRGB(weapon.color, laneAlpha));
     }
 
-    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, width * 1.05 * alpha, this._hexToRGB(weapon.color, 0.54 * alpha));
-    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 4.5 * alpha, this._hexToRGB('#ffffff', 0.86 * alpha));
+    const headSize = Math.max(6, width * 0.52) * (0.75 + alpha * 0.25);
+    const shaftEndX = scr.x + Math.cos(angle) * Math.max(0, length * ext - headSize * 0.6);
+    const shaftEndY = scr.y + Math.sin(angle) * Math.max(0, length * ext - headSize * 0.6);
 
-    const headSize = Math.max(7, width * 0.62) * (0.75 + alpha * 0.25);
+    this._drawCapsuleLine(ctx, scr.x, scr.y, shaftEndX, shaftEndY, width * 0.78 * alpha, this._hexToRGB(weapon.color, 0.54 * alpha), 'butt');
+    this._drawCapsuleLine(ctx, scr.x, scr.y, shaftEndX, shaftEndY, 4.0 * alpha, this._hexToRGB('#ffffff', 0.86 * alpha), 'butt');
+
     ctx.fillStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
     ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
     ctx.lineWidth = 2;
@@ -628,7 +666,7 @@ export class Renderer {
     ctx.translate(tipX, tipY);
     ctx.rotate(angle);
     ctx.beginPath();
-    ctx.moveTo(headSize * 0.55, 0);
+    ctx.moveTo(0, 0);
     ctx.lineTo(-headSize, -headSize * 0.52);
     ctx.lineTo(-headSize * 0.62, 0);
     ctx.lineTo(-headSize, headSize * 0.52);
@@ -676,11 +714,41 @@ export class Renderer {
     ctx.restore();
   }
 
-  _drawCapsuleLine(ctx, x1, y1, x2, y2, width, color) {
+  _drawProjectileBurst(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const radius = 8 + easeOutCubic(progress) * 24;
+
+    ctx.save();
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.78 * alpha);
+    ctx.lineWidth = 3.5 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.18 * alpha);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.75 * alpha);
+    ctx.lineWidth = 2 * alpha;
+    for (let i = 0; i < 8; i++) {
+      const angle = e.angle + Math.PI + (i - 3.5) * 0.34;
+      const inner = radius * 0.25;
+      const outer = radius * (0.82 + (i % 2) * 0.16);
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(angle) * inner, scr.y + Math.sin(angle) * inner);
+      ctx.lineTo(scr.x + Math.cos(angle) * outer, scr.y + Math.sin(angle) * outer);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawCapsuleLine(ctx, x1, y1, x2, y2, width, color, lineCap = 'round') {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(0.1, width);
-    ctx.lineCap = 'round';
+    ctx.lineCap = lineCap;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
@@ -755,10 +823,11 @@ export class Renderer {
       weaponReach = 16 * punch;
       bodyScale = 1.4 * punch;
     } else {
+      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
       const slash = Math.sin(Math.PI * clamp01(progress * 0.95));
       lunge = 4 * slash;
       weaponReach = 10 * slash;
-      weaponAngle = angle - 0.9 + easeOutCubic(progress) * 1.8;
+      weaponAngle = angle + swingDirection * (-0.9 + easeOutCubic(progress) * 1.8);
       bodyScale = 1.0 * slash;
     }
 
@@ -774,7 +843,7 @@ export class Renderer {
   /**
    * Draw Players with beautiful pixel graphics
    */
-  _drawPlayers(ctx, camera, cw, ch, players, localPlayerId, activeEffects = []) {
+  _drawPlayers(ctx, camera, cw, ch, players, localPlayerId, activeEffects = [], mapWidth = 0, mapHeight = 0) {
     const radius = 14;
     const activeAttacks = this._getActiveAttacks(activeEffects);
 
@@ -794,7 +863,7 @@ export class Renderer {
         y: scr.y + motion.bodyY
       };
 
-      this._drawPlayerAttackRange(ctx, scr, p, isLocal, Boolean(activeAttack));
+      this._drawPlayerAttackRange(ctx, camera, cw, ch, scr, p, isLocal, Boolean(activeAttack), mapWidth, mapHeight);
 
       ctx.save();
       
@@ -1045,7 +1114,7 @@ export class Renderer {
   /**
    * Draw attack range helper outline and subtle fill
    */
-  _drawPlayerAttackRange(ctx, scr, player, isLocal, isAttacking = false) {
+  _drawPlayerAttackRange(ctx, camera, cw, ch, scr, player, isLocal, isAttacking = false, mapWidth = 0, mapHeight = 0) {
     if (!player || player.isDead) return;
     const weapon = Weapons[player.weapon];
     if (!weapon) return;
@@ -1108,20 +1177,24 @@ export class Renderer {
     } 
     else if (weapon.type === 'projectile') {
       const start = 22;
-      const x1 = scr.x + Math.cos(angle) * start;
-      const y1 = scr.y + Math.sin(angle) * start;
-      const x2 = scr.x + Math.cos(angle) * range;
-      const y2 = scr.y + Math.sin(angle) * range;
+      const distanceToWall = rayToMapBoundaryDistance(player.x, player.y, angle, mapWidth, mapHeight);
+      const previewRange = Number.isFinite(distanceToWall) ? distanceToWall : Math.max(cw, ch);
+      const startWorldX = player.x + Math.cos(angle) * start;
+      const startWorldY = player.y + Math.sin(angle) * start;
+      const endWorldX = player.x + Math.cos(angle) * previewRange;
+      const endWorldY = player.y + Math.sin(angle) * previewRange;
+      const startScr = camera.toScreen(startWorldX, startWorldY, cw, ch);
+      const endScr = camera.toScreen(endWorldX, endWorldY, cw, ch);
 
       ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.moveTo(startScr.x, startScr.y);
+      ctx.lineTo(endScr.x, endScr.y);
       ctx.stroke();
 
       ctx.setLineDash([]);
       ctx.fillStyle = this._hexToRGB(guideColor, isAttacking ? 0.42 : 0.2);
       ctx.beginPath();
-      ctx.arc(x2, y2, isAttacking ? 4 : 3, 0, Math.PI * 2);
+      ctx.arc(endScr.x, endScr.y, isAttacking ? 4 : 3, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -1199,4 +1272,20 @@ function easeOutBack(value) {
   const c1 = 1.70158;
   const c3 = c1 + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+function rayToMapBoundaryDistance(x, y, angle, mapWidth, mapHeight) {
+  if (!mapWidth || !mapHeight) return Infinity;
+
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const candidates = [];
+
+  if (dx > 0) candidates.push((mapWidth - x) / dx);
+  if (dx < 0) candidates.push((0 - x) / dx);
+  if (dy > 0) candidates.push((mapHeight - y) / dy);
+  if (dy < 0) candidates.push((0 - y) / dy);
+
+  const distance = Math.min(...candidates.filter(value => value > 0 && Number.isFinite(value)));
+  return Number.isFinite(distance) ? distance : Infinity;
 }

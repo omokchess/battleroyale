@@ -25,6 +25,7 @@ export class Player {
     
     // Cool down tracker
     this.lastAttackTime = 0;
+    this.swingDirection = -1;
 
     // Generate unique colors based on hash of peer ID
     const colors = this._generateColorsFromId(id);
@@ -89,6 +90,8 @@ export class Player {
 
   triggerAttack(now) {
     this.lastAttackTime = now;
+    this.swingDirection *= -1;
+    return this.swingDirection;
   }
 
   takeDamage(amount, attackerName) {
