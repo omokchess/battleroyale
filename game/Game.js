@@ -28,7 +28,7 @@ export class Game {
     // Game state entities
     this.players = {};
     this.projectiles = [];
-    this.effects = []; // List of visual overlays: { x, y, angle, weapon, type, progress, timestamp }
+    this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
 
     // Flags
     this.isRunning = false;
@@ -39,6 +39,11 @@ export class Game {
 
     this.lastFrameTime = 0;
     this.animationFrameId = null;
+    this.backgroundIntervalId = null;
+    this._visibilityChangeHandler = null;
+    this._hasQuit = false;
+    this.lastInputSentAt = 0;
+    this.lastInputSignature = '';
 
     // Server-Auth Tick parameters
     this.serverTickTimer = 0;
@@ -56,10 +61,13 @@ export class Game {
   start(onQuit) {
     this.onQuitCallback = onQuit;
     this.isRunning = true;
+    this._hasQuit = false;
     this.gameOver = false;
     this.players = {};
     this.projectiles = [];
     this.effects = [];
+    this.lastInputSentAt = 0;
+    this.lastInputSignature = '';
     
     this.localPlayerId = this.networkManager.localId;
     this.lastFrameTime = performance.now();
@@ -163,9 +171,7 @@ export class Game {
         localPlayer.angle = this.input.aimAngle;
         Collision.clampToMap(localPlayer, this.mapWidth, this.mapHeight);
 
-        // Send to host
-        this.networkManager.sendToHost(Protocol.clientInput(this.input.keys));
-        this.networkManager.sendToHost(Protocol.clientAim(this.input.aimAngle));
+        this._sendLocalInput(now);
       }
 
       this._renderFrame();
@@ -213,6 +219,7 @@ export class Game {
         if (weaponConfig.type !== 'projectile') {
           // Record slash animations directly
           const localFx = {
+            attackerId: p.id,
             x: p.x,
             y: p.y,
             angle: p.angle,
@@ -241,6 +248,18 @@ export class Game {
         else {
           const spawnDist = p.radius + 3;
           const arrowId = `${p.id}-arrow-${now}`;
+          this.effects.push({
+            attackerId: p.id,
+            x: p.x,
+            y: p.y,
+            angle: p.angle,
+            weapon: p.weapon,
+            type: 'projectile_shot',
+            progress: 0,
+            timestamp: now,
+            lifetime: Math.min(weaponConfig.cooldown * 0.45, 260)
+          });
+
           // Spawn arrow
           const proj = new Projectile(
             arrowId,
@@ -333,6 +352,31 @@ export class Game {
     this._updateHUD();
   }
 
+  _sendLocalInput(now) {
+    const keys = sanitizeInputKeys(this.input.keys);
+    const aimAngle = Number.isFinite(this.input.aimAngle) ? this.input.aimAngle : 0;
+    const signature = [
+      keys.w ? 1 : 0,
+      keys.a ? 1 : 0,
+      keys.s ? 1 : 0,
+      keys.d ? 1 : 0,
+      keys.ArrowUp ? 1 : 0,
+      keys.ArrowDown ? 1 : 0,
+      keys.ArrowLeft ? 1 : 0,
+      keys.ArrowRight ? 1 : 0,
+      aimAngle.toFixed(3)
+    ].join('');
+
+    if (signature === this.lastInputSignature && now - this.lastInputSentAt < 100) {
+      return;
+    }
+
+    this.lastInputSignature = signature;
+    this.lastInputSentAt = now;
+    this.networkManager.sendToHost(Protocol.clientInput(keys));
+    this.networkManager.sendToHost(Protocol.clientAim(aimAngle));
+  }
+
   /**
    * Client-side Coordinate linear interpolations for buffer frames
    */
@@ -349,7 +393,7 @@ export class Game {
       if (p.targetX !== undefined) {
         p.x += (p.targetX - p.x) * 0.3;
         p.y += (p.targetY - p.y) * 0.3;
-        p.angle += (p.targetAngle - p.angle) * 0.35;
+        p.angle = lerpAngle(p.angle, p.targetAngle, 0.35);
       }
     });
 
@@ -575,13 +619,20 @@ export class Game {
    * Leave Game Cleanup
    */
   quit() {
+    if (this._hasQuit) return;
+
+    this._hasQuit = true;
     this.isRunning = false;
-    cancelAnimationFrame(this.animationFrameId);
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
     window.removeEventListener('resize', this._resizeBound);
     
     // Clear background tab active preservation loops
     if (this._visibilityChangeHandler) {
       document.removeEventListener('visibilitychange', this._visibilityChangeHandler);
+      this._visibilityChangeHandler = null;
     }
     if (this.backgroundIntervalId) {
       clearInterval(this.backgroundIntervalId);
@@ -589,7 +640,9 @@ export class Game {
     }
 
     this.input.cleanUp(this.canvas);
-    this.networkManager.stop();
+    if (this.networkManager) {
+      this.networkManager.stop();
+    }
 
     // Hide result overlay
     const overlay = document.getElementById('resultOverlay');
@@ -613,7 +666,9 @@ export class Game {
 
       // 2. Select elegant far coordinate to spawn newcomer
       const spawnP = this._getRandomSpawnPoint();
-      const guestPlayer = new Player(remoteId, joinPayload.nickname, joinPayload.weapon, spawnP.x, spawnP.y);
+      const nickname = sanitizeNickname(joinPayload.nickname);
+      const weapon = Weapons[joinPayload.weapon] ? joinPayload.weapon : 'sword';
+      const guestPlayer = new Player(remoteId, nickname, weapon, spawnP.x, spawnP.y);
       this.players[remoteId] = guestPlayer;
 
       this._announce(`${guestPlayer.nickname}님이 전장에 입장했습니다!`);
@@ -654,9 +709,11 @@ export class Game {
         if (!player || player.isDead) return;
 
         if (data.type === MsgType.PLAYER_INPUT) {
-          player.keys = data.keys;
+          player.keys = sanitizeInputKeys(data.keys);
         } else if (data.type === MsgType.PLAYER_AIM) {
-          player.angle = data.angle;
+          if (Number.isFinite(data.angle)) {
+            player.angle = data.angle;
+          }
         }
       } 
       
@@ -706,6 +763,9 @@ export class Game {
             p.hp = snap.hp;
             p.kills = snap.kills;
             p.isDead = snap.isDead;
+            p.nickname = snap.nickname || p.nickname;
+            p.weapon = Weapons[snap.weapon] ? snap.weapon : p.weapon;
+            p.respawnRemainingMs = snap.respawnRemainingMs || 0;
             p.color = snap.color;
             p.accentColor = snap.accentColor;
 
@@ -716,11 +776,13 @@ export class Game {
               p.targetAngle = snap.angle;
             } else {
               // Absolute correction on local coordinates if too far from host state to solve client desyncs
-              const dx = localCorrectDist(p.x, snap.x);
-              const dy = localCorrectDist(p.y, snap.y);
-              if (dx > 45 || dy > 45) {
+              const correctionDistance = localCorrectDist(p.x, p.y, snap.x, snap.y);
+              if (p.isDead || correctionDistance > 45) {
                 p.x = snap.x;
                 p.y = snap.y;
+              }
+              if (p.isDead && Number.isFinite(snap.angle)) {
+                p.angle = snap.angle;
               }
             }
           });
@@ -759,6 +821,7 @@ export class Game {
               angle: effectSnap.angle,
               weapon: effectSnap.weapon,
               type: effectSnap.type,
+              attackerId: effectSnap.attackerId,
               progress: effectSnap.progress,
               timestamp: effectSnap.timestamp,
               lifetime: effectSnap.lifetime
@@ -819,7 +882,33 @@ export class Game {
   }
 }
 
-// Distance helper
-function localCorrectDist(a, b) {
-  return Math.abs(a - b);
+function sanitizeNickname(value) {
+  const nickname = String(value || '').trim().replace(/[^\p{L}\p{N}_ -]/gu, '').slice(0, 12);
+  return nickname || 'Gladiator';
+}
+
+function sanitizeInputKeys(keys = {}) {
+  return {
+    w: Boolean(keys.w),
+    a: Boolean(keys.a),
+    s: Boolean(keys.s),
+    d: Boolean(keys.d),
+    ArrowUp: Boolean(keys.ArrowUp),
+    ArrowDown: Boolean(keys.ArrowDown),
+    ArrowLeft: Boolean(keys.ArrowLeft),
+    ArrowRight: Boolean(keys.ArrowRight)
+  };
+}
+
+function lerpAngle(current, target, amount) {
+  if (!Number.isFinite(target)) return current;
+
+  let delta = target - current;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  return current + delta * amount;
+}
+
+function localCorrectDist(ax, ay, bx, by) {
+  return Math.hypot(ax - bx, ay - by);
 }

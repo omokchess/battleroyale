@@ -25,6 +25,7 @@ export class Renderer {
     const nowTime = Date.now();
     const dt = Math.min((nowTime - this.lastTime) / 1000, 0.1);
     this.lastTime = nowTime;
+    const activeEffects = gameState.effects || [];
 
     // Particle logic updates & triggers
     this._triggerInstantSparks(gameState, dt);
@@ -44,8 +45,8 @@ export class Renderer {
     this._drawBorders(ctx, camera, cw, ch, mapWidth, mapHeight);
 
     // Draw Active Attack Visual Effects
-    if (gameState.effects) {
-      this._drawEffects(ctx, camera, cw, ch, gameState.effects);
+    if (activeEffects.length) {
+      this._drawEffects(ctx, camera, cw, ch, activeEffects);
     }
 
     // Draw Bow Projectiles
@@ -55,7 +56,7 @@ export class Renderer {
 
     // Draw All Connected Players
     if (gameState.players) {
-      this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId);
+      this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects);
     }
 
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
@@ -146,7 +147,27 @@ export class Renderer {
     if (gameState.effects) {
       gameState.effects.forEach(e => {
         const weapon = Weapons[e.weapon] || Weapons.sword;
-        if (Math.random() < 0.55) {
+        if (e.type === 'projectile_shot') {
+          if (Math.random() < 0.75) {
+            const dist = 16 + Math.random() * 8;
+            const side = e.angle + Math.PI + (Math.random() * 0.8 - 0.4);
+            this.particles.push({
+              x: e.x + Math.cos(e.angle) * dist,
+              y: e.y + Math.sin(e.angle) * dist,
+              vx: Math.cos(side) * (20 + Math.random() * 40),
+              vy: Math.sin(side) * (20 + Math.random() * 40),
+              color: Math.random() < 0.45 ? '#ffffff' : weapon.color,
+              size: Math.random() * 2.4 + 1.0,
+              alpha: 0.9,
+              decay: Math.random() * 2.6 + 2.0,
+              shape: 'circle',
+              layer: 'onTop'
+            });
+          }
+          return;
+        }
+
+        if (Math.random() < 0.45) {
           let px = e.x;
           let py = e.y;
           let angle = e.angle;
@@ -413,242 +434,349 @@ export class Renderer {
     ctx.save();
 
     effects.forEach(e => {
+      if (!e || !Number.isFinite(e.progress)) return;
+
       const scr = camera.toScreen(e.x, e.y, cw, ch);
       const weapon = Weapons[e.weapon] || Weapons.sword;
-      const alpha = 1 - e.progress; // Fade over time
+      const alpha = clamp01(1 - e.progress);
+
+      if (scr.x < -180 || scr.x > cw + 180 || scr.y < -180 || scr.y > ch + 180) {
+        return;
+      }
       
-      ctx.shadowBlur = 10 * alpha;
+      ctx.shadowBlur = 14 * alpha;
       ctx.shadowColor = weapon.color;
 
       if (e.type === 'melee_arc') {
-        const radius = weapon.range;
-        const halfAngleRad = (weapon.angle * Math.PI) / 360;
-
-        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
-        ctx.lineWidth = 8 * alpha;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        // Draw centered arc
-        ctx.arc(
-          scr.x, scr.y, 
-          radius, 
-          e.angle - halfAngleRad, 
-          e.angle + halfAngleRad
-        );
-        ctx.stroke();
-
-        // Inner glowing core
-        ctx.strokeStyle = this._hexToRGB('#ffffff', alpha * 0.8);
-        ctx.lineWidth = 3 * alpha;
-        ctx.stroke();
+        if (e.weapon === 'gauntlet') {
+          this._drawPunchCombo(ctx, scr, e, weapon, alpha);
+        } else {
+          this._drawArcSlash(ctx, scr, e, weapon, alpha);
+        }
       } 
       
       else if (e.type === 'melee_circle') {
-        // Axe spin snappy expansion easing
-        let scale = 0;
-        if (e.progress < 0.2) {
-          const t = e.progress / 0.2;
-          scale = 1 - (1 - t) * (1 - t); // Rapid start
-        } else {
-          const t = (e.progress - 0.2) / 0.8;
-          scale = 1.0 + t * 0.05; // Gentle expanding hold
-        }
-        const radius = weapon.range * scale;
-
-        // 1. Draw solid shaded battleground hazard area representing the axe swing boundary
-        const areaAlpha = 0.15 * alpha;
-        ctx.fillStyle = this._hexToRGB(weapon.color, areaAlpha);
-        ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 2. Thick Outer Red Fire Storm Ring
-        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha * 0.75);
-        ctx.lineWidth = 10 * (1 - e.progress);
-        ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // 3. Bright White Hot-Core Blade Sharpness Ring
-        ctx.strokeStyle = this._hexToRGB('#ffffff', alpha);
-        ctx.lineWidth = 3 * (1 - e.progress);
-        ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius - 1.5, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // 4. Twin Crescent Spinning Blade Swooshes (rotating wind slashes)
-        // Spin angle progresses over progress of the animation
-        const spinAngle = e.angle + e.progress * Math.PI * 3.5;
-        ctx.save();
-        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha * 0.9);
-        ctx.lineWidth = 4 * (1 - e.progress * 0.5);
-        ctx.lineCap = 'round';
-        
-        // Blade 1
-        ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius * 0.82, spinAngle, spinAngle + Math.PI * 0.7);
-        ctx.stroke();
-
-        // Blade 2 (opposite side)
-        ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius * 0.82, spinAngle + Math.PI, spinAngle + Math.PI + Math.PI * 0.7);
-        ctx.stroke();
-
-        // Inner white high-speed cores for the twin blades
-        ctx.strokeStyle = this._hexToRGB('#ffffff', alpha * 0.8);
-        ctx.lineWidth = 1.5 * (1 - e.progress * 0.5);
-        ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius * 0.82, spinAngle + 0.1, spinAngle + Math.PI * 0.5);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius * 0.82, spinAngle + Math.PI + 0.1, spinAngle + Math.PI + Math.PI * 0.5);
-        ctx.stroke();
-        ctx.restore();
-
-        // 5. Shatter / Impact Radial Spikes (indicating ground strike impact)
-        if (e.progress > 0.1 && e.progress < 0.6) {
-          const spikeAlpha = 0.6 * (1 - (e.progress - 0.1) / 0.5);
-          ctx.strokeStyle = this._hexToRGB('#ffffff', spikeAlpha);
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          const spikeCount = 8;
-          for (let i = 0; i < spikeCount; i++) {
-            const angleVal = (i * Math.PI * 2) / spikeCount + (e.progress * 0.2);
-            const innerR = radius * 0.85;
-            const outerR = radius * (1.05 + Math.sin(e.progress * 40 + i) * 0.05);
-            ctx.moveTo(scr.x + Math.cos(angleVal) * innerR, scr.y + Math.sin(angleVal) * innerR);
-            ctx.lineTo(scr.x + Math.cos(angleVal) * outerR, scr.y + Math.sin(angleVal) * outerR);
-          }
-          ctx.stroke();
-        }
+        this._drawAxeSpin(ctx, scr, e, weapon, alpha);
       } 
       
       else if (e.type === 'melee_line') {
-        // Thrust rectangle (Spear)
-        const length = weapon.range;
-        const width = weapon.width;
+        this._drawSpearThrust(ctx, scr, e, weapon, alpha);
+      }
 
-        // Custom snappy thrust easing curve:
-        // 0.0 -> 0.15: ultra fast thrust to max length
-        // 0.15 -> 0.35: slight hold & vibrate
-        // 0.35 -> 1.0: fade and retract
-        let ext = 0;
-        let shake = 0;
-        if (e.progress < 0.15) {
-          const t = e.progress / 0.15;
-          ext = 1 - (1 - t) * (1 - t); // Quadratic ease out
-        } else if (e.progress < 0.35) {
-          const t = (e.progress - 0.15) / 0.20;
-          ext = 1.0 - t * 0.1;
-          shake = Math.sin(e.progress * 130) * 1.5; // Tiny rapid high-frequency buzz for vibration feel
-        } else {
-          const t = (e.progress - 0.35) / 0.65;
-          ext = 0.9 * (1 - t);
-        }
-
-        const angleWithShake = e.angle + (shake * Math.PI / 180);
-        const startX = scr.x;
-        const startY = scr.y;
-        const tipX = scr.x + Math.cos(angleWithShake) * length * ext;
-        const tipY = scr.y + Math.sin(angleWithShake) * length * ext;
-
-        // 1. Draw a subtle warning/trajectory zone under the spear (during the first half) to help judge range!
-        // This is a thin transparent laser beam or rectangle extending to the absolute range.
-        if (e.progress < 0.5) {
-          const zoneAlpha = 0.18 * (1 - e.progress * 2);
-          ctx.save();
-          ctx.strokeStyle = this._hexToRGB(weapon.color, zoneAlpha);
-          ctx.fillStyle = this._hexToRGB(weapon.color, zoneAlpha * 0.4);
-          ctx.lineWidth = 1;
-          
-          // Draw a long thin capsule/rectangle representing the full attack range/width
-          ctx.beginPath();
-          const targetLength = length;
-          const leftAngle = e.angle - Math.PI / 2;
-          const rightAngle = e.angle + Math.PI / 2;
-          const hw = width / 2;
-          
-          const p1x = scr.x + Math.cos(leftAngle) * hw;
-          const p1y = scr.y + Math.sin(leftAngle) * hw;
-          const p2x = scr.x + Math.cos(rightAngle) * hw;
-          const p2y = scr.y + Math.sin(rightAngle) * hw;
-          const p3x = p2x + Math.cos(e.angle) * targetLength;
-          const p3y = p2y + Math.sin(e.angle) * targetLength;
-          const p4x = p1x + Math.cos(e.angle) * targetLength;
-          const p4y = p1y + Math.sin(e.angle) * targetLength;
-          
-          ctx.moveTo(p1x, p1y);
-          ctx.lineTo(p2x, p2y);
-          ctx.lineTo(p3x, p3y);
-          ctx.lineTo(p4x, p4y);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-          ctx.restore();
-        }
-
-        // 2. Draw outer energetic spear shaft aura
-        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
-        ctx.lineWidth = width * (1 - e.progress * 0.7);
-        ctx.lineCap = 'round';
-        
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(tipX, tipY);
-        ctx.stroke();
-
-        // 3. Highlight spear tip with a diamond/glowing head shape!
-        const headSize = Math.max(6, width * 0.6) * (1 - e.progress * 0.5);
-        ctx.fillStyle = this._hexToRGB('#ffffff', alpha);
-        ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
-        ctx.lineWidth = 2;
-        
-        ctx.save();
-        ctx.translate(tipX, tipY);
-        ctx.rotate(angleWithShake);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-headSize * 1.5, -headSize / 2);
-        ctx.lineTo(-headSize * 2, 0);
-        ctx.lineTo(-headSize * 1.5, headSize / 2);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-
-        // 4. Draw critical white spear hot-core line
-        ctx.strokeStyle = this._hexToRGB('#ffffff', alpha);
-        ctx.lineWidth = 4 * (1 - e.progress * 0.5);
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        // Slightly shorter than tip to keep head clean
-        const innerTipX = scr.x + Math.cos(angleWithShake) * length * Math.max(0, ext - 0.1);
-        const innerTipY = scr.y + Math.sin(angleWithShake) * length * Math.max(0, ext - 0.1);
-        ctx.lineTo(innerTipX, innerTipY);
-        ctx.stroke();
-
-        // 5. Draw circular impact rings at the base of thrust (thrust puff!)
-        if (e.progress < 0.25) {
-          const puffSize = (width * 1.5) * (e.progress / 0.25);
-          const puffAlpha = 0.5 * (1 - e.progress / 0.25);
-          ctx.strokeStyle = this._hexToRGB('#ffffff', puffAlpha);
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(scr.x + Math.cos(e.angle) * 10, scr.y + Math.sin(e.angle) * 10, puffSize, 0, Math.PI * 2);
-          ctx.stroke();
-        }
+      else if (e.type === 'projectile_shot') {
+        this._drawShotFlash(ctx, scr, e, weapon, alpha);
       }
     });
 
     ctx.restore();
   }
 
+  _drawArcSlash(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const sweep = easeOutCubic(clamp01(progress / 0.72));
+    const radius = weapon.range * (0.82 + 0.18 * sweep);
+    const halfAngleRad = (weapon.angle * Math.PI) / 360;
+    const startAngle = e.angle - halfAngleRad;
+    const endAngle = e.angle + halfAngleRad;
+    const leadingAngle = startAngle + (endAngle - startAngle) * sweep;
+    const trailAngle = Math.max(startAngle, leadingAngle - halfAngleRad * 0.62);
+
+    ctx.save();
+
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.11 * alpha);
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.arc(scr.x, scr.y, radius, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.78 * alpha);
+    ctx.lineWidth = 10 * (0.35 + alpha * 0.65);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, trailAngle, leadingAngle);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
+    ctx.lineWidth = 3.2 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius - 4, trailAngle + 0.05, leadingAngle);
+    ctx.stroke();
+
+    const hitX = scr.x + Math.cos(leadingAngle) * radius;
+    const hitY = scr.y + Math.sin(leadingAngle) * radius;
+    ctx.fillStyle = this._hexToRGB('#ffffff', 0.8 * alpha);
+    ctx.beginPath();
+    ctx.arc(hitX, hitY, 3.5 + 3 * alpha, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.3 * alpha);
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.moveTo(scr.x + Math.cos(e.angle) * 18, scr.y + Math.sin(e.angle) * 18);
+    ctx.lineTo(scr.x + Math.cos(e.angle) * (weapon.range + 18), scr.y + Math.sin(e.angle) * (weapon.range + 18));
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _drawPunchCombo(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const thrust = progress < 0.38
+      ? easeOutBack(progress / 0.38)
+      : Math.max(0, 1 - (progress - 0.38) / 0.62);
+    const reach = weapon.range * (0.45 + 0.65 * thrust);
+    const offsets = [-0.22, 0.22];
+
+    ctx.save();
+    offsets.forEach((offset, index) => {
+      const angle = e.angle + offset;
+      const base = 10 + index * 2;
+      const x1 = scr.x + Math.cos(angle) * base;
+      const y1 = scr.y + Math.sin(angle) * base;
+      const x2 = scr.x + Math.cos(angle) * reach;
+      const y2 = scr.y + Math.sin(angle) * reach;
+
+      this._drawCapsuleLine(ctx, x1, y1, x2, y2, 14 * alpha, this._hexToRGB(weapon.color, 0.48 * alpha));
+      this._drawCapsuleLine(ctx, x1, y1, x2, y2, 5 * alpha, this._hexToRGB('#ffffff', 0.75 * alpha));
+
+      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.65 * alpha);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x2, y2, 8 + 8 * (1 - alpha), 0, Math.PI * 2);
+      ctx.stroke();
+    });
+
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.12 * alpha);
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.arc(scr.x, scr.y, weapon.range, e.angle - 0.42, e.angle + 0.42);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _drawAxeSpin(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const scale = progress < 0.22
+      ? easeOutCubic(progress / 0.22)
+      : 1 + (progress - 0.22) * 0.06;
+    const radius = weapon.range * scale;
+    const spinAngle = e.angle + progress * Math.PI * 4.4;
+
+    ctx.save();
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.13 * alpha);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.72 * alpha);
+    ctx.lineWidth = 8 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.7 * alpha);
+    ctx.lineWidth = 2.2 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius - 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let i = 0; i < 3; i++) {
+      const a = spinAngle + i * (Math.PI * 2 / 3);
+      ctx.strokeStyle = i === 0 ? this._hexToRGB('#ffffff', 0.85 * alpha) : this._hexToRGB(weapon.color, 0.82 * alpha);
+      ctx.lineWidth = i === 0 ? 4 * alpha : 3 * alpha;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, radius * 0.76, a, a + Math.PI * 0.52);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  _drawSpearThrust(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const length = weapon.range;
+    const width = weapon.width;
+    const ext = progress < 0.16
+      ? easeOutCubic(progress / 0.16)
+      : progress < 0.38
+        ? 1 - ((progress - 0.16) / 0.22) * 0.06
+        : Math.max(0, 0.94 * (1 - (progress - 0.38) / 0.62));
+    const shake = progress > 0.14 && progress < 0.36 ? Math.sin(progress * 120) * 0.02 : 0;
+    const angle = e.angle + shake;
+    const tipX = scr.x + Math.cos(angle) * length * ext;
+    const tipY = scr.y + Math.sin(angle) * length * ext;
+
+    ctx.save();
+
+    if (progress < 0.5) {
+      const laneAlpha = 0.16 * (1 - progress / 0.5);
+      this._drawAttackLane(ctx, scr.x, scr.y, e.angle, length, width, this._hexToRGB(weapon.color, laneAlpha));
+    }
+
+    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, width * 1.05 * alpha, this._hexToRGB(weapon.color, 0.54 * alpha));
+    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 4.5 * alpha, this._hexToRGB('#ffffff', 0.86 * alpha));
+
+    const headSize = Math.max(7, width * 0.62) * (0.75 + alpha * 0.25);
+    ctx.fillStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
+    ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
+    ctx.lineWidth = 2;
+    ctx.save();
+    ctx.translate(tipX, tipY);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(headSize * 0.55, 0);
+    ctx.lineTo(-headSize, -headSize * 0.52);
+    ctx.lineTo(-headSize * 0.62, 0);
+    ctx.lineTo(-headSize, headSize * 0.52);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    if (progress < 0.25) {
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.42 * (1 - progress / 0.25));
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(scr.x + Math.cos(e.angle) * 12, scr.y + Math.sin(e.angle) * 12, 8 + 28 * progress, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  _drawShotFlash(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const flash = 1 - easeOutCubic(progress);
+    const length = 42 * flash;
+    const half = 0.18 + 0.2 * flash;
+    const start = e.angle - half;
+    const end = e.angle + half;
+
+    ctx.save();
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.22 * alpha);
+    ctx.beginPath();
+    ctx.moveTo(scr.x + Math.cos(e.angle) * 12, scr.y + Math.sin(e.angle) * 12);
+    ctx.arc(scr.x, scr.y, length + 18, start, end);
+    ctx.closePath();
+    ctx.fill();
+
+    this._drawCapsuleLine(
+      ctx,
+      scr.x + Math.cos(e.angle) * 8,
+      scr.y + Math.sin(e.angle) * 8,
+      scr.x + Math.cos(e.angle) * (length + 26),
+      scr.y + Math.sin(e.angle) * (length + 26),
+      4 + 8 * flash,
+      this._hexToRGB('#ffffff', 0.72 * alpha)
+    );
+    ctx.restore();
+  }
+
+  _drawCapsuleLine(ctx, x1, y1, x2, y2, width, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(0.1, width);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawAttackLane(ctx, x, y, angle, length, width, color) {
+    const uX = Math.cos(angle);
+    const uY = Math.sin(angle);
+    const pX = -uY * width / 2;
+    const pY = uX * width / 2;
+
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x + pX, y + pY);
+    ctx.lineTo(x - pX, y - pY);
+    ctx.lineTo(x - pX + uX * length, y - pY + uY * length);
+    ctx.lineTo(x + pX + uX * length, y + pY + uY * length);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _getActiveAttacks(effects) {
+    const active = {};
+
+    effects.forEach(effect => {
+      if (!effect.attackerId || effect.progress >= 1) return;
+      const current = active[effect.attackerId];
+      if (!current || effect.timestamp >= current.timestamp) {
+        active[effect.attackerId] = effect;
+      }
+    });
+
+    return active;
+  }
+
+  _getAttackMotion(player, effect) {
+    const empty = { bodyX: 0, bodyY: 0, bodyScale: 0, weaponReach: 0, weaponAngle: player.angle };
+    if (!effect) return empty;
+
+    const progress = clamp01(effect.progress);
+    const angle = Number.isFinite(effect.angle) ? effect.angle : player.angle;
+    let lunge = 0;
+    let weaponReach = 0;
+    let weaponAngle = angle;
+    let bodyScale = 0;
+
+    if (effect.type === 'projectile_shot') {
+      const kick = Math.max(0, 1 - progress);
+      lunge = -4 * kick;
+      weaponReach = -5 * kick;
+      bodyScale = 1.5 * kick;
+    } else if (effect.type === 'melee_circle') {
+      const spin = easeOutCubic(Math.min(1, progress / 0.6));
+      weaponAngle = angle + spin * Math.PI * 2.1;
+      bodyScale = 1.5 * Math.sin(Math.PI * clamp01(progress));
+    } else if (effect.type === 'melee_line') {
+      const thrust = progress < 0.18
+        ? easeOutBack(progress / 0.18)
+        : Math.max(0, 1 - (progress - 0.18) / 0.82);
+      lunge = 8 * thrust;
+      weaponReach = 18 * thrust;
+      bodyScale = 1.2 * thrust;
+    } else if (effect.weapon === 'gauntlet') {
+      const punch = progress < 0.28
+        ? easeOutBack(progress / 0.28)
+        : Math.max(0, 1 - (progress - 0.28) / 0.72);
+      lunge = 7 * punch;
+      weaponReach = 16 * punch;
+      bodyScale = 1.4 * punch;
+    } else {
+      const slash = Math.sin(Math.PI * clamp01(progress * 0.95));
+      lunge = 4 * slash;
+      weaponReach = 10 * slash;
+      weaponAngle = angle - 0.9 + easeOutCubic(progress) * 1.8;
+      bodyScale = 1.0 * slash;
+    }
+
+    return {
+      bodyX: Math.cos(angle) * lunge,
+      bodyY: Math.sin(angle) * lunge,
+      bodyScale,
+      weaponReach,
+      weaponAngle
+    };
+  }
+
   /**
    * Draw Players with beautiful pixel graphics
    */
-  _drawPlayers(ctx, camera, cw, ch, players, localPlayerId) {
+  _drawPlayers(ctx, camera, cw, ch, players, localPlayerId, activeEffects = []) {
     const radius = 14;
+    const activeAttacks = this._getActiveAttacks(activeEffects);
 
     Object.keys(players).forEach(id => {
       const p = players[id];
@@ -659,9 +787,14 @@ export class Renderer {
 
       const scr = camera.toScreen(p.x, p.y, cw, ch);
       const isLocal = id === localPlayerId;
+      const activeAttack = activeAttacks[id] || null;
+      const motion = this._getAttackMotion(p, activeAttack);
+      const bodyScr = {
+        x: scr.x + motion.bodyX,
+        y: scr.y + motion.bodyY
+      };
 
-      // Draw each player's weapon reach/range with a faint gray highlight underneath them
-      this._drawPlayerAttackRange(ctx, scr, p, isLocal);
+      this._drawPlayerAttackRange(ctx, scr, p, isLocal, Boolean(activeAttack));
 
       ctx.save();
       
@@ -672,7 +805,7 @@ export class Renderer {
 
       // Draw Main Player Chassis Circle
       ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+      ctx.arc(bodyScr.x, bodyScr.y, radius + motion.bodyScale, 0, Math.PI * 2);
       ctx.fill();
 
       // Outline
@@ -692,7 +825,7 @@ export class Renderer {
         ctx.shadowColor = '#ef4444';
         ctx.shadowBlur = 12;
         ctx.beginPath();
-        ctx.arc(scr.x, scr.y, radius + pulse, 0, Math.PI * 2);
+        ctx.arc(bodyScr.x, bodyScr.y, radius + pulse, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
 
@@ -703,9 +836,9 @@ export class Renderer {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(scr.x - 7, scr.y - arrowOffset);
-        ctx.lineTo(scr.x + 7, scr.y - arrowOffset);
-        ctx.lineTo(scr.x, scr.y - arrowOffset + 9);
+        ctx.moveTo(bodyScr.x - 7, bodyScr.y - arrowOffset);
+        ctx.lineTo(bodyScr.x + 7, bodyScr.y - arrowOffset);
+        ctx.lineTo(bodyScr.x, bodyScr.y - arrowOffset + 9);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
@@ -717,8 +850,8 @@ export class Renderer {
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(scr.x, scr.y);
-      ctx.lineTo(scr.x + Math.cos(p.angle) * (radius - 2), scr.y + Math.sin(p.angle) * (radius - 2));
+      ctx.moveTo(bodyScr.x, bodyScr.y);
+      ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
       ctx.stroke();
 
       // Highlight core represent eye visor
@@ -728,13 +861,13 @@ export class Renderer {
       // Side ticks showing helmet look direction
       const leftVisor = p.angle - 0.4;
       const rightVisor = p.angle + 0.4;
-      ctx.moveTo(scr.x + Math.cos(leftVisor) * (radius - 4), scr.y + Math.sin(leftVisor) * (radius - 4));
-      ctx.lineTo(scr.x + Math.cos(p.angle) * (radius - 2), scr.y + Math.sin(p.angle) * (radius - 2));
-      ctx.lineTo(scr.x + Math.cos(rightVisor) * (radius - 4), scr.y + Math.sin(rightVisor) * (radius - 4));
+      ctx.moveTo(bodyScr.x + Math.cos(leftVisor) * (radius - 4), bodyScr.y + Math.sin(leftVisor) * (radius - 4));
+      ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
+      ctx.lineTo(bodyScr.x + Math.cos(rightVisor) * (radius - 4), bodyScr.y + Math.sin(rightVisor) * (radius - 4));
       ctx.stroke();
 
       // Draw Weapon Frame
-      this._drawPlayerWeapon(ctx, scr, p);
+      this._drawPlayerWeapon(ctx, bodyScr, p, motion);
 
       // Restore style frame before text elements
       ctx.restore();
@@ -749,16 +882,16 @@ export class Renderer {
       const textWidth = ctx.measureText(tagText).width;
 
       ctx.fillStyle = 'rgba(11, 12, 16, 0.75)';
-      ctx.fillRect(scr.x - textWidth / 2 - 4, scr.y - radius - 24, textWidth + 8, 14);
+      ctx.fillRect(bodyScr.x - textWidth / 2 - 4, bodyScr.y - radius - 24, textWidth + 8, 14);
 
       ctx.fillStyle = isLocal ? '#ffffff' : '#ccd6f6';
-      ctx.fillText(tagText, scr.x, scr.y - radius - 13);
+      ctx.fillText(tagText, bodyScr.x, bodyScr.y - radius - 13);
 
       // Mini floating HP bars (hovering above head)
       const barW = 32;
       const barH = 3.5;
-      const barX = scr.x - barW / 2;
-      const barY = scr.y - radius - 8;
+      const barX = bodyScr.x - barW / 2;
+      const barY = bodyScr.y - radius - 8;
 
       // Hp Bar Background border
       ctx.fillStyle = '#111216';
@@ -776,84 +909,134 @@ export class Renderer {
   /**
    * Draw miniature weapon icons on player circle boundary
    */
-  _drawPlayerWeapon(ctx, scr, player) {
+  _drawPlayerWeapon(ctx, scr, player, motion = {}) {
     const radius = 14;
-    const wAngle = player.angle + 0.55; // Slightly to the side of look direction
-    const wX = scr.x + Math.cos(wAngle) * radius;
-    const wY = scr.y + Math.sin(wAngle) * radius;
+    const weaponAngle = Number.isFinite(motion.weaponAngle) ? motion.weaponAngle : player.angle;
+    const reach = Number.isFinite(motion.weaponReach) ? motion.weaponReach : 0;
+    const active = Math.abs(reach) > 1;
+    const holdOffset = active ? 0.24 : 0.55;
+    const wAngle = weaponAngle + holdOffset;
+    const wDistance = radius + Math.max(0, reach * 0.38);
+    const wX = scr.x + Math.cos(wAngle) * wDistance;
+    const wY = scr.y + Math.sin(wAngle) * wDistance;
 
     ctx.save();
     ctx.strokeStyle = player.accentColor;
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.fillStyle = '#111216';
+    ctx.shadowBlur = active ? 8 : 0;
+    ctx.shadowColor = player.accentColor;
 
     const weaponType = player.weapon;
 
     if (weaponType === 'sword') {
-      // Small blade
       ctx.translate(wX, wY);
-      ctx.rotate(player.angle + Math.PI / 4);
+      ctx.rotate(weaponAngle + Math.PI / 4);
+      ctx.strokeStyle = '#dbeafe';
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.lineTo(12, -12);
+      ctx.lineTo(15 + Math.max(0, reach * 0.32), -15 - Math.max(0, reach * 0.32));
+      ctx.stroke();
+
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-4, 2);
+      ctx.lineTo(3, -4);
       ctx.stroke();
     } 
     
     else if (weaponType === 'axe') {
-      // Axe head
       ctx.translate(wX, wY);
-      ctx.rotate(player.angle);
+      ctx.rotate(weaponAngle);
+      ctx.strokeStyle = '#d1d5db';
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(0, -6);
-      ctx.lineTo(0, 6);
-      ctx.lineTo(8, 8);
-      ctx.lineTo(8, -8);
+      ctx.moveTo(-8, 0);
+      ctx.lineTo(9 + Math.max(0, reach * 0.18), 0);
+      ctx.stroke();
+
+      ctx.strokeStyle = player.accentColor;
+      ctx.fillStyle = '#111216';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(4, -9);
+      ctx.lineTo(13, -5);
+      ctx.lineTo(13, 5);
+      ctx.lineTo(4, 9);
+      ctx.quadraticCurveTo(9, 0, 4, -9);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
     } 
     
     else if (weaponType === 'bow') {
-      // Curved bow arc
-      ctx.translate(wX, wY);
+      const bowX = scr.x + Math.cos(player.angle + 0.62) * radius;
+      const bowY = scr.y + Math.sin(player.angle + 0.62) * radius;
+      ctx.translate(bowX, bowY);
       ctx.rotate(player.angle);
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.arc(0, 0, 8, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = active ? '#ffffff' : 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(0, -8);
+      ctx.lineTo(active ? -5 : -2, 0);
+      ctx.lineTo(0, 8);
       ctx.stroke();
     } 
     
     else if (weaponType === 'spear') {
-      // Long stick tip
+      const baseX = scr.x + Math.cos(player.angle) * (radius - 2);
+      const baseY = scr.y + Math.sin(player.angle) * (radius - 2);
+      const tipX = scr.x + Math.cos(player.angle) * (radius + 18 + Math.max(0, reach));
+      const tipY = scr.y + Math.sin(player.angle) * (radius + 18 + Math.max(0, reach));
+
       ctx.strokeStyle = '#d1d5db';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(wX, wY);
-      ctx.lineTo(wX + Math.cos(player.angle) * 16, wY + Math.sin(player.angle) * 16);
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo(tipX, tipY);
       ctx.stroke();
 
-      // Spear Tip
       ctx.fillStyle = player.accentColor;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.save();
+      ctx.translate(tipX, tipY);
+      ctx.rotate(player.angle);
       ctx.beginPath();
-      const tx = wX + Math.cos(player.angle) * 16;
-      const ty = wY + Math.sin(player.angle) * 16;
-      ctx.arc(tx, ty, 3.5, 0, Math.PI * 2);
+      ctx.moveTo(5, 0);
+      ctx.lineTo(-4, -4);
+      ctx.lineTo(-2, 0);
+      ctx.lineTo(-4, 4);
+      ctx.closePath();
       ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     } 
     
     else if (weaponType === 'gauntlet') {
-      // Fists represent double small shields
       ctx.fillStyle = player.accentColor;
-      ctx.beginPath();
-      ctx.arc(wX, wY, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-      
-      const wAngleLeft = player.angle - 0.55;
-      const wXLeft = scr.x + Math.cos(wAngleLeft) * radius;
-      const wYLeft = scr.y + Math.sin(wAngleLeft) * radius;
-      ctx.beginPath();
-      ctx.arc(wXLeft, wYLeft, 3.5, 0, Math.PI * 2);
-      ctx.fill();
+      [-0.24, 0.24].forEach(offset => {
+        const fistAngle = player.angle + offset;
+        const fistDist = radius + 2 + Math.max(0, reach * 0.45);
+        const fistX = scr.x + Math.cos(fistAngle) * fistDist;
+        const fistY = scr.y + Math.sin(fistAngle) * fistDist;
+
+        ctx.beginPath();
+        ctx.arc(fistX, fistY, active ? 5.2 : 3.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = active ? '#ffffff' : '#111216';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
     }
 
     ctx.restore();
@@ -862,25 +1045,22 @@ export class Renderer {
   /**
    * Draw attack range helper outline and subtle fill
    */
-  _drawPlayerAttackRange(ctx, scr, player, isLocal) {
+  _drawPlayerAttackRange(ctx, scr, player, isLocal, isAttacking = false) {
     if (!player || player.isDead) return;
     const weapon = Weapons[player.weapon];
     if (!weapon) return;
+    if (!isLocal && !isAttacking) return;
 
     ctx.save();
-    
-    // Choose beautiful range colors.
-    // For local player, make it slightly more highlighted or more solid, but still light gray.
-    // For other remote players, make it extremely faint or thin so it doesn't clutter.
-    const fillColor = isLocal ? 'rgba(225, 225, 235, 0.04)' : 'rgba(225, 225, 235, 0.015)';
-    const strokeColor = isLocal ? 'rgba(200, 201, 204, 0.28)' : 'rgba(200, 201, 204, 0.12)';
-    
-    ctx.fillStyle = fillColor;
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = isLocal ? 1.5 : 1.0;
-    
-    // We can use a nice dash array. Local player gets [4, 4], remote gets [3, 5] or solid thin
-    ctx.setLineDash(isLocal ? [4, 4] : [3, 5]);
+
+    const guideColor = isAttacking ? weapon.color : '#d1d5db';
+    const fillAlpha = isAttacking ? 0.035 : 0.018;
+    const strokeAlpha = isAttacking ? 0.36 : 0.18;
+
+    ctx.fillStyle = this._hexToRGB(guideColor, fillAlpha);
+    ctx.strokeStyle = this._hexToRGB(guideColor, strokeAlpha);
+    ctx.lineWidth = isAttacking ? 1.6 : 1.1;
+    ctx.setLineDash(isAttacking ? [] : [6, 7]);
 
     const range = weapon.range;
     const angle = player.angle;
@@ -927,11 +1107,22 @@ export class Renderer {
       ctx.stroke();
     } 
     else if (weapon.type === 'projectile') {
-      // For bow or any projectile, show maximum range circle
+      const start = 22;
+      const x1 = scr.x + Math.cos(angle) * start;
+      const y1 = scr.y + Math.sin(angle) * start;
+      const x2 = scr.x + Math.cos(angle) * range;
+      const y2 = scr.y + Math.sin(angle) * range;
+
       ctx.beginPath();
-      ctx.arc(scr.x, scr.y, range, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
       ctx.stroke();
+
+      ctx.setLineDash([]);
+      ctx.fillStyle = this._hexToRGB(guideColor, isAttacking ? 0.42 : 0.2);
+      ctx.beginPath();
+      ctx.arc(x2, y2, isAttacking ? 4 : 3, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.restore();
@@ -992,4 +1183,20 @@ export class Renderer {
     let b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function easeOutCubic(value) {
+  const t = clamp01(value);
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function easeOutBack(value) {
+  const t = clamp01(value);
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
