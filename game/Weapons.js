@@ -15,7 +15,7 @@ export const Weapons = {
     angle: 110,    // degrees
     type: 'melee_arc',
     description: '공수 밸런스가 뛰어난 무기입니다. 준수한 사거리와 공격 속도를 자랑합니다.',
-    skill: 'F 스킬: 360° 3회전 후 마우스 방향으로 검기 발사 (벽·적 명중 시 폭발) · 쿨타임 4초',
+    skill: 'F 스킬: 0.25초 간격으로 3회전하며 검기 3회 발사 (벽·적 명중 시 폭발) · 쿨타임 4초',
     color: '#45f3ff'
   },
   axe: {
@@ -90,12 +90,12 @@ export const SkillConfig = {
   sword: {
     cooldownMs: 4000,
     waveSpeed: 800,        // sword-energy projectile speed (px/s)
-    waveCount: 3,          // blades fired by one cast
-    waveSpread: 0.28,      // radians between adjacent blades
+    spinCount: 3,          // spins per cast, each spin fires one blade
+    spinIntervalMs: 250,
     directDamage: 24,      // damage on direct contact
     explosionRadius: 70,   // explosion AoE radius (px)
     explosionDamage: 20,   // explosion AoE damage
-    spins: 100               // visual full rotations while casting
+    spins: 3                // visual full rotations while casting
   },
   axe: {
     cooldownMs: 6000,      // starts AFTER the buff ends

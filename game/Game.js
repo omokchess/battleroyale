@@ -28,6 +28,7 @@ export class Game {
     // Game state entities
     this.players = {};
     this.projectiles = [];
+    this.pendingSwordWaves = [];
     this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
 
     // Flags
@@ -65,6 +66,7 @@ export class Game {
     this.gameOver = false;
     this.players = {};
     this.projectiles = [];
+    this.pendingSwordWaves = [];
     this.effects = [];
     this.lastInputSentAt = 0;
     this.lastInputSignature = '';
@@ -249,6 +251,8 @@ export class Game {
       }
     });
 
+    this._releaseDueSwordWaves(now);
+
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
       const p = this.players[id];
@@ -396,6 +400,7 @@ export class Game {
         if (!p.respawnTime) {
           p.respawnTime = now + 2500; // 2.5 seconds spawn time
           p.clearCombatTimers(); // drop buffs/dash/skill state on death
+          this._clearPendingSwordWavesFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
@@ -498,32 +503,20 @@ export class Game {
   }
 
   /**
-   * Sword skill: spinning cast + sword-energy projectiles that explode on
-   * contact with a wall or a player.
+   * Sword skill: three timed spins, each releasing one sword-energy projectile.
    */
   _castSwordSkill(player, now) {
     const sk = SkillConfig.sword;
-    const spawnDist = player.radius + 4;
-    const waveCount = Math.max(1, Math.floor(sk.waveCount || 1));
-    const waveSpread = Number.isFinite(sk.waveSpread) ? sk.waveSpread : 0;
-    const startAngle = player.angle - ((waveCount - 1) * waveSpread) / 2;
+    const spinCount = Math.max(1, Math.floor(sk.spinCount || sk.waveCount || 1));
+    const spinIntervalMs = Math.max(0, sk.spinIntervalMs || 0);
 
-    for (let i = 0; i < waveCount; i++) {
-      const angle = startAngle + waveSpread * i;
-      const proj = new Projectile(
-        `${player.id}-wave-${now}-${i}`,
-        player.id,
-        player.x + Math.cos(angle) * spawnDist,
-        player.y + Math.sin(angle) * spawnDist,
-        angle,
-        sk.waveSpeed,
-        Infinity,
-        sk.directDamage,
-        'swordwave'
-      );
-      proj.explosionRadius = sk.explosionRadius;
-      proj.explosionDamage = sk.explosionDamage;
-      this.projectiles.push(proj);
+    for (let i = 0; i < spinCount; i++) {
+      this.pendingSwordWaves.push({
+        playerId: player.id,
+        castAt: now,
+        releaseAt: now + spinIntervalMs * i,
+        sequence: i
+      });
     }
 
     this.effects.push({
@@ -533,13 +526,55 @@ export class Game {
       angle: player.angle,
       weapon: 'sword',
       type: 'sword_skill',
-      spins: sk.spins,
+      spins: sk.spins || spinCount,
       progress: 0,
       timestamp: now,
-      lifetime: 520
+      lifetime: Math.max(250, spinIntervalMs * spinCount)
     });
 
     player.skillCdLeft = sk.cooldownMs / 1000;
+  }
+
+  _releaseDueSwordWaves(now) {
+    if (!this.pendingSwordWaves?.length) return;
+
+    const waiting = [];
+    for (const wave of this.pendingSwordWaves) {
+      if (wave.releaseAt > now) {
+        waiting.push(wave);
+        continue;
+      }
+
+      const player = this.players[wave.playerId];
+      if (!player || player.isDead || player.weapon !== 'sword') continue;
+      this._spawnSwordWave(player, wave.castAt, wave.sequence);
+    }
+    this.pendingSwordWaves = waiting;
+  }
+
+  _spawnSwordWave(player, castAt, sequence) {
+    const sk = SkillConfig.sword;
+    const spawnDist = player.radius + 4;
+    const angle = player.angle;
+    const proj = new Projectile(
+      `${player.id}-wave-${castAt}-${sequence}`,
+      player.id,
+      player.x + Math.cos(angle) * spawnDist,
+      player.y + Math.sin(angle) * spawnDist,
+      angle,
+      sk.waveSpeed,
+      Infinity,
+      sk.directDamage,
+      'swordwave'
+    );
+    proj.explosionRadius = sk.explosionRadius;
+    proj.explosionDamage = sk.explosionDamage;
+    this.projectiles.push(proj);
+  }
+
+  _clearPendingSwordWavesFor(playerId) {
+    if (!this.pendingSwordWaves?.length) return;
+    this.pendingSwordWaves = this.pendingSwordWaves.filter(wave => wave.playerId !== playerId);
   }
 
   _explodeSwordWave(proj, now) {
@@ -1056,6 +1091,7 @@ export class Game {
       this.backgroundIntervalId = null;
     }
 
+    this.pendingSwordWaves = [];
     this.input.cleanUp(this.canvas);
     if (this.networkManager) {
       this.networkManager.stop();
