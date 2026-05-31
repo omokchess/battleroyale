@@ -822,7 +822,7 @@ export class Renderer {
   _resolveEffectAttachment(effect, players = {}) {
     if (!this._isPlayerBoundEffect(effect)) return effect;
 
-    const attacker = players[effect.attackerId];
+    const attacker = this._findPlayerById(players, effect.attackerId);
     if (!attacker || attacker.isDead) return effect;
 
     return {
@@ -837,7 +837,7 @@ export class Renderer {
       return { x: particle.x, y: particle.y };
     }
 
-    const anchor = players[particle.anchorId];
+    const anchor = this._findPlayerById(players, particle.anchorId);
     if (!anchor || anchor.isDead) {
       return { x: particle.x, y: particle.y };
     }
@@ -846,6 +846,12 @@ export class Renderer {
       x: anchor.x + (particle.offsetX || 0),
       y: anchor.y + (particle.offsetY || 0)
     };
+  }
+
+  _findPlayerById(players = {}, id) {
+    if (!id) return null;
+    if (players[id]) return players[id];
+    return Object.values(players).find(player => player && player.id === id) || null;
   }
 
   _getAttackMotion(player, effect) {
@@ -918,7 +924,7 @@ export class Renderer {
 
       const scr = camera.toScreen(p.x, p.y, cw, ch);
       const isLocal = id === localPlayerId;
-      const activeAttack = activeAttacks[id] || null;
+      const activeAttack = activeAttacks[id] || activeAttacks[p.id] || null;
       const motion = this._getAttackMotion(p, activeAttack);
       const bodyScr = {
         x: scr.x + motion.bodyX,

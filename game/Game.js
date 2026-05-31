@@ -830,22 +830,10 @@ export class Game {
             return proj;
           });
 
-          // 3. Reconcile active effects
-          // Since client gets complete active list, append incoming items directly
-          this.effects = data.effects.map(effectSnap => {
-            return {
-              x: effectSnap.x,
-              y: effectSnap.y,
-              angle: effectSnap.angle,
-              weapon: effectSnap.weapon,
-              type: effectSnap.type,
-              attackerId: effectSnap.attackerId,
-              swingDirection: effectSnap.swingDirection,
-              progress: effectSnap.progress,
-              timestamp: effectSnap.timestamp,
-              lifetime: effectSnap.lifetime
-            };
-          });
+          // 3. Reconcile active effects against this client's own clock.
+          this.effects = (data.effects || [])
+            .map(effectSnap => rebaseEffectSnapshot(effectSnap, now))
+            .filter(effect => effect.progress < 1);
 
           // 4. Removed Legacy Battle Royale Victory/Elimination triggers
           // (Now operating in dynamic infinite deathmatch respawn loop)
@@ -901,6 +889,30 @@ export class Game {
   }
 }
 
+export function rebaseEffectSnapshot(effectSnap, now = Date.now()) {
+  const lifetime = positiveFinite(effectSnap?.lifetime) ? effectSnap.lifetime : 300;
+  let progress = Number.isFinite(effectSnap?.progress) ? effectSnap.progress : 0;
+
+  if (!Number.isFinite(effectSnap?.progress) && Number.isFinite(effectSnap?.timestamp)) {
+    progress = (now - effectSnap.timestamp) / lifetime;
+  }
+
+  progress = clamp01(progress);
+
+  return {
+    x: effectSnap?.x,
+    y: effectSnap?.y,
+    angle: effectSnap?.angle,
+    weapon: effectSnap?.weapon,
+    type: effectSnap?.type,
+    attackerId: effectSnap?.attackerId,
+    swingDirection: effectSnap?.swingDirection,
+    progress,
+    timestamp: now - progress * lifetime,
+    lifetime
+  };
+}
+
 function sanitizeNickname(value) {
   const nickname = String(value || '').trim().replace(/[^\p{L}\p{N}_ -]/gu, '').slice(0, 12);
   return nickname || 'Gladiator';
@@ -930,4 +942,13 @@ function lerpAngle(current, target, amount) {
 
 function localCorrectDist(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by);
+}
+
+function positiveFinite(value) {
+  return Number.isFinite(value) && value > 0;
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
 }

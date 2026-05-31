@@ -37,8 +37,8 @@ export const Weapons = {
   },
   spear: {
     name: '창',
-    damage: 30,
-    cooldown: 700,
+    damage: 22,
+    cooldown: 500,
     range: 115,
     width: 22,     // Width of straight thrust box
     type: 'melee_line',
@@ -47,10 +47,10 @@ export const Weapons = {
   },
   gauntlet: {
     name: '건틀릿',
-    damage: 12,
-    cooldown: 220,
-    range: 45,
-    angle: 80,
+    damage: 15,
+    cooldown: 180,
+    range: 58,
+    angle: 100,
     type: 'melee_arc',
     description: '쉴 새 없는 연속 펀치 공격입니다. 사거리는 극도로 짧지만 공격 속도가 무시무시합니다.',
     color: '#ff45db'
