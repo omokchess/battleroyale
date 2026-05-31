@@ -839,21 +839,26 @@ export class Renderer {
     const progress = clamp01(e.progress);
     const length = weapon.range;
     const width = weapon.width;
-    const thrust = progress < 0.14
+    const rawThrust = progress < 0.14
       ? easeOutBack(progress / 0.14)
       : Math.max(0, 1 - (progress - 0.14) / 0.86);
+    const thrust = clamp01(rawThrust);
     const angle = e.angle;
-    const reach = length * (0.35 + 0.65 * thrust);
+    const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * 8);
+    const fistRadius = Math.max(6, width * 0.42) * pulse;
+    const burstRadius = progress < 0.28 ? Math.min(width * 0.5, 7 + 12 * progress) : 0;
+    const maxVisualRadius = Math.max(fistRadius, burstRadius);
+    const rawReach = length * (0.28 + 0.62 * thrust);
+    const reach = Math.max(maxVisualRadius + 2, Math.min(length - maxVisualRadius - 2, rawReach));
     const fistX = scr.x + Math.cos(angle) * reach;
     const fistY = scr.y + Math.sin(angle) * reach;
-    const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * 8);
 
     ctx.save();
     ctx.lineCap = 'round';
 
     if (progress < 0.55) {
       const laneAlpha = 0.13 * (1 - progress / 0.55);
-      this._drawAttackLane(ctx, scr.x, scr.y, angle, length, width * 1.3, this._hexToRGB(weapon.color, laneAlpha));
+      this._drawAttackLane(ctx, scr.x, scr.y, angle, length, width, this._hexToRGB(weapon.color, laneAlpha));
     }
 
     const trailStart = Math.max(10, reach - length * 0.48);
@@ -863,7 +868,7 @@ export class Renderer {
       scr.y + Math.sin(angle) * trailStart,
       fistX,
       fistY,
-      width * 0.95 * alpha,
+      width * 0.72 * alpha,
       this._hexToRGB(weapon.color, 0.36 * alpha),
       'round'
     );
@@ -887,7 +892,6 @@ export class Renderer {
     ctx.fillStyle = this._hexToRGB(weapon.color, 0.72 * alpha);
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
     ctx.lineWidth = 2;
-    const fistRadius = Math.max(7, width * 0.58) * pulse;
     ctx.beginPath();
     ctx.arc(0, 0, fistRadius, 0, Math.PI * 2);
     ctx.fill();
@@ -907,7 +911,7 @@ export class Renderer {
       ctx.strokeStyle = this._hexToRGB(weapon.color, 0.48 * (1 - progress / 0.28));
       ctx.lineWidth = 2.4;
       ctx.beginPath();
-      ctx.arc(fistX, fistY, 10 + 30 * progress, 0, Math.PI * 2);
+      ctx.arc(fistX, fistY, burstRadius, 0, Math.PI * 2);
       ctx.stroke();
     }
 

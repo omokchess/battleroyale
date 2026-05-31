@@ -28,7 +28,7 @@ export const Weapons = {
     angle: 360,    // Full circle
     type: 'melee_circle',
     description: '파괴적인 360도 회전 공격을 펼칩니다. 자신 주변의 모든 적에게 피해를 줍니다.',
-    skill: 'F 스킬: 10초간 공격 속도 3배·공격 범위 73px 증가 · 쿨타임 버프 종료 후 6초',
+    skill: 'F 스킬: 3초간 공격력 50·공격 속도 3배·공격 범위 73px 버스트 · 쿨타임 버프 종료 후 6초',
     color: '#f55555'
   },
   bow: {
@@ -99,7 +99,8 @@ export const SkillConfig = {
   },
   axe: {
     cooldownMs: 6000,      // starts AFTER the buff ends
-    buffMs: 10000,
+    buffMs: 3000,
+    damage: 50,
     attackSpeedMult: 3,    // base cooldown divided by this
     range: 73,
     spinFxIntervalMs: 180,
@@ -144,6 +145,7 @@ export function getEffectiveWeapon(weaponKey, buffType = null) {
   if (buffType === 'axe_rage' && weaponKey === 'axe') {
     return {
       ...base,
+      damage: SkillConfig.axe.damage,
       cooldown: base.cooldown / SkillConfig.axe.attackSpeedMult,
       range: SkillConfig.axe.range
     };

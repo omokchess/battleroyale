@@ -34,12 +34,15 @@ test('dash is gated by its cooldown', () => {
   assert.equal(p.startDash(1, 0), false);
 });
 
-test('axe rage buff triples attack speed and widens range', () => {
+test('axe rage buff is a short high-damage burst', () => {
   const base = Weapons.axe;
   const buffed = getEffectiveWeapon('axe', 'axe_rage');
+  assert.equal(SkillConfig.axe.buffMs, 3000);
+  assert.equal(buffed.damage, 50);
   assert.equal(buffed.cooldown, base.cooldown / SkillConfig.axe.attackSpeedMult);
   assert.equal(buffed.range, SkillConfig.axe.range);
   // The base config is never mutated.
+  assert.equal(Weapons.axe.damage, base.damage);
   assert.equal(Weapons.axe.cooldown, base.cooldown);
 });
 
