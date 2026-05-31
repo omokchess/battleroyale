@@ -12,6 +12,7 @@ export const MsgType = {
   PLAYER_LEFT: 'PLAYER_LEFT',
   PLAYER_INPUT: 'PLAYER_INPUT',
   PLAYER_AIM: 'PLAYER_AIM',
+  PLAYER_ACTION: 'PLAYER_ACTION',
   WEAPON_SELECT: 'WEAPON_SELECT',
   GAME_STATE: 'GAME_STATE',
   PLAYER_DIED: 'PLAYER_DIED',
@@ -48,6 +49,17 @@ export const Protocol = {
   // Broadcast pointer aim angle
   clientAim(angle) {
     return { type: MsgType.PLAYER_AIM, angle };
+  },
+
+  // Discrete one-shot commands (dash / skill). Dash carries the intended
+  // movement direction so the host reproduces the client's burst direction.
+  clientAction(action, dx = 0, dy = 0) {
+    const msg = { type: MsgType.PLAYER_ACTION, action };
+    if (action === 'dash') {
+      msg.dx = dx;
+      msg.dy = dy;
+    }
+    return msg;
   },
 
   // System snapshot state

@@ -7,6 +7,7 @@ import { NetworkManager } from './multiplayer/NetworkManager.js';
 import { Game } from './game/Game.js';
 import { Weapons } from './game/Weapons.js';
 import { Protocol } from './multiplayer/Protocol.js';
+import { RoomRegistry } from './multiplayer/RoomRegistry.js';
 
 // Dom Elements
 const lobbyMenu = document.getElementById('lobbyMenu');
@@ -27,8 +28,15 @@ const weaponStats = document.getElementById('weaponStats');
 const statusMsg = document.getElementById('statusMsg');
 const hostServerIndicator = document.getElementById('hostServerIndicator');
 
+const roomListContainer = document.getElementById('roomListContainer');
+const roomListStatus = document.getElementById('roomListStatus');
+const refreshRoomsBtn = document.getElementById('refreshRoomsBtn');
+
 let netManager = null;
 let activeGame = null;
+
+// Cross-device room presence (broker-backed, localStorage fallback).
+const roomRegistry = new RoomRegistry();
 
 /**
  * 1. Weapon Selector UI setup
@@ -81,6 +89,7 @@ function displayWeaponStats(weaponType) {
       <span class="min-w-0 whitespace-nowrap">🏃 이동속도: <strong class="text-white">${moveSpeedLabel}</strong></span>
       <span class="min-w-0 break-keep whitespace-normal">${extraDetails}</span>
     </div>
+    <p class="mt-2 pt-2 border-t border-gray-700 text-[10px] leading-snug break-keep whitespace-normal" style="color:${cfg.color}">${cfg.skill || ''}</p>
   `;
 }
 
@@ -140,10 +149,7 @@ hostBtn.addEventListener('click', () => {
     hostBtn.disabled = false;
     hostBtn.textContent = '방 만들기';
 
-    // Transition overlay styles
-    lobbyMenu.classList.add('hidden');
-    gameScreen.classList.remove('hidden');
-    hostServerIndicator.classList.remove('hidden');
+    enterGameScreen(true);
 
     // Run Game
     activeGame = new Game(gameCanvas, netManager);
@@ -151,6 +157,14 @@ hostBtn.addEventListener('click', () => {
       // Disconnected callback (return to lobby view)
       showLobbyScreen();
     });
+
+    // Advertise the room so other devices can find it in their list.
+    const weapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
+    roomRegistry.startHosting(allocatedCode, () => ({
+      host: nickname,
+      weapon,
+      players: activeGame ? Object.keys(activeGame.players).length : 1
+    }));
   });
 
   netManager.on('onError', (err) => {
@@ -165,11 +179,11 @@ hostBtn.addEventListener('click', () => {
 });
 
 /**
- * 4. Match Joining workflow
+ * 4. Match Joining workflow (shared by the Join button and room-list clicks)
  */
-joinBtn.addEventListener('click', () => {
+function startJoin(rawCode) {
   const nickname = nicknameInput.value.trim();
-  const roomCode = joinRoomInput.value.trim();
+  const roomCode = String(rawCode || '').trim();
   const chosenWeapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
 
   if (!nickname) {
@@ -187,16 +201,14 @@ joinBtn.addEventListener('click', () => {
 
   netManager = new NetworkManager();
 
-  // Create registration registration payload frame
+  // Create registration payload frame
   const joinPayload = Protocol.joinRoom(nickname, chosenWeapon);
 
   netManager.on('onConnected', () => {
     joinBtn.disabled = false;
-    joinBtn.textContent = '방 참가하기';
+    joinBtn.textContent = '참가';
 
-    lobbyMenu.classList.add('hidden');
-    gameScreen.classList.remove('hidden');
-    hostServerIndicator.classList.add('hidden'); // Guest - hide isHost badge
+    enterGameScreen(false);
 
     activeGame = new Game(gameCanvas, netManager);
     activeGame.start(() => {
@@ -206,29 +218,43 @@ joinBtn.addEventListener('click', () => {
 
   netManager.on('onError', (err) => {
     joinBtn.disabled = false;
-    joinBtn.textContent = '방 참가하기';
+    joinBtn.textContent = '참가';
     showError(err);
     netManager.stop();
   });
 
   // Query and join room code
   netManager.joinRoom(roomCode, joinPayload);
-});
+}
+
+joinBtn.addEventListener('click', () => startJoin(joinRoomInput.value.trim()));
 
 /**
- * 5. Leave or game result quit actions
+ * 5. Lobby / game screen transitions
  */
+function enterGameScreen(isHost) {
+  lobbyMenu.classList.add('hidden');
+  gameScreen.classList.remove('hidden');
+  hostServerIndicator.classList.toggle('hidden', !isHost);
+  stopLobbyBrowsing();
+}
+
 function showLobbyScreen() {
   lobbyMenu.classList.remove('hidden');
   gameScreen.classList.add('hidden');
   hostServerIndicator.classList.add('hidden');
-  
+
+  // Tear down any room advertisement and resume browsing the list.
+  roomRegistry.stopHosting();
+
   if (activeGame) {
     activeGame = null;
   }
   if (netManager) {
     netManager = null;
   }
+
+  startLobbyBrowsing();
 }
 
 leaveBtn.addEventListener('click', () => {
@@ -245,5 +271,84 @@ resultLobbyBtn.addEventListener('click', () => {
   }
 });
 
+/**
+ * 6. Room list browser
+ */
+function startLobbyBrowsing() {
+  roomRegistry.startBrowsing(renderRoomList);
+  updateRoomListStatus();
+}
+
+function stopLobbyBrowsing() {
+  roomRegistry.stopBrowsing();
+  lastRoomSig = null; // force a fresh render next time the lobby opens
+}
+
+function updateRoomListStatus() {
+  if (!roomListStatus) return;
+  roomListStatus.textContent = roomRegistry.online
+    ? '🌐 온라인 — 다른 기기의 방도 표시됩니다'
+    : '💾 로컬 모드 — 같은 브라우저 탭만 표시';
+}
+
+let lastRoomSig = null;
+
+function renderRoomList(rooms) {
+  if (!roomListContainer) return;
+  updateRoomListStatus();
+
+  // Skip rebuilding identical DOM (the prune timer fires every 2.5s).
+  const sig = rooms.map(r => `${r.code}|${r.host}|${r.weapon}|${r.players}`).join(';');
+  if (sig === lastRoomSig) return;
+  lastRoomSig = sig;
+
+  if (!rooms.length) {
+    roomListContainer.innerHTML =
+      '<div class="text-gray-500 font-mono text-[11px] text-center py-8">열려 있는 방이 없습니다.<br>왼쪽에서 방을 만들어 보세요!</div>';
+    return;
+  }
+
+  roomListContainer.innerHTML = rooms.map(room => {
+    const cfg = Weapons[room.weapon] || Weapons.sword;
+    const code = escapeHtml(room.code);
+    const host = escapeHtml(room.host || room.code);
+    const players = Number.isFinite(room.players) ? room.players : 1;
+    return `
+      <button class="room-row w-full text-left bg-[#0b0c10] border-2 border-gray-700 hover:border-[#66fcf1] p-2.5 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2" data-code="${code}">
+        <div class="min-w-0">
+          <div class="font-mono text-sm text-white font-bold truncate">${code}</div>
+          <div class="font-mono text-[10px] text-gray-400 truncate">👤 ${host} · <span style="color:${cfg.color}">${cfg.name}</span></div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="font-mono text-[10px] text-[#66fcf1] font-bold">▶ 참가</div>
+          <div class="font-mono text-[10px] text-green-400">👥 ${players}명</div>
+        </div>
+      </button>`;
+  }).join('');
+}
+
+if (roomListContainer) {
+  roomListContainer.addEventListener('click', (e) => {
+    const row = e.target.closest('.room-row');
+    if (!row) return;
+    const code = row.dataset.code;
+    if (joinRoomInput) joinRoomInput.value = code;
+    startJoin(code);
+  });
+}
+
+if (refreshRoomsBtn) {
+  refreshRoomsBtn.addEventListener('click', () => {
+    renderRoomList(roomRegistry.list());
+  });
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+
 // Run Setup on page launch
 setupWeaponSelector();
+startLobbyBrowsing();

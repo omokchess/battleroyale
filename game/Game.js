@@ -9,7 +9,7 @@ import { Collision } from './Collision.js';
 import { Camera } from './Camera.js';
 import { Input } from './Input.js';
 import { Renderer } from './Renderer.js';
-import { Weapons } from './Weapons.js';
+import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 
 export class Game {
@@ -122,8 +122,14 @@ export class Game {
   _resizeBound = () => this._resizeCanvas();
 
   _resizeCanvas() {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    // Render at the device's true pixel density so phones/retina screens look
+    // crisp. The drawing buffer is dpr× the CSS size; Input scales pointer
+    // coordinates by the same ratio so aim stays accurate everywhere.
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    this.canvas.width = Math.round(window.innerWidth * dpr);
+    this.canvas.height = Math.round(window.innerHeight * dpr);
+    this.canvas.style.width = `${window.innerWidth}px`;
+    this.canvas.style.height = `${window.innerHeight}px`;
   }
 
   /**
@@ -145,6 +151,15 @@ export class Game {
         this.camera.update(hp.x, hp.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
         if (!hp.isDead) {
           this.input.updateAimAngle(hp, this.camera, this.canvas.width, this.canvas.height);
+          hp.angle = this.input.aimAngle;
+          // Host applies its own dash/skill directly (it is authoritative).
+          if (this.input.consumeDash()) {
+            const { dx, dy } = this.input.getMoveVector();
+            this._tryDash(hp, dx, dy);
+          }
+          if (this.input.consumeSkill()) {
+            this._activateSkill(hp, now);
+          }
         }
       }
 
@@ -165,6 +180,18 @@ export class Game {
 
         // Calibrate accurate aiming angle taking camera boundaries into account
         this.input.updateAimAngle(localPlayer, this.camera, this.canvas.width, this.canvas.height);
+        localPlayer.angle = this.input.aimAngle;
+
+        // Dash is applied optimistically for snappy feel, then reconciled by
+        // the host. Skills are host-authoritative (they spawn shared entities).
+        if (this.input.consumeDash()) {
+          const { dx, dy } = this.input.getMoveVector();
+          localPlayer.startDash(dx, dy);
+          this.networkManager.sendToHost(Protocol.clientAction('dash', dx, dy));
+        }
+        if (this.input.consumeSkill()) {
+          this.networkManager.sendToHost(Protocol.clientAction('skill'));
+        }
 
         // Optimistic local update for zero input latency feel
         localPlayer.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
@@ -204,13 +231,31 @@ export class Game {
     // 2. Resolve Player collisions to avoid clipping
     Collision.resolvePlayerCollisions(this.players);
 
+    // 2.5 Advance skill buffs & cooldowns authoritatively.
+    Object.keys(this.players).forEach(id => {
+      const p = this.players[id];
+      if (p.isDead) return;
+      if (p.buffTimeLeft > 0) {
+        p.buffTimeLeft -= deltaTime;
+        if (p.buffTimeLeft <= 0) {
+          // Buff expired → the post-buff cooldown begins now.
+          p.buffTimeLeft = 0;
+          p.buffType = null;
+          const sk = SkillConfig[p.weapon];
+          p.skillCdLeft = sk ? sk.cooldownMs / 1000 : 0;
+        }
+      } else if (p.skillCdLeft > 0) {
+        p.skillCdLeft = Math.max(0, p.skillCdLeft - deltaTime);
+      }
+    });
+
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
       const p = this.players[id];
       if (p.isDead) return;
 
-      const weaponConfig = Weapons[p.weapon];
-      
+      const weaponConfig = getEffectiveWeapon(p.weapon, p.buffType);
+
       // Automatic Attack on cooldown trigger
       if (p.canAttack(now)) {
         const swingDirection = p.triggerAttack(now);
@@ -224,6 +269,7 @@ export class Game {
             y: p.y,
             angle: p.angle,
             weapon: p.weapon,
+            buffType: p.buffType,
             type: weaponConfig.type,
             swingDirection,
             progress: 0,
@@ -243,7 +289,7 @@ export class Game {
               }
             }
           });
-        } 
+        }
         
         // Ranged trigger (bow Projectile)
         else {
@@ -281,39 +327,50 @@ export class Game {
     this.projectiles.forEach(proj => {
       if (proj.isDead) return;
 
-      proj.update(deltaTime);
-      if (proj.checkWallCollision(this.mapWidth, this.mapHeight)) {
-        this.effects.push({
-          attackerId: proj.ownerId,
-          x: proj.x,
-          y: proj.y,
-          angle: Math.atan2(proj.vy, proj.vx),
-          weapon: 'bow',
-          type: 'projectile_burst',
-          progress: 0,
-          timestamp: now,
-          lifetime: 320
-        });
+      // Boomerang javelin has its own out/return flight handling.
+      if (proj.kind === 'thrownspear') {
+        this._updateThrownSpear(proj, deltaTime, now);
         return;
       }
 
-      // Check hit detections
+      proj.update(deltaTime);
+
+      if (proj.checkWallCollision(this.mapWidth, this.mapHeight)) {
+        if (proj.kind === 'swordwave') {
+          this._explodeSwordWave(proj, now);
+        } else {
+          this.effects.push({
+            attackerId: proj.ownerId,
+            x: proj.x,
+            y: proj.y,
+            angle: Math.atan2(proj.vy, proj.vx),
+            weapon: 'bow',
+            type: 'projectile_burst',
+            progress: 0,
+            timestamp: now,
+            lifetime: 320
+          });
+        }
+        return;
+      }
+
+      // Check hit detections (i-frames let a dashing player phase through).
       Object.keys(this.players).forEach(tid => {
         const target = this.players[tid];
-        if (proj.isDead) return;
+        if (proj.isDead || target.isInvincible()) return;
 
         if (Collision.checkProjectileHit(proj, target)) {
+          if (proj.kind === 'swordwave') {
+            // Direct contact damage, then the explosion AoE.
+            const died = target.takeDamage(proj.damage, 'swordwave');
+            if (died) this._creditKill(proj.ownerId, target, '검기로');
+            this._explodeSwordWave(proj, now);
+            return;
+          }
+
           proj.isDead = true;
           const died = target.takeDamage(proj.damage, 'arrow');
-          if (died) {
-            const killer = this.players[proj.ownerId];
-            if (killer) {
-              killer.kills++;
-              this._announce(`${killer.nickname}님이 활로 ${target.nickname}님을 처치했습니다!`);
-            } else {
-              this._announce(`${target.nickname}님이 전사했습니다.`);
-            }
-          }
+          if (died) this._creditKill(proj.ownerId, target, '활로');
         }
       });
     });
@@ -338,6 +395,7 @@ export class Game {
       if (p.isDead) {
         if (!p.respawnTime) {
           p.respawnTime = now + 2500; // 2.5 seconds spawn time
+          p.clearCombatTimers(); // drop buffs/dash/skill state on death
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
@@ -348,6 +406,7 @@ export class Game {
           p.y = spawnP.y;
           p.respawnTime = 0;
           p.respawnRemainingMs = 0;
+          p.clearCombatTimers();
           this._announce(`${p.nickname}님이 다시 부활했습니다!`);
         }
       } else {
@@ -365,6 +424,281 @@ export class Game {
 
     // Update stats UI counters
     this._updateHUD();
+  }
+
+  /**
+   * Credit a kill + broadcast a feed line.
+   */
+  _creditKill(killerId, target, viaLabel = '') {
+    const killer = this.players[killerId];
+    if (killer) {
+      killer.kills++;
+      const via = viaLabel ? `${viaLabel} ` : '';
+      this._announce(`${killer.nickname}님이 ${via}${target.nickname}님을 처치했습니다!`);
+    } else {
+      this._announce(`${target.nickname}님이 전사했습니다.`);
+    }
+  }
+
+  /**
+   * Route a one-shot action (dash/skill) from any player (host-local or guest).
+   */
+  _handlePlayerAction(player, data, now) {
+    if (!player || player.isDead) return;
+    if (data.action === 'dash') {
+      const hasDir = Number.isFinite(data.dx) || Number.isFinite(data.dy);
+      const v = hasDir ? { dx: data.dx || 0, dy: data.dy || 0 } : dirFromKeys(player.keys || {});
+      this._tryDash(player, v.dx, v.dy);
+    } else if (data.action === 'skill') {
+      this._activateSkill(player, now);
+    }
+  }
+
+  _tryDash(player, dirX, dirY) {
+    if (!player || player.isDead) return;
+    player.startDash(dirX, dirY);
+  }
+
+  _canUseSkill(player) {
+    return Boolean(player) && !player.isDead &&
+      player.buffTimeLeft <= 0 && player.skillCdLeft <= 0 && !player.spearThrown;
+  }
+
+  /**
+   * Activate the weapon's F skill (host-authoritative).
+   */
+  _activateSkill(player, now) {
+    if (!this._canUseSkill(player)) return;
+
+    switch (player.weapon) {
+      case 'sword': this._castSwordSkill(player, now); break;
+      case 'axe': this._startBuff(player, 'axe_rage', SkillConfig.axe.buffMs, now); break;
+      case 'bow': this._castRailgun(player, now); break;
+      case 'spear': this._throwSpear(player, now); break;
+      case 'gauntlet': this._startBuff(player, 'gauntlet_lance', SkillConfig.gauntlet.buffMs, now); break;
+      default: break;
+    }
+  }
+
+  _startBuff(player, buffType, buffMs, now) {
+    player.buffType = buffType;
+    player.buffTimeLeft = buffMs / 1000;
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: player.weapon,
+      buffType,
+      type: 'buff_activate',
+      progress: 0,
+      timestamp: now,
+      lifetime: 520
+    });
+  }
+
+  /**
+   * Sword skill: spinning cast + a sword-energy projectile that explodes on
+   * contact with a wall or a player.
+   */
+  _castSwordSkill(player, now) {
+    const sk = SkillConfig.sword;
+    const spawnDist = player.radius + 4;
+    const proj = new Projectile(
+      `${player.id}-wave-${now}`,
+      player.id,
+      player.x + Math.cos(player.angle) * spawnDist,
+      player.y + Math.sin(player.angle) * spawnDist,
+      player.angle,
+      sk.waveSpeed,
+      Infinity,
+      sk.directDamage,
+      'swordwave'
+    );
+    proj.explosionRadius = sk.explosionRadius;
+    proj.explosionDamage = sk.explosionDamage;
+    this.projectiles.push(proj);
+
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'sword',
+      type: 'sword_skill',
+      spins: sk.spins,
+      progress: 0,
+      timestamp: now,
+      lifetime: 520
+    });
+
+    player.skillCdLeft = sk.cooldownMs / 1000;
+  }
+
+  _explodeSwordWave(proj, now) {
+    proj.isDead = true;
+    this.effects.push({
+      attackerId: proj.ownerId,
+      x: proj.x,
+      y: proj.y,
+      angle: proj.angle,
+      weapon: 'sword',
+      type: 'explosion',
+      radius: proj.explosionRadius,
+      progress: 0,
+      timestamp: now,
+      lifetime: 380
+    });
+
+    Object.keys(this.players).forEach(tid => {
+      const target = this.players[tid];
+      if (target.id === proj.ownerId || target.isDead || target.isInvincible()) return;
+      const dist = Math.hypot(target.x - proj.x, target.y - proj.y);
+      if (dist <= proj.explosionRadius + target.radius) {
+        const died = target.takeDamage(proj.explosionDamage, 'swordwave');
+        if (died) this._creditKill(proj.ownerId, target, '검기 폭발로');
+      }
+    });
+  }
+
+  /**
+   * Bow skill: instant 50000px/s railgun resolved as a hitscan that strikes the
+   * first enemy on the line; a beam effect is drawn out to the hit point/wall.
+   */
+  _castRailgun(player, now) {
+    const sk = SkillConfig.bow;
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+
+    let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    let hitTarget = null;
+    Object.keys(this.players).forEach(tid => {
+      const target = this.players[tid];
+      if (target.id === player.id || target.isDead || target.isInvincible()) return;
+      const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, target.x, target.y, target.radius);
+      if (d !== null && d <= hitDist) {
+        hitDist = d;
+        hitTarget = target;
+      }
+    });
+
+    if (hitTarget) {
+      const died = hitTarget.takeDamage(sk.damage, 'railgun');
+      if (died) this._creditKill(player.id, hitTarget, '레일건으로');
+    }
+
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      x2: player.x + dirX * hitDist,
+      y2: player.y + dirY * hitDist,
+      angle: player.angle,
+      weapon: 'bow',
+      type: 'railbeam',
+      progress: 0,
+      timestamp: now,
+      lifetime: 420
+    });
+
+    player.skillCdLeft = sk.cooldownMs / 1000;
+  }
+
+  /**
+   * Spear skill: throw a javelin that flies to the wall, then boomerangs back
+   * to the owner. Cooldown only starts once it is retrieved.
+   */
+  _throwSpear(player, now) {
+    const sk = SkillConfig.spear;
+    player.spearThrown = true;
+    const spawnDist = player.radius + 6;
+    const proj = new Projectile(
+      `${player.id}-javelin-${now}`,
+      player.id,
+      player.x + Math.cos(player.angle) * spawnDist,
+      player.y + Math.sin(player.angle) * spawnDist,
+      player.angle,
+      sk.throwSpeed,
+      Infinity,
+      sk.damage,
+      'thrownspear'
+    );
+    proj.bornAt = now;
+    proj.phase = 'out';
+    proj.stuck = false;
+    proj.hitSet = new Set();
+    this.projectiles.push(proj);
+  }
+
+  _updateThrownSpear(proj, deltaTime, now) {
+    const owner = this.players[proj.ownerId];
+    const sk = SkillConfig.spear;
+    const elapsed = now - proj.bornAt;
+
+    // Owner left or died → drop the spear and free the skill.
+    if (!owner || owner.isDead) {
+      proj.isDead = true;
+      if (owner) {
+        owner.spearThrown = false;
+        owner.skillCdLeft = sk.cooldownMs / 1000;
+      }
+      return;
+    }
+
+    if (proj.phase === 'out') {
+      if (!proj.stuck) {
+        proj.x += proj.vx * deltaTime;
+        proj.y += proj.vy * deltaTime;
+        // Stick into the wall instead of disappearing.
+        if (proj.x <= proj.radius || proj.x >= this.mapWidth - proj.radius ||
+            proj.y <= proj.radius || proj.y >= this.mapHeight - proj.radius) {
+          proj.x = Math.max(proj.radius, Math.min(this.mapWidth - proj.radius, proj.x));
+          proj.y = Math.max(proj.radius, Math.min(this.mapHeight - proj.radius, proj.y));
+          proj.stuck = true;
+          proj.vx = 0;
+          proj.vy = 0;
+        }
+      }
+      if (elapsed >= sk.outMs) {
+        proj.phase = 'return';
+        proj.stuck = false;
+      }
+    }
+
+    if (proj.phase === 'return') {
+      const dx = owner.x - proj.x;
+      const dy = owner.y - proj.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < 20 || elapsed >= sk.totalMs) {
+        proj.isDead = true;
+        owner.spearThrown = false;
+        owner.skillCdLeft = sk.cooldownMs / 1000;
+        return;
+      }
+
+      const timeLeft = Math.max(0.001, (sk.totalMs - elapsed) / 1000);
+      const speed = Math.max(sk.throwSpeed, dist / timeLeft); // arrive by totalMs
+      const ux = dx / dist;
+      const uy = dy / dist;
+      proj.vx = ux * speed;
+      proj.vy = uy * speed;
+      proj.angle = Math.atan2(uy, ux);
+      proj.x += proj.vx * deltaTime;
+      proj.y += proj.vy * deltaTime;
+    }
+
+    // Damage each enemy at most once for the whole throw.
+    Object.keys(this.players).forEach(tid => {
+      const target = this.players[tid];
+      if (target.id === proj.ownerId || target.isDead || target.isInvincible() || proj.hitSet.has(target.id)) return;
+      if (Collision.checkProjectileHit(proj, target)) {
+        proj.hitSet.add(target.id);
+        const died = target.takeDamage(sk.damage, 'javelin');
+        if (died) this._creditKill(proj.ownerId, target, '투창으로');
+      }
+    });
   }
 
   _sendLocalInput(now) {
@@ -397,7 +731,15 @@ export class Game {
    */
   _updateClientInterpolations(deltaTime) {
     const now = Date.now();
-    
+
+    // Locally drain i-frame / buff timers so the white dash flash and buff aura
+    // fade smoothly at 60fps between the ~22Hz host snapshots.
+    Object.keys(this.players).forEach(id => {
+      const p = this.players[id];
+      if (p.iframeTimeLeft > 0) p.iframeTimeLeft = Math.max(0, p.iframeTimeLeft - deltaTime);
+      if (p.buffTimeLeft > 0) p.buffTimeLeft = Math.max(0, p.buffTimeLeft - deltaTime);
+    });
+
     // Smoothly drag and interpolate positions
     Object.keys(this.players).forEach(id => {
       const p = this.players[id];
@@ -527,6 +869,9 @@ export class Game {
       }
     }
 
+    // Skill (F) + Dash (Space) cooldown indicators
+    this._updateAbilityHud(local);
+
     // Respawn Countdown Overlay
     const respawnOverlay = document.getElementById('respawnOverlay');
     const respawnProgressBar = document.getElementById('respawnProgressBar');
@@ -545,6 +890,53 @@ export class Game {
         }
       } else {
         respawnOverlay.classList.add('hidden');
+      }
+    }
+  }
+
+  /**
+   * Update the F-skill and Space-dash readiness widgets.
+   */
+  _updateAbilityHud(local) {
+    const weaponColor = Weapons[local.weapon]?.color || '#45f3ff';
+
+    const skillState = document.getElementById('hudSkillState');
+    const skillBar = document.getElementById('hudSkillBar');
+    if (skillState && skillBar) {
+      const sk = SkillConfig[local.weapon];
+      if (local.buffTimeLeft > 0) {
+        const total = (sk?.buffMs || 1) / 1000;
+        skillState.textContent = `버프 ${local.buffTimeLeft.toFixed(1)}s`;
+        skillBar.style.width = `${clamp01(local.buffTimeLeft / total) * 100}%`;
+        skillBar.style.background = weaponColor;
+      } else if (local.spearThrown) {
+        skillState.textContent = '비행 중';
+        skillBar.style.width = '100%';
+        skillBar.style.background = weaponColor;
+      } else if (local.skillCdLeft > 0) {
+        const total = (sk?.cooldownMs || 1) / 1000;
+        skillState.textContent = `${local.skillCdLeft.toFixed(1)}s`;
+        skillBar.style.width = `${clamp01(1 - local.skillCdLeft / total) * 100}%`;
+        skillBar.style.background = '#4b5563';
+      } else {
+        skillState.textContent = '준비!';
+        skillBar.style.width = '100%';
+        skillBar.style.background = weaponColor;
+      }
+    }
+
+    const dashState = document.getElementById('hudDashState');
+    const dashBar = document.getElementById('hudDashBar');
+    if (dashState && dashBar) {
+      if (local.dashCdLeft > 0) {
+        const total = DashConfig.cooldownMs / 1000;
+        dashState.textContent = `${local.dashCdLeft.toFixed(1)}s`;
+        dashBar.style.width = `${clamp01(1 - local.dashCdLeft / total) * 100}%`;
+        dashBar.style.background = '#4b5563';
+      } else {
+        dashState.textContent = '준비!';
+        dashBar.style.width = '100%';
+        dashBar.style.background = '#22d3ee';
       }
     }
   }
@@ -732,8 +1124,10 @@ export class Game {
           if (Number.isFinite(data.angle)) {
             player.angle = data.angle;
           }
+        } else if (data.type === MsgType.PLAYER_ACTION) {
+          this._handlePlayerAction(player, data, now);
         }
-      } 
+      }
       
       else {
         // --- CLIENT HANDLERS ---
@@ -784,6 +1178,12 @@ export class Game {
             p.nickname = snap.nickname || p.nickname;
             p.weapon = Weapons[snap.weapon] ? snap.weapon : p.weapon;
             p.respawnRemainingMs = snap.respawnRemainingMs || 0;
+            p.iframeTimeLeft = (snap.iframeMs || 0) / 1000;
+            p.buffType = snap.buffType || null;
+            p.buffTimeLeft = (snap.buffMs || 0) / 1000;
+            p.skillCdLeft = (snap.skillCdMs || 0) / 1000;
+            p.dashCdLeft = (snap.dashCdMs || 0) / 1000;
+            p.spearThrown = Boolean(snap.spearThrown);
             p.color = snap.color;
             p.accentColor = snap.accentColor;
 
@@ -814,8 +1214,8 @@ export class Game {
 
           // 2. Synchronize projectiles: recreate Projectile instances
           this.projectiles = data.projectiles.map(snap => {
-            // Calculate arrow rotation angle based on velocities
-            const angle = Math.atan2(snap.vy, snap.vx);
+            // Prefer the host's explicit heading (a stuck spear has zero velocity).
+            const angle = Number.isFinite(snap.angle) ? snap.angle : Math.atan2(snap.vy, snap.vx);
             const proj = new Projectile(
               snap.id,
               snap.ownerId,
@@ -824,8 +1224,12 @@ export class Game {
               angle,
               snap.speed || Weapons.bow.speed,
               snap.maxRange === null ? Infinity : (snap.maxRange ?? Weapons.bow.range),
-              snap.damage || Weapons.bow.damage
+              snap.damage || Weapons.bow.damage,
+              snap.kind || 'arrow'
             );
+            // Keep the host's exact velocity so client extrapolation matches.
+            if (Number.isFinite(snap.vx)) proj.vx = snap.vx;
+            if (Number.isFinite(snap.vy)) proj.vy = snap.vy;
             proj.isDead = snap.isDead;
             return proj;
           });
@@ -899,18 +1303,24 @@ export function rebaseEffectSnapshot(effectSnap, now = Date.now()) {
 
   progress = clamp01(progress);
 
+  // Spread the snapshot so newer effect fields (x2/y2, radius, spins, buffType)
+  // survive the rebase, then override only the timing fields.
   return {
-    x: effectSnap?.x,
-    y: effectSnap?.y,
-    angle: effectSnap?.angle,
-    weapon: effectSnap?.weapon,
-    type: effectSnap?.type,
-    attackerId: effectSnap?.attackerId,
-    swingDirection: effectSnap?.swingDirection,
+    ...(effectSnap || {}),
     progress,
     timestamp: now - progress * lifetime,
     lifetime
   };
+}
+
+function dirFromKeys(keys = {}) {
+  let dx = 0;
+  let dy = 0;
+  if (keys.w || keys.ArrowUp) dy -= 1;
+  if (keys.s || keys.ArrowDown) dy += 1;
+  if (keys.a || keys.ArrowLeft) dx -= 1;
+  if (keys.d || keys.ArrowRight) dx += 1;
+  return { dx, dy };
 }
 
 function sanitizeNickname(value) {

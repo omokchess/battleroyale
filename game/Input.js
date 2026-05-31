@@ -24,6 +24,10 @@ export class Input {
     this.aimAngle = 0;
     this.isRightJoystickActive = false;
 
+    // Edge-triggered one-shot actions consumed once per frame by the game loop.
+    this.dashRequested = false;
+    this.skillRequested = false;
+
     // Detect if device is touch-capable or loaded from stored preference
     const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     let storedPref = null;
@@ -42,6 +46,8 @@ export class Input {
     this._touchMoveHandler = null;
     this._touchEndHandler = null;
     this._toggleBtnHandler = null;
+    this._dashBtnHandler = null;
+    this._skillBtnHandler = null;
 
     // Mobile Virtual Joystick bound entries
     this._leftTouchStart = null;
@@ -55,6 +61,11 @@ export class Input {
    * Bind event handles to document and viewport canvas
    */
   setupListeners(canvas) {
+    // Seed the pointer at the center of the *drawing buffer* so the first
+    // aim frame is sane before any pointer move arrives.
+    this.mouse.x = canvas.width / 2;
+    this.mouse.y = canvas.height / 2;
+
     this._keyDownHandler = (e) => {
       // Toggle movement keys
       const key = e.key.toLowerCase();
@@ -62,6 +73,10 @@ export class Input {
       if (key === 's' || e.key === 'ArrowDown') this.keys.s = true;
       if (key === 'a' || e.key === 'ArrowLeft') this.keys.a = true;
       if (key === 'd' || e.key === 'ArrowRight') this.keys.d = true;
+
+      // Space = dash, F = weapon skill (edge-triggered, ignore auto-repeat)
+      if (key === ' ' && !e.repeat) this.dashRequested = true;
+      if (key === 'f' && !e.repeat) this.skillRequested = true;
 
       // Prevent scrolling behaviors on gaming buttons
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(e.key.toLowerCase())) {
@@ -79,13 +94,18 @@ export class Input {
 
     this._mouseMoveHandler = (e) => {
       const rect = canvas.getBoundingClientRect();
-      this.mouse.x = e.clientX - rect.left;
-      this.mouse.y = e.clientY - rect.top;
+      // Map CSS pixels onto the canvas drawing buffer. When the buffer and the
+      // displayed size differ (high-DPI phones, scaled canvases) this scaling is
+      // what keeps aim — and therefore firing — correct across resolutions.
+      const scaleX = rect.width ? canvas.width / rect.width : 1;
+      const scaleY = rect.height ? canvas.height / rect.height : 1;
+      this.mouse.x = (e.clientX - rect.left) * scaleX;
+      this.mouse.y = (e.clientY - rect.top) * scaleY;
 
       // Calculate directional radians from player center (canvas center) as fallback
       const centerY = canvas.height / 2;
       const centerX = canvas.width / 2;
-      
+
       this.aimAngle = Math.atan2(this.mouse.y - centerY, this.mouse.x - centerX);
     };
 
@@ -99,8 +119,10 @@ export class Input {
 
       const touch = e.touches[0];
       const rect = canvas.getBoundingClientRect();
-      this.mouse.x = touch.clientX - rect.left;
-      this.mouse.y = touch.clientY - rect.top;
+      const scaleX = rect.width ? canvas.width / rect.width : 1;
+      const scaleY = rect.height ? canvas.height / rect.height : 1;
+      this.mouse.x = (touch.clientX - rect.left) * scaleX;
+      this.mouse.y = (touch.clientY - rect.top) * scaleY;
 
       // Direct movement towards touch coordinate from center
       const centerY = canvas.height / 2;
@@ -183,6 +205,27 @@ export class Input {
       };
       
       toggleBtn.addEventListener('click', this._toggleBtnHandler);
+    }
+
+    // On-screen action buttons (mobile): dash + weapon skill.
+    const dashBtn = document.getElementById('dashBtn');
+    if (dashBtn) {
+      this._dashBtnHandler = (e) => {
+        if (e.cancelable) e.preventDefault();
+        this.dashRequested = true;
+      };
+      dashBtn.addEventListener('touchstart', this._dashBtnHandler, { passive: false });
+      dashBtn.addEventListener('click', this._dashBtnHandler);
+    }
+
+    const skillBtn = document.getElementById('skillBtn');
+    if (skillBtn) {
+      this._skillBtnHandler = (e) => {
+        if (e.cancelable) e.preventDefault();
+        this.skillRequested = true;
+      };
+      skillBtn.addEventListener('touchstart', this._skillBtnHandler, { passive: false });
+      skillBtn.addEventListener('click', this._skillBtnHandler);
     }
 
     if (leftContainer && leftKnob && rightContainer && rightKnob) {
@@ -338,6 +381,37 @@ export class Input {
   }
 
   /**
+   * Read-and-clear the queued dash request (edge-triggered).
+   */
+  consumeDash() {
+    if (!this.dashRequested) return false;
+    this.dashRequested = false;
+    return true;
+  }
+
+  /**
+   * Read-and-clear the queued skill request (edge-triggered).
+   */
+  consumeSkill() {
+    if (!this.skillRequested) return false;
+    this.skillRequested = false;
+    return true;
+  }
+
+  /**
+   * Movement direction vector implied by the currently held keys.
+   */
+  getMoveVector() {
+    let dx = 0;
+    let dy = 0;
+    if (this.keys.w || this.keys.ArrowUp) dy -= 1;
+    if (this.keys.s || this.keys.ArrowDown) dy += 1;
+    if (this.keys.a || this.keys.ArrowLeft) dx -= 1;
+    if (this.keys.d || this.keys.ArrowRight) dx += 1;
+    return { dx, dy };
+  }
+
+  /**
    * Dynamically calibrate aim angle taking clamping boundaries & active camera offsets into consideration
    */
   updateAimAngle(player, camera, canvasWidth, canvasHeight) {
@@ -368,6 +442,21 @@ export class Input {
     if (toggleBtn && this._toggleBtnHandler) {
       toggleBtn.removeEventListener('click', this._toggleBtnHandler);
     }
+
+    const dashBtn = document.getElementById('dashBtn');
+    if (dashBtn && this._dashBtnHandler) {
+      dashBtn.removeEventListener('touchstart', this._dashBtnHandler);
+      dashBtn.removeEventListener('click', this._dashBtnHandler);
+    }
+
+    const skillBtn = document.getElementById('skillBtn');
+    if (skillBtn && this._skillBtnHandler) {
+      skillBtn.removeEventListener('touchstart', this._skillBtnHandler);
+      skillBtn.removeEventListener('click', this._skillBtnHandler);
+    }
+
+    this.dashRequested = false;
+    this.skillRequested = false;
 
     const leftContainer = document.getElementById('leftJoystickContainer');
     const rightContainer = document.getElementById('rightJoystickContainer');

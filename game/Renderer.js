@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Weapons } from './Weapons.js';
+import { Weapons, getEffectiveWeapon, DashConfig } from './Weapons.js';
 
 export class Renderer {
   constructor(canvas) {
@@ -146,7 +146,7 @@ export class Renderer {
     // 3. Melee Swing slash sparks trails
     if (gameState.effects) {
       gameState.effects.forEach(e => {
-        const weapon = Weapons[e.weapon] || Weapons.sword;
+        const weapon = getEffectiveWeapon(e.weapon, e.buffType) || Weapons.sword;
         const anchoredEffect = this._resolveEffectAttachment(e, gameState.players);
         if (e.type === 'projectile_shot') {
           if (Math.random() < 0.75) {
@@ -190,11 +190,39 @@ export class Renderer {
           return;
         }
 
+        // Sword-energy explosion: a quick spark burst at the blast point.
+        if (e.type === 'explosion') {
+          if (e.progress < 0.32 && Math.random() < 0.9) {
+            for (let i = 0; i < 4; i++) {
+              const a = Math.random() * Math.PI * 2;
+              const speed = 70 + Math.random() * 180;
+              this.particles.push({
+                x: e.x,
+                y: e.y,
+                vx: Math.cos(a) * speed,
+                vy: Math.sin(a) * speed,
+                color: Math.random() < 0.5 ? '#ffffff' : weapon.color,
+                size: Math.random() * 2.8 + 1.2,
+                alpha: 1.0,
+                decay: Math.random() * 2.2 + 1.8,
+                shape: Math.random() < 0.5 ? 'rect' : 'circle',
+                layer: 'onTop'
+              });
+            }
+          }
+          return;
+        }
+
+        // Only arc/circle swings emit trailing spark dots. This removes the
+        // stray spear dots that flew past the hitbox, and keeps the new skill
+        // effects (line thrust, railbeam, buff, spin) clean.
+        if (e.type !== 'melee_arc' && e.type !== 'melee_circle') return;
+
         if (Math.random() < 0.45) {
           let px = anchoredEffect.x;
           let py = anchoredEffect.y;
           let angle = anchoredEffect.angle;
-          
+
           if (e.type === 'melee_arc') {
             const spread = (weapon.angle * Math.PI) / 360;
             const ranAngle = anchoredEffect.angle + (Math.random() * spread * 2 - spread);
@@ -252,6 +280,7 @@ export class Renderer {
 
     // 4. Bow arrows trace stardust sparkling trails
     if (gameState.projectiles) {
+      const trailColors = { arrow: '#a3ff45', swordwave: '#45f3ff', thrownspear: '#ffa345' };
       gameState.projectiles.forEach(proj => {
         if (!proj.isDead && Math.random() < 0.35) {
           this.particles.push({
@@ -259,7 +288,7 @@ export class Renderer {
             y: proj.y,
             vx: (Math.random() * 10 - 5) - proj.vx * 0.05,
             vy: (Math.random() * 10 - 5) - proj.vy * 0.05,
-            color: '#a3ff45',
+            color: trailColors[proj.kind] || '#a3ff45',
             size: Math.random() * 1.8 + 0.8,
             alpha: 0.7,
             decay: Math.random() * 3.0 + 1.8,
@@ -391,17 +420,33 @@ export class Renderer {
    */
   _drawProjectiles(ctx, camera, cw, ch, projectiles) {
     ctx.save();
+    const zoom = camera.zoom || 1;
 
     projectiles.forEach(p => {
       if (p.isDead) return;
 
       const scr = camera.toScreen(p.x, p.y, cw, ch);
-      if (scr.x < -40 || scr.x > cw + 40 || scr.y < -40 || scr.y > ch + 40) return;
+      if (scr.x < -60 || scr.x > cw + 60 || scr.y < -60 || scr.y > ch + 60) return;
 
-      const angle = Math.atan2(p.vy, p.vx);
-      const length = 22;
+      const angle = Number.isFinite(p.angle) ? p.angle : Math.atan2(p.vy, p.vx);
 
-      // 1. Draw glowing outer energy trace aura
+      if (p.kind === 'thrownspear') {
+        this._drawThrownSpear(ctx, scr, angle, zoom);
+      } else if (p.kind === 'swordwave') {
+        this._drawSwordWave(ctx, scr, angle, zoom);
+      } else {
+        this._drawArrow(ctx, scr, angle);
+      }
+    });
+
+    ctx.restore();
+  }
+
+  _drawArrow(ctx, scr, angle) {
+    ctx.save();
+    const length = 22;
+
+    // 1. Draw glowing outer energy trace aura
       ctx.strokeStyle = 'rgba(163, 255, 69, 0.4)';
       ctx.lineWidth = 5;
       ctx.lineCap = 'round';
@@ -458,8 +503,79 @@ export class Renderer {
       ctx.lineTo(-2, 3);
       ctx.stroke();
       ctx.restore();
-    });
 
+    ctx.restore();
+  }
+
+  _drawThrownSpear(ctx, scr, angle, zoom) {
+    const len = 30 * Math.max(0.6, zoom);
+    const tailX = scr.x - Math.cos(angle) * len;
+    const tailY = scr.y - Math.sin(angle) * len;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    // Glowing shaft
+    ctx.strokeStyle = 'rgba(255, 163, 69, 0.4)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#d1d5db';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+
+    // Spear head
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#ffa345';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.lineTo(-5, -5);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-5, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+  }
+
+  _drawSwordWave(ctx, scr, angle, zoom) {
+    const r = 18 * Math.max(0.7, zoom);
+
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(angle);
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#45f3ff';
+    ctx.lineCap = 'round';
+
+    // Crescent energy blade facing the direction of travel.
+    ctx.strokeStyle = 'rgba(69, 243, 255, 0.5)';
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, -Math.PI * 0.6, Math.PI * 0.6);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#45f3ff';
+    ctx.lineWidth = 4.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, -Math.PI * 0.6, Math.PI * 0.6);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, -Math.PI * 0.5, Math.PI * 0.5);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -468,19 +584,28 @@ export class Renderer {
    */
   _drawEffects(ctx, camera, cw, ch, effects, players = {}) {
     ctx.save();
+    const zoom = camera.zoom || 1;
 
     effects.forEach(e => {
       if (!e || !Number.isFinite(e.progress)) return;
 
       const anchoredEffect = this._resolveEffectAttachment(e, players);
       const scr = camera.toScreen(anchoredEffect.x, anchoredEffect.y, cw, ch);
-      const weapon = Weapons[e.weapon] || Weapons.sword;
+      const baseWeapon = getEffectiveWeapon(e.weapon, e.buffType) || Weapons.sword;
+      // Convert the weapon's world-space reach into screen pixels so the drawn
+      // effect lines up with the actual hitbox at any camera zoom. This is what
+      // fixes the spear effect spilling past its hitbox on zoomed-out screens.
+      const weapon = {
+        ...baseWeapon,
+        range: (baseWeapon.range || 0) * zoom,
+        width: (baseWeapon.width || 0) * zoom
+      };
       const alpha = clamp01(1 - e.progress);
 
-      if (scr.x < -180 || scr.x > cw + 180 || scr.y < -180 || scr.y > ch + 180) {
+      if (scr.x < -260 || scr.x > cw + 260 || scr.y < -260 || scr.y > ch + 260) {
         return;
       }
-      
+
       ctx.shadowBlur = 14 * alpha;
       ctx.shadowColor = weapon.color;
 
@@ -490,22 +615,23 @@ export class Renderer {
         } else {
           this._drawArcSlash(ctx, scr, anchoredEffect, weapon, alpha);
         }
-      } 
-      
-      else if (e.type === 'melee_circle') {
+      } else if (e.type === 'melee_circle') {
         this._drawAxeSpin(ctx, scr, anchoredEffect, weapon, alpha);
-      } 
-      
-      else if (e.type === 'melee_line') {
+      } else if (e.type === 'melee_line') {
         this._drawSpearThrust(ctx, scr, anchoredEffect, weapon, alpha);
-      }
-
-      else if (e.type === 'projectile_shot') {
+      } else if (e.type === 'projectile_shot') {
         this._drawShotFlash(ctx, scr, e, weapon, alpha);
-      }
-
-      else if (e.type === 'projectile_burst') {
+      } else if (e.type === 'projectile_burst') {
         this._drawProjectileBurst(ctx, scr, e, weapon, alpha);
+      } else if (e.type === 'sword_skill') {
+        this._drawSwordSkillSpin(ctx, scr, e, weapon, alpha, zoom);
+      } else if (e.type === 'explosion') {
+        this._drawExplosion(ctx, scr, e, weapon, alpha, zoom);
+      } else if (e.type === 'railbeam') {
+        const endScr = camera.toScreen(e.x2, e.y2, cw, ch);
+        this._drawRailBeam(ctx, scr, endScr, e, weapon, alpha);
+      } else if (e.type === 'buff_activate') {
+        this._drawBuffActivate(ctx, scr, e, weapon, alpha, zoom);
       }
     });
 
@@ -759,6 +885,112 @@ export class Renderer {
     ctx.restore();
   }
 
+  _drawSwordSkillSpin(ctx, scr, e, weapon, alpha, zoom) {
+    const progress = clamp01(e.progress);
+    const spins = e.spins || 3;
+    const baseR = Math.max(weapon.range, 60 * zoom);
+    const radius = baseR * (0.4 + 0.6 * easeOutCubic(progress));
+    const spin = progress * Math.PI * 2 * spins;
+
+    ctx.save();
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.08 * alpha);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Three rotating blade arcs sweep around the caster.
+    for (let i = 0; i < 3; i++) {
+      const a = spin + i * (Math.PI * 2 / 3);
+      ctx.strokeStyle = i === 0 ? this._hexToRGB('#ffffff', 0.9 * alpha) : this._hexToRGB(weapon.color, 0.85 * alpha);
+      ctx.lineWidth = (i === 0 ? 5 : 3.4) * (0.4 + alpha * 0.6);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, radius, a, a + Math.PI * 0.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawExplosion(ctx, scr, e, weapon, alpha, zoom) {
+    const progress = clamp01(e.progress);
+    const maxR = (e.radius || 70) * zoom;
+    const radius = maxR * easeOutCubic(progress);
+
+    ctx.save();
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.85 * alpha);
+    ctx.lineWidth = 5 * alpha + 1;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = this._hexToRGB('#ffffff', 0.5 * alpha * (1 - progress));
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.18 * alpha);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius * 0.85, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _drawRailBeam(ctx, startScr, endScr, e, weapon, alpha) {
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // Outer glow → core → white-hot center give the railgun beam its punch.
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.35 * alpha);
+    ctx.lineWidth = 14 * alpha + 2;
+    ctx.beginPath();
+    ctx.moveTo(startScr.x, startScr.y);
+    ctx.lineTo(endScr.x, endScr.y);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.9 * alpha);
+    ctx.lineWidth = 5 * alpha + 1;
+    ctx.beginPath();
+    ctx.moveTo(startScr.x, startScr.y);
+    ctx.lineTo(endScr.x, endScr.y);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.95 * alpha);
+    ctx.lineWidth = 2 * alpha + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(startScr.x, startScr.y);
+    ctx.lineTo(endScr.x, endScr.y);
+    ctx.stroke();
+
+    ctx.fillStyle = this._hexToRGB('#ffffff', 0.8 * alpha);
+    ctx.beginPath();
+    ctx.arc(endScr.x, endScr.y, 5 * alpha + 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _drawBuffActivate(ctx, scr, e, weapon, alpha, zoom) {
+    const progress = clamp01(e.progress);
+    const radius = (18 + 46 * easeOutCubic(progress)) * (0.6 + zoom * 0.4);
+
+    ctx.save();
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.8 * alpha);
+    ctx.lineWidth = 4 * alpha + 1;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.7 * alpha);
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(a) * radius * 0.5, scr.y + Math.sin(a) * radius * 0.5);
+      ctx.lineTo(scr.x + Math.cos(a) * radius * 0.9, scr.y + Math.sin(a) * radius * 0.9);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   _drawCapsuleLine(ctx, x1, y1, x2, y2, width, color, lineCap = 'round') {
     ctx.save();
     ctx.strokeStyle = color;
@@ -816,7 +1048,9 @@ export class Renderer {
   _isPlayerBoundEffect(effect) {
     return Boolean(effect && effect.attackerId) &&
       effect.type !== 'projectile_shot' &&
-      effect.type !== 'projectile_burst';
+      effect.type !== 'projectile_burst' &&
+      effect.type !== 'explosion' &&
+      effect.type !== 'railbeam';
   }
 
   _resolveEffectAttachment(effect, players = {}) {
@@ -950,6 +1184,42 @@ export class Renderer {
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = isLocal ? '#ef4444' : '#0b0c10';
       ctx.stroke();
+
+      // Dash i-frame white highlight — bright flash that fades as the
+      // invulnerability window expires.
+      if (p.iframeTimeLeft > 0) {
+        const iAlpha = clamp01(p.iframeTimeLeft / (DashConfig.iframeMs / 1000));
+        ctx.save();
+        ctx.shadowBlur = 16 * iAlpha;
+        ctx.shadowColor = '#ffffff';
+        ctx.fillStyle = this._hexToRGB('#ffffff', 0.85 * iAlpha);
+        ctx.beginPath();
+        ctx.arc(bodyScr.x, bodyScr.y, radius + motion.bodyScale, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = this._hexToRGB('#ffffff', iAlpha);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bodyScr.x, bodyScr.y, radius + motion.bodyScale + 3 + 5 * (1 - iAlpha), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Active skill-buff aura ring (axe rage / gauntlet lance).
+      if (p.buffTimeLeft > 0) {
+        const auraColor = p.buffType === 'axe_rage' ? '#f55555'
+          : p.buffType === 'gauntlet_lance' ? '#ff45db'
+          : p.accentColor;
+        const pulse = 4 + Math.sin(Date.now() / 90) * 2;
+        ctx.save();
+        ctx.strokeStyle = this._hexToRGB(auraColor, 0.9);
+        ctx.shadowColor = auraColor;
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(bodyScr.x, bodyScr.y, radius + 7 + pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Local Player Highlight Marker Ring
       if (isLocal) {
@@ -1117,24 +1387,29 @@ export class Renderer {
     } 
     
     else if (weaponType === 'bow') {
-      const bowX = scr.x + Math.cos(player.angle + 0.62) * radius;
-      const bowY = scr.y + Math.sin(player.angle + 0.62) * radius;
+      // Hold the bow at the player's front edge, oriented along the aim line so
+      // the limb bulges forward and the string sits across the body.
+      const bowX = scr.x + Math.cos(player.angle) * (radius - 1);
+      const bowY = scr.y + Math.sin(player.angle) * (radius - 1);
       ctx.translate(bowX, bowY);
       ctx.rotate(player.angle);
+
+      // Bow limb (forward-facing arc)
       ctx.strokeStyle = player.accentColor;
       ctx.lineWidth = 2.4;
       ctx.beginPath();
-      ctx.arc(0, 0, 8, -Math.PI / 2, Math.PI / 2);
+      ctx.arc(0, 0, 9, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
 
-      ctx.strokeStyle = active ? '#ffffff' : 'rgba(255, 255, 255, 0.55)';
-      ctx.lineWidth = 1.2;
+      // Bowstring + nock (pulled back while firing)
+      ctx.strokeStyle = active ? '#ffffff' : 'rgba(255, 255, 255, 0.6)';
+      ctx.lineWidth = 1.3;
       ctx.beginPath();
-      ctx.moveTo(0, -8);
-      ctx.lineTo(active ? -5 : -2, 0);
-      ctx.lineTo(0, 8);
+      ctx.moveTo(0, -9);
+      ctx.lineTo(active ? -6 : -3, 0);
+      ctx.lineTo(0, 9);
       ctx.stroke();
-    } 
+    }
     
     else if (weaponType === 'spear') {
       const baseX = scr.x + Math.cos(player.angle) * (radius - 2);
@@ -1191,9 +1466,18 @@ export class Renderer {
    */
   _drawPlayerAttackRange(ctx, camera, cw, ch, scr, player, isLocal, isAttacking = false, mapWidth = 0, mapHeight = 0) {
     if (!player || player.isDead) return;
-    const weapon = Weapons[player.weapon];
-    if (!weapon) return;
+    const baseWeapon = getEffectiveWeapon(player.weapon, player.buffType);
+    if (!baseWeapon) return;
     if (!isLocal && !isAttacking) return;
+
+    // Scale the world-space reach to screen pixels so the guide matches the
+    // real hitbox at any zoom (and reflects active skill buffs).
+    const zoom = camera.zoom || 1;
+    const weapon = {
+      ...baseWeapon,
+      range: (baseWeapon.range || 0) * zoom,
+      width: (baseWeapon.width || 0) * zoom
+    };
 
     ctx.save();
 

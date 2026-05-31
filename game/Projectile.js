@@ -4,23 +4,33 @@
  */
 
 export class Projectile {
-  constructor(id, ownerId, x, y, angle, speed, maxRange, damage) {
+  constructor(id, ownerId, x, y, angle, speed, maxRange, damage, kind = 'arrow') {
     this.id = id;
     this.ownerId = ownerId;
     this.x = x;
     this.y = y;
     this.startX = x;
     this.startY = y;
-    
+
     // Deconstruct velocity using trig
     this.vx = Math.cos(angle) * speed;
     this.vy = Math.sin(angle) * speed;
-    
+    this.angle = angle; // explicit heading (kept even when velocity is zero)
+
     this.speed = speed;
     this.maxRange = maxRange;
     this.damage = damage;
+    this.kind = kind; // 'arrow' | 'swordwave' | 'thrownspear'
     this.isDead = false;
     this.radius = 5; // Hit detection radius
+
+    // Skill-projectile runtime fields (set by the host, never serialized).
+    this.explosionRadius = 0;
+    this.explosionDamage = 0;
+    this.bornAt = 0;
+    this.phase = 'out';
+    this.stuck = false;
+    this.hitSet = null;
   }
 
   // Update projectile coordinates
@@ -72,9 +82,11 @@ export class Projectile {
       y: this.y,
       vx: this.vx,
       vy: this.vy,
+      angle: this.angle,
       speed: this.speed,
       maxRange: Number.isFinite(this.maxRange) ? this.maxRange : null,
       damage: this.damage,
+      kind: this.kind,
       isDead: this.isDead
     };
   }
