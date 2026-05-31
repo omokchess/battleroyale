@@ -43,6 +43,31 @@ test('axe rage buff triples attack speed and widens range', () => {
   assert.equal(Weapons.axe.cooldown, base.cooldown);
 });
 
+test('axe rage drops repeated spin effects while active', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.axeRageSpinNextAt = {};
+
+  const player = new Player('axe-player', 'Spinner', 'axe', 100, 100);
+  player.buffType = 'axe_rage';
+  player.buffTimeLeft = 1;
+  game.players[player.id] = player;
+
+  game._emitAxeRageSpinEffects(1000);
+  assert.equal(game.effects.filter(e => e.type === 'axe_rage_spin').length, 1);
+
+  game._emitAxeRageSpinEffects(1000 + SkillConfig.axe.spinFxIntervalMs - 1);
+  assert.equal(game.effects.filter(e => e.type === 'axe_rage_spin').length, 1);
+
+  game._emitAxeRageSpinEffects(1000 + SkillConfig.axe.spinFxIntervalMs);
+  assert.equal(game.effects.filter(e => e.type === 'axe_rage_spin').length, 2);
+
+  player.buffTimeLeft = 0;
+  game._emitAxeRageSpinEffects(1000 + SkillConfig.axe.spinFxIntervalMs * 2);
+  assert.equal(game.axeRageSpinNextAt[player.id], undefined);
+});
+
 test('gauntlet lance buff turns the punch into a straight spear-like thrust', () => {
   const buffed = getEffectiveWeapon('gauntlet', 'gauntlet_lance');
   assert.equal(buffed.type, 'melee_line');
@@ -87,6 +112,34 @@ test('sword skill releases one swordwave per timed spin', () => {
   assert.equal(waves.length, SkillConfig.sword.spinCount);
   assert.equal(new Set(waves.map(p => p.id)).size, waves.length);
   assert.equal(game.pendingSwordWaves.length, 0);
+});
+
+test('bow railgun vibration only fires for the local caster once', () => {
+  const game = Object.create(Game.prototype);
+  const calls = [];
+  game.localPlayerId = 'local-player';
+  game.vibratedRailbeamIds = new Set();
+  game._vibrateDevice = pattern => calls.push(pattern);
+
+  game._triggerLocalBowSkillVibration({
+    id: 'remote-beam',
+    attackerId: 'remote-player',
+    type: 'railbeam',
+    timestamp: 1000
+  });
+  assert.equal(calls.length, 0);
+
+  const localBeam = {
+    id: 'local-beam',
+    attackerId: 'local-player',
+    type: 'railbeam',
+    timestamp: 1000
+  };
+  game._triggerLocalBowSkillVibration(localBeam);
+  game._triggerLocalBowSkillVibration(localBeam);
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], [35, 20, 55]);
 });
 
 test('railgun hitscan reports the closest contact distance and misses cleanly', () => {

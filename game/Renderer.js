@@ -215,8 +215,8 @@ export class Renderer {
 
         // Only arc/circle swings emit trailing spark dots. This removes the
         // stray spear dots that flew past the hitbox, and keeps the new skill
-        // effects (line thrust, railbeam, buff, spin) clean.
-        if (e.type !== 'melee_arc' && e.type !== 'melee_circle') return;
+        // effects (line thrust, railbeam, buff) clean.
+        if (e.type !== 'melee_arc' && e.type !== 'melee_circle' && e.type !== 'axe_rage_spin') return;
 
         if (Math.random() < 0.45) {
           let px = anchoredEffect.x;
@@ -230,7 +230,7 @@ export class Renderer {
             px += Math.cos(ranAngle) * dist;
             py += Math.sin(ranAngle) * dist;
             angle = ranAngle + Math.PI / 2;
-          } else if (e.type === 'melee_circle') {
+          } else if (e.type === 'melee_circle' || e.type === 'axe_rage_spin') {
             const ranAngle = Math.random() * Math.PI * 2;
             const dist = weapon.range * e.progress;
             px += Math.cos(ranAngle) * dist;
@@ -619,8 +619,14 @@ export class Renderer {
         }
       } else if (e.type === 'melee_circle') {
         this._drawAxeSpin(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'axe_rage_spin') {
+        this._drawAxeSpin(ctx, scr, anchoredEffect, weapon, alpha * 0.78);
       } else if (e.type === 'melee_line') {
-        this._drawSpearThrust(ctx, scr, anchoredEffect, weapon, alpha);
+        if (e.weapon === 'gauntlet') {
+          this._drawGauntletLance(ctx, scr, anchoredEffect, weapon, alpha);
+        } else {
+          this._drawSpearThrust(ctx, scr, anchoredEffect, weapon, alpha);
+        }
       } else if (e.type === 'projectile_shot') {
         this._drawShotFlash(ctx, scr, e, weapon, alpha);
       } else if (e.type === 'projectile_burst') {
@@ -823,6 +829,85 @@ export class Renderer {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(scr.x + Math.cos(e.angle) * 12, scr.y + Math.sin(e.angle) * 12, 8 + 28 * progress, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  _drawGauntletLance(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const length = weapon.range;
+    const width = weapon.width;
+    const thrust = progress < 0.14
+      ? easeOutBack(progress / 0.14)
+      : Math.max(0, 1 - (progress - 0.14) / 0.86);
+    const angle = e.angle;
+    const reach = length * (0.35 + 0.65 * thrust);
+    const fistX = scr.x + Math.cos(angle) * reach;
+    const fistY = scr.y + Math.sin(angle) * reach;
+    const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * 8);
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    if (progress < 0.55) {
+      const laneAlpha = 0.13 * (1 - progress / 0.55);
+      this._drawAttackLane(ctx, scr.x, scr.y, angle, length, width * 1.3, this._hexToRGB(weapon.color, laneAlpha));
+    }
+
+    const trailStart = Math.max(10, reach - length * 0.48);
+    this._drawCapsuleLine(
+      ctx,
+      scr.x + Math.cos(angle) * trailStart,
+      scr.y + Math.sin(angle) * trailStart,
+      fistX,
+      fistY,
+      width * 0.95 * alpha,
+      this._hexToRGB(weapon.color, 0.36 * alpha),
+      'round'
+    );
+    this._drawCapsuleLine(
+      ctx,
+      scr.x + Math.cos(angle) * Math.max(8, reach - length * 0.28),
+      scr.y + Math.sin(angle) * Math.max(8, reach - length * 0.28),
+      fistX,
+      fistY,
+      4.2 * alpha,
+      this._hexToRGB('#ffffff', 0.72 * alpha),
+      'round'
+    );
+
+    ctx.save();
+    ctx.translate(fistX, fistY);
+    ctx.rotate(angle);
+
+    ctx.shadowBlur = 12 * alpha;
+    ctx.shadowColor = weapon.color;
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.72 * alpha);
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
+    ctx.lineWidth = 2;
+    const fistRadius = Math.max(7, width * 0.58) * pulse;
+    ctx.beginPath();
+    ctx.arc(0, 0, fistRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.72 * alpha);
+    ctx.lineWidth = 1.5;
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-fistRadius * 0.35, i * fistRadius * 0.34);
+      ctx.lineTo(fistRadius * 0.45, i * fistRadius * 0.22);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (progress < 0.28) {
+      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.48 * (1 - progress / 0.28));
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(fistX, fistY, 10 + 30 * progress, 0, Math.PI * 2);
       ctx.stroke();
     }
 

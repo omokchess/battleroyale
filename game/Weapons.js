@@ -101,7 +101,9 @@ export const SkillConfig = {
     cooldownMs: 6000,      // starts AFTER the buff ends
     buffMs: 10000,
     attackSpeedMult: 3,    // base cooldown divided by this
-    range: 73
+    range: 73,
+    spinFxIntervalMs: 180,
+    spinFxLifetimeMs: 420
   },
   bow: {
     cooldownMs: 8000,

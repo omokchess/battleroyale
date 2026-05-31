@@ -29,6 +29,8 @@ export class Game {
     this.players = {};
     this.projectiles = [];
     this.pendingSwordWaves = [];
+    this.axeRageSpinNextAt = {};
+    this.vibratedRailbeamIds = new Set();
     this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
 
     // Flags
@@ -67,6 +69,8 @@ export class Game {
     this.players = {};
     this.projectiles = [];
     this.pendingSwordWaves = [];
+    this.axeRageSpinNextAt = {};
+    this.vibratedRailbeamIds = new Set();
     this.effects = [];
     this.lastInputSentAt = 0;
     this.lastInputSignature = '';
@@ -252,6 +256,7 @@ export class Game {
     });
 
     this._releaseDueSwordWaves(now);
+    this._emitAxeRageSpinEffects(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -401,6 +406,7 @@ export class Game {
           p.respawnTime = now + 2500; // 2.5 seconds spawn time
           p.clearCombatTimers(); // drop buffs/dash/skill state on death
           this._clearPendingSwordWavesFor(p.id);
+          this._clearAxeRageSpinFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
@@ -577,6 +583,42 @@ export class Game {
     this.pendingSwordWaves = this.pendingSwordWaves.filter(wave => wave.playerId !== playerId);
   }
 
+  _emitAxeRageSpinEffects(now) {
+    if (!this.axeRageSpinNextAt) this.axeRageSpinNextAt = {};
+
+    Object.keys(this.players).forEach(id => {
+      const player = this.players[id];
+      if (!player || player.isDead || player.weapon !== 'axe' || player.buffType !== 'axe_rage' || player.buffTimeLeft <= 0) {
+        delete this.axeRageSpinNextAt[id];
+        return;
+      }
+
+      const sk = SkillConfig.axe;
+      const interval = Math.max(60, sk.spinFxIntervalMs || 180);
+      const nextAt = this.axeRageSpinNextAt[id] ?? now;
+      if (now < nextAt) return;
+
+      this.effects.push({
+        attackerId: player.id,
+        x: player.x,
+        y: player.y,
+        angle: player.angle,
+        weapon: 'axe',
+        buffType: 'axe_rage',
+        type: 'axe_rage_spin',
+        progress: 0,
+        timestamp: now,
+        lifetime: sk.spinFxLifetimeMs || 420
+      });
+      this.axeRageSpinNextAt[id] = now + interval;
+    });
+  }
+
+  _clearAxeRageSpinFor(playerId) {
+    if (!this.axeRageSpinNextAt) return;
+    delete this.axeRageSpinNextAt[playerId];
+  }
+
   _explodeSwordWave(proj, now) {
     proj.isDead = true;
     this.effects.push({
@@ -630,7 +672,8 @@ export class Game {
       if (died) this._creditKill(player.id, hitTarget, '레일건으로');
     }
 
-    this.effects.push({
+    const effect = {
+      id: `${player.id}-railbeam-${now}`,
       attackerId: player.id,
       x: player.x,
       y: player.y,
@@ -642,9 +685,40 @@ export class Game {
       progress: 0,
       timestamp: now,
       lifetime: 420
-    });
+    };
+    this.effects.push(effect);
+    this._triggerLocalBowSkillVibration(effect);
 
     player.skillCdLeft = sk.cooldownMs / 1000;
+  }
+
+  _triggerLocalBowSkillVibrations(effects) {
+    effects.forEach(effect => this._triggerLocalBowSkillVibration(effect));
+  }
+
+  _triggerLocalBowSkillVibration(effect) {
+    if (!effect || effect.type !== 'railbeam' || effect.attackerId !== this.localPlayerId) return;
+
+    if (!this.vibratedRailbeamIds) this.vibratedRailbeamIds = new Set();
+    const effectId = effect.id || `${effect.attackerId}-${effect.timestamp}`;
+    if (this.vibratedRailbeamIds.has(effectId)) return;
+
+    this.vibratedRailbeamIds.add(effectId);
+    if (this.vibratedRailbeamIds.size > 64) {
+      const oldest = this.vibratedRailbeamIds.values().next().value;
+      this.vibratedRailbeamIds.delete(oldest);
+    }
+    this._vibrateDevice([35, 20, 55]);
+  }
+
+  _vibrateDevice(pattern) {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try {
+        navigator.vibrate(pattern);
+      } catch {
+        // Some browsers expose the API but block vibration by policy.
+      }
+    }
   }
 
   /**
@@ -1092,6 +1166,8 @@ export class Game {
     }
 
     this.pendingSwordWaves = [];
+    this.axeRageSpinNextAt = {};
+    this.vibratedRailbeamIds = new Set();
     this.input.cleanUp(this.canvas);
     if (this.networkManager) {
       this.networkManager.stop();
@@ -1282,6 +1358,7 @@ export class Game {
           this.effects = (data.effects || [])
             .map(effectSnap => rebaseEffectSnapshot(effectSnap, now))
             .filter(effect => effect.progress < 1);
+          this._triggerLocalBowSkillVibrations(this.effects);
 
           // 4. Removed Legacy Battle Royale Victory/Elimination triggers
           // (Now operating in dynamic infinite deathmatch respawn loop)
