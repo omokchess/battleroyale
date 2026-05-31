@@ -30,7 +30,6 @@ export class Game {
     this.projectiles = [];
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
-    this.axeRageSpinNextAt = {};
     this.vibratedRailbeamIds = new Set();
     this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
 
@@ -71,7 +70,6 @@ export class Game {
     this.projectiles = [];
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
-    this.axeRageSpinNextAt = {};
     this.vibratedRailbeamIds = new Set();
     this.effects = [];
     this.lastInputSentAt = 0;
@@ -259,7 +257,6 @@ export class Game {
 
     this._releaseDueSwordWaves(now);
     this._releaseDueBowRailguns(now);
-    this._emitAxeRageSpinEffects(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -411,7 +408,6 @@ export class Game {
           p.clearCombatTimers(); // drop buffs/dash/skill state on death
           this._clearPendingSwordWavesFor(p.id);
           this._clearPendingRailgunsFor(p.id);
-          this._clearAxeRageSpinFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
@@ -597,42 +593,6 @@ export class Game {
   _clearPendingRailgunsFor(playerId) {
     if (!this.pendingRailguns?.length) return;
     this.pendingRailguns = this.pendingRailguns.filter(shot => shot.playerId !== playerId);
-  }
-
-  _emitAxeRageSpinEffects(now) {
-    if (!this.axeRageSpinNextAt) this.axeRageSpinNextAt = {};
-
-    Object.keys(this.players).forEach(id => {
-      const player = this.players[id];
-      if (!player || player.isDead || player.weapon !== 'axe' || player.buffType !== 'axe_rage' || player.buffTimeLeft <= 0) {
-        delete this.axeRageSpinNextAt[id];
-        return;
-      }
-
-      const sk = SkillConfig.axe;
-      const interval = Math.max(60, sk.spinFxIntervalMs || 180);
-      const nextAt = this.axeRageSpinNextAt[id] ?? now;
-      if (now < nextAt) return;
-
-      this.effects.push({
-        attackerId: player.id,
-        x: player.x,
-        y: player.y,
-        angle: player.angle,
-        weapon: 'axe',
-        buffType: 'axe_rage',
-        type: 'axe_rage_spin',
-        progress: 0,
-        timestamp: now,
-        lifetime: sk.spinFxLifetimeMs || 420
-      });
-      this.axeRageSpinNextAt[id] = now + interval;
-    });
-  }
-
-  _clearAxeRageSpinFor(playerId) {
-    if (!this.axeRageSpinNextAt) return;
-    delete this.axeRageSpinNextAt[playerId];
   }
 
   _awardBowArrowStack(player) {
@@ -823,6 +783,29 @@ export class Game {
       progress: 0,
       timestamp: now,
       lifetime: 260
+    });
+
+    this._damageSpearThrowPath(player, dirX, dirY, travelDist);
+  }
+
+  _damageSpearThrowPath(player, dirX, dirY, maxDist) {
+    const sk = SkillConfig.spear;
+    Object.keys(this.players).forEach(tid => {
+      const target = this.players[tid];
+      if (target.id === player.id || target.isDead || target.isInvincible()) return;
+      const hitDist = Collision.rayCircleHitDistance(
+        player.x,
+        player.y,
+        dirX,
+        dirY,
+        target.x,
+        target.y,
+        (target.radius || 14) + 5
+      );
+      if (hitDist === null || hitDist > maxDist) return;
+
+      const died = target.takeDamage(sk.damage, 'javelin');
+      if (died) this._creditKill(player.id, target, '투창으로');
     });
   }
 
@@ -1232,7 +1215,6 @@ export class Game {
 
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
-    this.axeRageSpinNextAt = {};
     this.vibratedRailbeamIds = new Set();
     this.input.cleanUp(this.canvas);
     if (this.networkManager) {

@@ -34,41 +34,19 @@ test('dash is gated by its cooldown', () => {
   assert.equal(p.startDash(1, 0), false);
 });
 
-test('axe rage buff is a short high-damage burst', () => {
+test('axe rage buff turns the axe into a fast arc burst', () => {
   const base = Weapons.axe;
   const buffed = getEffectiveWeapon('axe', 'axe_rage');
-  assert.equal(SkillConfig.axe.buffMs, 3000);
+  assert.equal(SkillConfig.axe.buffMs, 4000);
+  assert.equal(buffed.type, 'melee_arc');
   assert.equal(buffed.damage, 50);
-  assert.equal(buffed.cooldown, base.cooldown / SkillConfig.axe.attackSpeedMult);
-  assert.equal(buffed.range, SkillConfig.axe.range);
+  assert.equal(buffed.cooldown, 300);
+  assert.equal(buffed.range, 100);
+  assert.equal(buffed.angle, 120);
   // The base config is never mutated.
   assert.equal(Weapons.axe.damage, base.damage);
+  assert.equal(Weapons.axe.type, base.type);
   assert.equal(Weapons.axe.cooldown, base.cooldown);
-});
-
-test('axe rage drops repeated spin effects while active', () => {
-  const game = Object.create(Game.prototype);
-  game.players = {};
-  game.effects = [];
-  game.axeRageSpinNextAt = {};
-
-  const player = new Player('axe-player', 'Spinner', 'axe', 100, 100);
-  player.buffType = 'axe_rage';
-  player.buffTimeLeft = 1;
-  game.players[player.id] = player;
-
-  game._emitAxeRageSpinEffects(1000);
-  assert.equal(game.effects.filter(e => e.type === 'axe_rage_spin').length, 1);
-
-  game._emitAxeRageSpinEffects(1000 + SkillConfig.axe.spinFxIntervalMs - 1);
-  assert.equal(game.effects.filter(e => e.type === 'axe_rage_spin').length, 1);
-
-  game._emitAxeRageSpinEffects(1000 + SkillConfig.axe.spinFxIntervalMs);
-  assert.equal(game.effects.filter(e => e.type === 'axe_rage_spin').length, 2);
-
-  player.buffTimeLeft = 0;
-  game._emitAxeRageSpinEffects(1000 + SkillConfig.axe.spinFxIntervalMs * 2);
-  assert.equal(game.axeRageSpinNextAt[player.id], undefined);
 });
 
 test('gauntlet lance buff turns the punch into a straight spear-like thrust', () => {
@@ -191,7 +169,7 @@ test('bow arrow stacks survive serialization', () => {
   assert.equal(restored.arrowStacks, 4);
 });
 
-test('spear skill starts at the wall and damages enemies on return', () => {
+test('spear skill pierces outbound path and damages enemies again on return', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.projectiles = [];
@@ -216,14 +194,16 @@ test('spear skill starts at the wall and damages enemies on return', () => {
   assert.equal(spear.phase, 'return');
   assert.ok(spear.x > 690);
   assert.equal(spear.damage, SkillConfig.spear.returnDamage);
+  assert.equal(firstTarget.hp, firstTarget.maxHp - SkillConfig.spear.damage);
+  assert.equal(secondTarget.hp, secondTarget.maxHp - SkillConfig.spear.damage);
 
   game._updateThrownSpear(spear, 0.03, 1030);
-  assert.equal(firstTarget.hp, firstTarget.maxHp - SkillConfig.spear.returnDamage);
-  assert.equal(secondTarget.hp, secondTarget.maxHp);
+  assert.equal(firstTarget.hp, firstTarget.maxHp - SkillConfig.spear.damage - SkillConfig.spear.returnDamage);
+  assert.equal(secondTarget.hp, secondTarget.maxHp - SkillConfig.spear.damage);
 
   game._updateThrownSpear(spear, 0.03, 1060);
-  assert.equal(firstTarget.hp, firstTarget.maxHp - SkillConfig.spear.returnDamage);
-  assert.equal(secondTarget.hp, secondTarget.maxHp - SkillConfig.spear.returnDamage);
+  assert.equal(firstTarget.hp, firstTarget.maxHp - SkillConfig.spear.damage - SkillConfig.spear.returnDamage);
+  assert.equal(secondTarget.hp, secondTarget.maxHp - SkillConfig.spear.damage - SkillConfig.spear.returnDamage);
 });
 
 test('railgun hitscan reports the closest contact distance and misses cleanly', () => {

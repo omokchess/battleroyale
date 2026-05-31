@@ -77,3 +77,50 @@ canvas {
 .animate-announcement {
   animation: announcePulse 3s forwards cubic-bezier(0.175, 0.885, 0.32, 1.2);
 }
+
+@media (min-width: 1024px) and (pointer: fine) {
+  #gameHudOverlay {
+    padding: 1.25rem;
+  }
+
+  #hudPlayerPanel,
+  #hudRoomPanel,
+  #abilityHud {
+    transform: scale(1.12);
+  }
+
+  #hudPlayerPanel {
+    transform-origin: top left;
+  }
+
+  #hudRoomPanel {
+    transform-origin: top right;
+  }
+
+  #abilityHud {
+    transform-origin: bottom left;
+    width: 13rem;
+  }
+
+  #hudName {
+    max-width: 160px;
+    font-size: 0.98rem;
+  }
+
+  #hudHpText,
+  #hudKills,
+  #hudAlive,
+  #hudSkillState,
+  #hudDashState {
+    font-size: 0.75rem;
+  }
+
+  #lobbyMenu .weapon-card {
+    min-height: 4.4rem;
+  }
+
+  #weaponStats {
+    font-size: 0.84rem;
+    min-height: 7rem;
+  }
+}

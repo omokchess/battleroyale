@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Weapons, getEffectiveWeapon, DashConfig } from './Weapons.js';
+import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
 
 export class Renderer {
   constructor(canvas) {
@@ -216,7 +216,7 @@ export class Renderer {
         // Only arc/circle swings emit trailing spark dots. This removes the
         // stray spear dots that flew past the hitbox, and keeps the new skill
         // effects (line thrust, railbeam, buff) clean.
-        if (e.type !== 'melee_arc' && e.type !== 'melee_circle' && e.type !== 'axe_rage_spin') return;
+        if (e.type !== 'melee_arc' && e.type !== 'melee_circle') return;
 
         if (Math.random() < 0.45) {
           let px = anchoredEffect.x;
@@ -230,7 +230,7 @@ export class Renderer {
             px += Math.cos(ranAngle) * dist;
             py += Math.sin(ranAngle) * dist;
             angle = ranAngle + Math.PI / 2;
-          } else if (e.type === 'melee_circle' || e.type === 'axe_rage_spin') {
+          } else if (e.type === 'melee_circle') {
             const ranAngle = Math.random() * Math.PI * 2;
             const dist = weapon.range * e.progress;
             px += Math.cos(ranAngle) * dist;
@@ -619,8 +619,6 @@ export class Renderer {
         }
       } else if (e.type === 'melee_circle') {
         this._drawAxeSpin(ctx, scr, anchoredEffect, weapon, alpha);
-      } else if (e.type === 'axe_rage_spin') {
-        this._drawAxeSpin(ctx, scr, anchoredEffect, weapon, alpha * 0.78);
       } else if (e.type === 'melee_line') {
         if (e.weapon === 'gauntlet') {
           this._drawGauntletLance(ctx, scr, anchoredEffect, weapon, alpha);
@@ -1206,10 +1204,12 @@ export class Renderer {
     let bodyScale = 0;
 
     if (effect.type === 'projectile_shot') {
-      const kick = Math.max(0, 1 - progress);
-      lunge = -4 * kick;
-      weaponReach = -5 * kick;
-      bodyScale = 1.5 * kick;
+      const draw = progress < 0.45
+        ? easeOutCubic(progress / 0.45)
+        : Math.max(0, 1 - (progress - 0.45) / 0.55);
+      lunge = -2 * draw;
+      weaponReach = -11 * draw;
+      bodyScale = 1.1 * draw;
     } else if (effect.type === 'melee_circle') {
       const spin = easeOutCubic(Math.min(1, progress / 0.6));
       weaponAngle = angle + spin * Math.PI * 2.1;
@@ -1417,6 +1417,19 @@ export class Renderer {
       ctx.fillStyle = hpPct > 0.5 ? '#10b981' : hpPct > 0.25 ? '#f59e0b' : '#ef4444';
       ctx.fillRect(barX, barY, barW * hpPct, barH);
 
+      if (p.weapon === 'bow') {
+        const maxStacks = SkillConfig.bow.maxStacks || 5;
+        const stacks = Math.max(0, Math.min(maxStacks, Math.floor(p.arrowStacks || 0)));
+        const stackText = `[${stacks} / ${maxStacks} 스택]`;
+        const stackWidth = ctx.measureText(stackText).width;
+        const stackY = bodyScr.y + radius + 21;
+
+        ctx.fillStyle = 'rgba(11, 12, 16, 0.72)';
+        ctx.fillRect(bodyScr.x - stackWidth / 2 - 4, stackY - 10, stackWidth + 8, 13);
+        ctx.fillStyle = stacks > 0 ? '#a3ff45' : '#9ca3af';
+        ctx.fillText(stackText, bodyScr.x, stackY);
+      }
+
       ctx.restore();
     });
   }
@@ -1467,9 +1480,12 @@ export class Renderer {
       const idleHoldAngle = -Math.PI / 4;
       const idleX = scr.x + Math.cos(idleHoldAngle) * (radius + 2);
       const idleY = scr.y + Math.sin(idleHoldAngle) * (radius + 2);
-      const axeX = active ? wX : idleX;
-      const axeY = active ? wY : idleY;
-      const axeAngle = active ? weaponAngle : -Math.PI / 4;
+      const rageActive = player.buffType === 'axe_rage';
+      const rageX = scr.x + Math.cos(player.angle) * (radius + 3 + Math.max(0, reach * 0.28));
+      const rageY = scr.y + Math.sin(player.angle) * (radius + 3 + Math.max(0, reach * 0.28));
+      const axeX = rageActive ? rageX : idleX;
+      const axeY = rageActive ? rageY : idleY;
+      const axeAngle = rageActive ? weaponAngle : idleHoldAngle;
 
       ctx.translate(axeX, axeY);
       ctx.rotate(axeAngle);
@@ -1510,13 +1526,24 @@ export class Renderer {
       ctx.stroke();
 
       // Bowstring + nock (pulled back while firing)
+      const stringPull = Math.max(0, -reach);
+      const nockX = -3 - stringPull;
       ctx.strokeStyle = active ? '#ffffff' : 'rgba(255, 255, 255, 0.6)';
       ctx.lineWidth = 1.3;
       ctx.beginPath();
       ctx.moveTo(0, -9);
-      ctx.lineTo(active ? -6 : -3, 0);
+      ctx.lineTo(nockX, 0);
       ctx.lineTo(0, 9);
       ctx.stroke();
+
+      if (active) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(nockX, 0);
+        ctx.lineTo(6, 0);
+        ctx.stroke();
+      }
     }
     
     else if (weaponType === 'spear') {
