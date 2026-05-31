@@ -9,7 +9,7 @@ export const Weapons = {
     name: '검',
     damage: 24,
     cooldown: 550, // milliseconds
-    moveSpeed: 1,
+    moveSpeed: 1.1,
     range: 70,     // pixels
     angle: 110,    // degrees
     type: 'melee_arc',
@@ -19,7 +19,7 @@ export const Weapons = {
   },
   axe: {
     name: '도끼',
-    damage: 34,
+    damage: 40,
     cooldown: 900,
     moveSpeed: 0.8,
     range: 58,
@@ -31,11 +31,11 @@ export const Weapons = {
   },
   bow: {
     name: '활',
-    damage: 38,
+    damage: 33,
     cooldown: 800,
-    moveSpeed: 0.6,
+    moveSpeed: 0.65,
     range: Infinity,
-    speed: 520,    // Projectile speed (px/s)
+    speed: 640,    // Projectile speed (px/s)
     type: 'projectile',
     description: '벽에 닿을 때까지 날아가는 장거리 무기입니다. 강력한 피해를 주지만 조준이 까다롭습니다.',
     skill: 'F 스킬: 50000px/s 초고속 레일건 화살 (직선 즉시 명중) · 쿨타임 8초',
@@ -43,11 +43,11 @@ export const Weapons = {
   },
   spear: {
     name: '창',
-    damage: 22,
+    damage: 17,
     cooldown: 500,
     moveSpeed: 1,
-    range: 115,
-    width: 22,     // Width of straight thrust box
+    range: 120,
+    width: 16,     // Width of straight thrust box
     type: 'melee_line',
     description: '직선으로 가하는 찌르기 공격입니다. 사거리가 길고 좌우 범위가 좁습니다.',
     skill: 'F 스킬: 투창! 던진 창이 벽까지 날아갔다 2초 후 부메랑처럼 돌아와 회수 · 쿨타임 회수 후 2초',
@@ -55,11 +55,11 @@ export const Weapons = {
   },
   gauntlet: {
     name: '건틀릿',
-    damage: 15,
-    cooldown: 180,
+    damage: 19,
+    cooldown: 160,
     moveSpeed: 1.3,
     range: 58,
-    angle: 100,
+    angle: 110,
     type: 'melee_arc',
     description: '쉴 새 없는 연속 펀치 공격입니다. 사거리는 극도로 짧지만 공격 속도가 무시무시합니다.',
     skill: 'F 스킬: 7초간 공격이 창처럼 직선으로 변하고 공격력 30·사거리 115px · 쿨타임 버프 종료 후 7초',
