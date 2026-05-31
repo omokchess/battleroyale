@@ -789,7 +789,7 @@ export class Renderer {
   }
 
   _getAttackMotion(player, effect) {
-    const empty = { bodyX: 0, bodyY: 0, bodyScale: 0, weaponReach: 0, weaponAngle: player.angle };
+    const empty = { active: false, bodyX: 0, bodyY: 0, bodyScale: 0, weaponReach: 0, weaponAngle: player.angle };
     if (!effect) return empty;
 
     const progress = clamp01(effect.progress);
@@ -832,6 +832,8 @@ export class Renderer {
     }
 
     return {
+      active: true,
+      effectType: effect.type,
       bodyX: Math.cos(angle) * lunge,
       bodyY: Math.sin(angle) * lunge,
       bodyScale,
@@ -982,7 +984,7 @@ export class Renderer {
     const radius = 14;
     const weaponAngle = Number.isFinite(motion.weaponAngle) ? motion.weaponAngle : player.angle;
     const reach = Number.isFinite(motion.weaponReach) ? motion.weaponReach : 0;
-    const active = Math.abs(reach) > 1;
+    const active = Boolean(motion.active) || Math.abs(reach) > 1;
     const holdOffset = active ? 0.24 : 0.55;
     const wAngle = weaponAngle + holdOffset;
     const wDistance = radius + Math.max(0, reach * 0.38);
@@ -1018,8 +1020,15 @@ export class Renderer {
     } 
     
     else if (weaponType === 'axe') {
-      ctx.translate(wX, wY);
-      ctx.rotate(weaponAngle);
+      const idleHoldAngle = -Math.PI / 4;
+      const idleX = scr.x + Math.cos(idleHoldAngle) * (radius + 2);
+      const idleY = scr.y + Math.sin(idleHoldAngle) * (radius + 2);
+      const axeX = active ? wX : idleX;
+      const axeY = active ? wY : idleY;
+      const axeAngle = active ? weaponAngle : -Math.PI / 4;
+
+      ctx.translate(axeX, axeY);
+      ctx.rotate(axeAngle);
       ctx.strokeStyle = '#d1d5db';
       ctx.lineWidth = 2.2;
       ctx.beginPath();
