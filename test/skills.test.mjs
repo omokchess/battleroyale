@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Player } from '../game/Player.js';
 import { Collision } from '../game/Collision.js';
-import { getEffectiveWeapon, SkillConfig, DashConfig, Weapons } from '../game/Weapons.js';
+import { getEffectiveWeapon, SkillConfig, DashConfig, Weapons, ComboConfig } from '../game/Weapons.js';
 import { Game, rebaseEffectSnapshot } from '../game/Game.js';
 
 test('dash grants i-frames and bursts the player along the held direction', () => {
@@ -91,6 +91,50 @@ test('sword skill releases timed swordwaves without a spin effect', () => {
   assert.equal(waves.length, SkillConfig.sword.waveCount);
   assert.equal(new Set(waves.map(p => p.id)).size, waves.length);
   assert.equal(game.pendingSwordWaves.length, 0);
+});
+
+test('melee combo finishers change weapon shape after the required hits', () => {
+  const game = Object.create(Game.prototype);
+
+  const sword = new Player('sword-combo', 'Blade', 'sword', 0, 0);
+  sword.comboStep = 1;
+  sword.lastAttackTime = 700;
+  const swordSecond = game._resolveComboAttack(sword, Weapons.sword, 1000);
+  assert.equal(swordSecond.step, 2);
+  assert.equal(swordSecond.isFinisher, false);
+  assert.equal(swordSecond.delayAfterMs, ComboConfig.sword.delayBeforeFinisherMs);
+  game._applyComboRecovery(sword, swordSecond, 1000);
+  assert.equal(sword.comboStep, 2);
+  assert.equal(sword.comboDelayUntil, 1000 + ComboConfig.sword.delayBeforeFinisherMs);
+
+  const swordFinisher = game._resolveComboAttack(sword, Weapons.sword, sword.comboDelayUntil);
+  assert.equal(swordFinisher.step, 3);
+  assert.equal(swordFinisher.isFinisher, true);
+  assert.equal(swordFinisher.weaponConfig.type, 'melee_circle');
+  assert.equal(swordFinisher.weaponConfig.angle, 360);
+
+  const axe = new Player('axe-combo', 'Chopper', 'axe', 0, 0);
+  axe.comboStep = 2;
+  axe.lastAttackTime = 2500;
+  const axeFinisher = game._resolveComboAttack(axe, Weapons.axe, 3000);
+  assert.equal(axeFinisher.isFinisher, true);
+  assert.equal(axeFinisher.weaponConfig.type, 'melee_arc');
+  assert.ok(axeFinisher.weaponConfig.range > Weapons.axe.range);
+  assert.ok(axeFinisher.weaponConfig.damage > Weapons.axe.damage);
+
+  const spear = new Player('spear-combo', 'Pike', 'spear', 0, 0);
+  spear.comboStep = 4;
+  spear.lastAttackTime = 4600;
+  const spearFinisher = game._resolveComboAttack(spear, Weapons.spear, 5000);
+  assert.equal(spearFinisher.isFinisher, true);
+  assert.ok(spearFinisher.weaponConfig.range > Weapons.spear.range);
+
+  const gauntlet = new Player('gauntlet-combo', 'Knuckle', 'gauntlet', 0, 0);
+  gauntlet.comboStep = 6;
+  gauntlet.lastAttackTime = 6900;
+  const gauntletFinisher = game._resolveComboAttack(gauntlet, Weapons.gauntlet, 7000);
+  assert.equal(gauntletFinisher.isFinisher, true);
+  assert.equal(gauntletFinisher.weaponConfig.type, 'melee_line');
 });
 
 test('bow railgun vibration only fires for the local caster once', () => {

@@ -27,6 +27,8 @@ export class Player {
     // Cool down tracker
     this.lastAttackTime = 0;
     this.swingDirection = -1;
+    this.comboStep = 0;
+    this.comboDelayUntil = 0;
 
     // --- Dash / i-frame state (seconds remaining) ---
     this.dashTimeLeft = 0;
@@ -160,6 +162,8 @@ export class Player {
     this.buffTimeLeft = 0;
     this.spearThrown = false;
     this.arrowStacks = 0;
+    this.comboStep = 0;
+    this.comboDelayUntil = 0;
   }
 
   /**
@@ -167,6 +171,7 @@ export class Player {
    */
   canAttack(now) {
     if (this.isDead || this.spearThrown) return false;
+    if (now < (this.comboDelayUntil || 0)) return false;
     const weaponConfig = getEffectiveWeapon(this.weapon, this.buffType);
     return (now - this.lastAttackTime) >= weaponConfig.cooldown;
   }
@@ -212,6 +217,8 @@ export class Player {
       dashCdMs: Math.round(this.dashCdLeft * 1000),
       spearThrown: this.spearThrown,
       arrowStacks: this.arrowStacks || 0,
+      comboStep: this.comboStep || 0,
+      comboDelayMs: Math.max(0, Math.round((this.comboDelayUntil || 0) - Date.now())),
       color: this.color,
       accentColor: this.accentColor
     };
@@ -235,6 +242,8 @@ export class Player {
     this.dashCdLeft = (data.dashCdMs || 0) / 1000;
     this.spearThrown = Boolean(data.spearThrown);
     this.arrowStacks = Math.max(0, Math.floor(data.arrowStacks || 0));
+    this.comboStep = Math.max(0, Math.floor(data.comboStep || 0));
+    this.comboDelayUntil = Date.now() + Math.max(0, Math.round(data.comboDelayMs || 0));
     this.color = data.color;
     this.accentColor = data.accentColor;
 

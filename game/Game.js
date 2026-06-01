@@ -9,7 +9,7 @@ import { Collision } from './Collision.js';
 import { Camera } from './Camera.js';
 import { Input } from './Input.js';
 import { Renderer } from './Renderer.js';
-import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
+import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig } from './Weapons.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 
 export class Game {
@@ -48,8 +48,8 @@ export class Game {
     this._hasQuit = false;
     this.lastInputSentAt = 0;
     this.lastInputSignature = '';
-    this.hudLayoutCleanups = [];
-    this._hudLayoutResizeHandler = null;
+    this.visualSettings = this._loadVisualSettings();
+    this._visualSettingsCleanup = null;
 
     // Server-Auth Tick parameters
     this.serverTickTimer = 0;
@@ -123,7 +123,7 @@ export class Game {
 
     // Trigger frame animations
     this._resizeCanvas();
-    this._setupHudLayoutEditor();
+    this._setupVisualSettingsPanel();
     this.animationFrameId = requestAnimationFrame((t) => this._gameLoop(t));
     
     window.addEventListener('resize', this._resizeBound);
@@ -143,218 +143,58 @@ export class Game {
     this.canvas.style.height = `${window.innerHeight}px`;
   }
 
-  _setupHudLayoutEditor() {
-    this._cleanupHudLayoutEditor();
-    if (!this._canEditHudLayout()) return;
+  _setupVisualSettingsPanel() {
+    this._cleanupVisualSettingsPanel();
+    this.visualSettings = this._loadVisualSettings();
 
-    const root = document.getElementById('gameScreen');
-    if (!root) return;
-
-    const savedLayout = this._loadHudLayout();
-    const items = [
-      { id: 'hudPlayerPanel', key: 'player' },
-      { id: 'hudRightCluster', key: 'right' },
-      { id: 'abilityHud', key: 'ability' }
+    const bindings = [
+      ['settingHideEnemyPreview', 'hideEnemyAttackPreviews'],
+      ['settingMinEnemyEffects', 'minimizeEnemyAttackEffects']
     ];
 
-    items.forEach(item => {
-      const el = document.getElementById(item.id);
-      if (!el) return;
-
-      const rect = el.getBoundingClientRect();
-      const saved = savedLayout[item.key] || {};
-      const defaultState = this._getDefaultHudLayoutState(item.key, rect, root);
-      const state = {
-        x: Number.isFinite(saved.x) ? saved.x : defaultState.x,
-        y: Number.isFinite(saved.y) ? saved.y : defaultState.y,
-        scale: Number.isFinite(saved.scale) ? saved.scale : this._readHudScale(el)
+    const cleanups = [];
+    bindings.forEach(([id, key]) => {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.checked = Boolean(this.visualSettings[key]);
+      const onChange = () => {
+        this.visualSettings[key] = Boolean(input.checked);
+        this._saveVisualSettings();
       };
-      state.scale = clamp(state.scale, 0.75, 1.8);
-      this._applyHudLayout(el, this._clampHudLayoutState(el, state));
-
-      el.classList.add('hud-layout-active');
-      el.dataset.hudKey = item.key;
-      el.dataset.hudScale = String(state.scale);
-
-      let resizeHandle = Array.from(el.children).find(child => child.classList.contains('hud-resize-handle'));
-      if (!resizeHandle) {
-        resizeHandle = document.createElement('div');
-        resizeHandle.className = 'hud-resize-handle';
-        resizeHandle.setAttribute('aria-hidden', 'true');
-        el.appendChild(resizeHandle);
-      }
-
-      const onPointerDown = (event) => {
-        if (event.button !== 0) return;
-        const target = event.target;
-        const resizing = target === resizeHandle;
-        if (!resizing && target.closest?.('button, input, select, textarea, a')) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-        el.setPointerCapture?.(event.pointerId);
-        el.classList.add('hud-layout-dragging');
-
-        const start = {
-          pointerId: event.pointerId,
-          clientX: event.clientX,
-          clientY: event.clientY,
-          x: parseFloat(el.dataset.hudX || '0'),
-          y: parseFloat(el.dataset.hudY || '0'),
-          scale: parseFloat(el.dataset.hudScale || '1')
-        };
-
-        const onPointerMove = (moveEvent) => {
-          if (moveEvent.pointerId !== start.pointerId) return;
-          moveEvent.preventDefault();
-          const dx = moveEvent.clientX - start.clientX;
-          const dy = moveEvent.clientY - start.clientY;
-          const next = resizing
-            ? { x: start.x, y: start.y, scale: clamp(start.scale + (dx + dy) / 220, 0.75, 1.8) }
-            : { x: start.x + dx, y: start.y + dy, scale: start.scale };
-          this._applyHudLayout(el, this._clampHudLayoutState(el, next));
-        };
-
-        const finish = (upEvent) => {
-          if (upEvent.pointerId !== start.pointerId) return;
-          el.releasePointerCapture?.(upEvent.pointerId);
-          el.classList.remove('hud-layout-dragging');
-          window.removeEventListener('pointermove', onPointerMove);
-          window.removeEventListener('pointerup', finish);
-          window.removeEventListener('pointercancel', finish);
-          this._saveHudItemLayout(item.key, {
-            x: parseFloat(el.dataset.hudX || '0'),
-            y: parseFloat(el.dataset.hudY || '0'),
-            scale: parseFloat(el.dataset.hudScale || '1')
-          });
-        };
-
-        window.addEventListener('pointermove', onPointerMove, { passive: false });
-        window.addEventListener('pointerup', finish);
-        window.addEventListener('pointercancel', finish);
-      };
-
-      el.addEventListener('pointerdown', onPointerDown);
-      this.hudLayoutCleanups.push(() => {
-        el.removeEventListener('pointerdown', onPointerDown);
-        resizeHandle.remove();
-        el.classList.remove('hud-layout-active', 'hud-layout-dragging');
-        delete el.dataset.hudKey;
-        delete el.dataset.hudX;
-        delete el.dataset.hudY;
-        delete el.dataset.hudScale;
-        ['position', 'left', 'top', 'right', 'bottom', 'transform', 'transform-origin', 'z-index'].forEach(prop => {
-          el.style.removeProperty(prop);
-        });
-      });
+      input.addEventListener('change', onChange);
+      cleanups.push(() => input.removeEventListener('change', onChange));
     });
 
-    this._hudLayoutResizeHandler = () => {
-      if (!this._canEditHudLayout()) {
-        this._cleanupHudLayoutEditor();
-        return;
-      }
-      document.querySelectorAll('.hud-layout-active').forEach(el => {
-        this._applyHudLayout(el, this._clampHudLayoutState(el, {
-          x: parseFloat(el.dataset.hudX || '0'),
-          y: parseFloat(el.dataset.hudY || '0'),
-          scale: parseFloat(el.dataset.hudScale || '1')
-        }));
-      });
-    };
-    window.addEventListener('resize', this._hudLayoutResizeHandler);
+    this._visualSettingsCleanup = () => cleanups.forEach(cleanup => cleanup());
   }
 
-  _cleanupHudLayoutEditor() {
-    if (this._hudLayoutResizeHandler) {
-      window.removeEventListener('resize', this._hudLayoutResizeHandler);
-      this._hudLayoutResizeHandler = null;
+  _cleanupVisualSettingsPanel() {
+    if (this._visualSettingsCleanup) {
+      this._visualSettingsCleanup();
+      this._visualSettingsCleanup = null;
     }
-    this.hudLayoutCleanups?.forEach(cleanup => cleanup());
-    this.hudLayoutCleanups = [];
   }
 
-  _canEditHudLayout() {
-    return typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(pointer: fine)').matches;
-  }
-
-  _readHudScale(el) {
-    const transform = window.getComputedStyle(el).transform;
-    if (!transform || transform === 'none') return 1;
-    const match = transform.match(/^matrix\(([^,]+),\s*([^,]+)/);
-    if (!match) return 1;
-    const a = parseFloat(match[1]);
-    const b = parseFloat(match[2]);
-    return Number.isFinite(a) && Number.isFinite(b) ? Math.hypot(a, b) : 1;
-  }
-
-  _getDefaultHudLayoutState(key, rect, root) {
-    const margin = 16;
-    if (key === 'right') {
-      const compactStack = root.clientWidth < 560;
+  _loadVisualSettings() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem('battle_visual_settings_v1') || '{}') || {};
       return {
-        x: Math.max(margin, root.clientWidth - rect.width - margin),
-        y: compactStack ? 150 : margin
+        hideEnemyAttackPreviews: Boolean(parsed.hideEnemyAttackPreviews),
+        minimizeEnemyAttackEffects: Boolean(parsed.minimizeEnemyAttackEffects)
+      };
+    } catch {
+      return {
+        hideEnemyAttackPreviews: false,
+        minimizeEnemyAttackEffects: false
       };
     }
-    if (key === 'ability') {
-      return { x: margin, y: root.clientHeight - rect.height - margin };
-    }
-    return { x: margin, y: margin };
   }
 
-  _applyHudLayout(el, state) {
-    el.style.position = 'absolute';
-    el.style.left = `${Math.round(state.x)}px`;
-    el.style.top = `${Math.round(state.y)}px`;
-    el.style.right = 'auto';
-    el.style.bottom = 'auto';
-    el.style.transformOrigin = 'top left';
-    el.style.transform = `scale(${state.scale.toFixed(2)})`;
-    el.style.zIndex = '25';
-    el.dataset.hudX = String(Math.round(state.x));
-    el.dataset.hudY = String(Math.round(state.y));
-    el.dataset.hudScale = state.scale.toFixed(2);
-  }
-
-  _clampHudLayoutState(el, state) {
-    const root = document.getElementById('gameScreen');
-    if (!root) return state;
-
-    const scale = clamp(state.scale, 0.75, 1.8);
-    const minVisible = 42;
-    const maxX = Math.max(0, root.clientWidth - minVisible);
-    const visualWidth = Math.max(minVisible, el.offsetWidth * scale);
-    const visualHeight = Math.max(minVisible, el.offsetHeight * scale);
-
-    return {
-      x: clamp(state.x, -visualWidth + minVisible, maxX),
-      y: clamp(state.y, 0, Math.max(0, root.clientHeight - Math.min(minVisible, visualHeight))),
-      scale
-    };
-  }
-
-  _loadHudLayout() {
+  _saveVisualSettings() {
     try {
-      return JSON.parse(localStorage.getItem('battle_hud_layout_v2') || '{}') || {};
+      localStorage.setItem('battle_visual_settings_v1', JSON.stringify(this.visualSettings));
     } catch {
-      return {};
-    }
-  }
-
-  _saveHudItemLayout(key, state) {
-    try {
-      const layout = this._loadHudLayout();
-      layout[key] = {
-        x: Math.round(state.x),
-        y: Math.round(state.y),
-        scale: Number(state.scale.toFixed(2))
-      };
-      localStorage.setItem('battle_hud_layout_v2', JSON.stringify(layout));
-    } catch {
-      // Layout customization is optional; ignore blocked storage.
+      // Visual preferences are optional; ignore blocked storage.
     }
   }
 
@@ -487,68 +327,7 @@ export class Game {
 
       // Automatic Attack on cooldown trigger
       if (p.canAttack(now)) {
-        const swingDirection = p.triggerAttack(now);
-
-        // Melee trigger
-        if (weaponConfig.type !== 'projectile') {
-          // Record slash animations directly
-          const localFx = {
-            attackerId: p.id,
-            x: p.x,
-            y: p.y,
-            angle: p.angle,
-            weapon: p.weapon,
-            buffType: p.buffType,
-            type: weaponConfig.type,
-            swingDirection,
-            progress: 0,
-            timestamp: now,
-            lifetime: weaponConfig.cooldown * 0.75 // Effect decays before next weapon ready
-          };
-          this.effects.push(localFx);
-
-          // Calculate Damage
-          Object.keys(this.players).forEach(tid => {
-            const target = this.players[tid];
-            if (Collision.checkMeleeHit(p, target, weaponConfig)) {
-              const died = target.takeDamage(weaponConfig.damage, p.nickname);
-              if (died) {
-                p.kills++;
-                this._announce(`${p.nickname}님이 ${target.nickname}님을 처치했습니다!`);
-              }
-            }
-          });
-        }
-        
-        // Ranged trigger (bow Projectile)
-        else {
-          const spawnDist = p.radius + 3;
-          const arrowId = `${p.id}-arrow-${now}`;
-          this.effects.push({
-            attackerId: p.id,
-            x: p.x,
-            y: p.y,
-            angle: p.angle,
-            weapon: p.weapon,
-            type: 'projectile_shot',
-            progress: 0,
-            timestamp: now,
-            lifetime: Math.min(weaponConfig.cooldown * 0.45, 260)
-          });
-
-          // Spawn arrow
-          const proj = new Projectile(
-            arrowId,
-            p.id,
-            p.x + Math.cos(p.angle) * spawnDist,
-            p.y + Math.sin(p.angle) * spawnDist,
-            p.angle,
-            weaponConfig.speed,
-            weaponConfig.range,
-            weaponConfig.damage
-          );
-          this.projectiles.push(proj);
-        }
+        this._performAutomaticAttack(p, weaponConfig, now);
       }
     });
 
@@ -656,6 +435,118 @@ export class Game {
 
     // Update stats UI counters
     this._updateHUD();
+  }
+
+  _performAutomaticAttack(player, weaponConfig, now) {
+    const combo = this._resolveComboAttack(player, weaponConfig, now);
+    const attackConfig = combo.weaponConfig;
+    const swingDirection = player.triggerAttack(now);
+    this._applyComboRecovery(player, combo, now);
+
+    if (attackConfig.type !== 'projectile') {
+      const localFx = {
+        attackerId: player.id,
+        x: player.x,
+        y: player.y,
+        angle: player.angle,
+        weapon: player.weapon,
+        buffType: player.buffType,
+        type: attackConfig.type,
+        range: attackConfig.range,
+        width: attackConfig.width,
+        angleDeg: attackConfig.angle,
+        comboStep: combo.step,
+        comboCycle: combo.cycle,
+        comboFinisher: combo.isFinisher,
+        swingDirection,
+        progress: 0,
+        timestamp: now,
+        lifetime: Math.min(Math.max((attackConfig.cooldown || weaponConfig.cooldown) * 0.78, 150), combo.isFinisher ? 760 : 520)
+      };
+      this.effects.push(localFx);
+
+      Object.keys(this.players).forEach(tid => {
+        const target = this.players[tid];
+        if (Collision.checkMeleeHit(player, target, attackConfig)) {
+          const died = target.takeDamage(attackConfig.damage, player.nickname);
+          if (died) this._creditKill(player.id, target);
+        }
+      });
+      return;
+    }
+
+    const spawnDist = player.radius + 3;
+    const arrowId = `${player.id}-arrow-${now}`;
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: player.weapon,
+      type: 'projectile_shot',
+      progress: 0,
+      timestamp: now,
+      lifetime: Math.min(attackConfig.cooldown * 0.45, 260)
+    });
+
+    const proj = new Projectile(
+      arrowId,
+      player.id,
+      player.x + Math.cos(player.angle) * spawnDist,
+      player.y + Math.sin(player.angle) * spawnDist,
+      player.angle,
+      attackConfig.speed,
+      attackConfig.range,
+      attackConfig.damage
+    );
+    this.projectiles.push(proj);
+  }
+
+  _resolveComboAttack(player, weaponConfig, now) {
+    const comboConfig = ComboConfig[player.weapon];
+    if (!comboConfig || weaponConfig.type === 'projectile') {
+      player.comboStep = 0;
+      return {
+        weaponConfig,
+        step: 0,
+        cycle: 0,
+        isFinisher: false,
+        delayAfterMs: 0,
+        recoveryMs: weaponConfig.cooldown || 0
+      };
+    }
+
+    if (comboConfig.comboResetMs && now - (player.lastAttackTime || 0) > comboConfig.comboResetMs) {
+      player.comboStep = 0;
+    }
+
+    const cycle = Math.max(1, comboConfig.cycle || 1);
+    const step = ((player.comboStep || 0) % cycle) + 1;
+    const isFinisher = step === cycle;
+    const attackConfig = isFinisher
+      ? { ...weaponConfig, ...(comboConfig.finisher || {}) }
+      : { ...weaponConfig };
+
+    return {
+      weaponConfig: attackConfig,
+      step,
+      cycle,
+      isFinisher,
+      delayAfterMs: step === comboConfig.delayAfterStep ? comboConfig.delayBeforeFinisherMs || 0 : 0,
+      recoveryMs: attackConfig.cooldown || weaponConfig.cooldown || 0
+    };
+  }
+
+  _applyComboRecovery(player, combo, now) {
+    if (!combo || !combo.cycle) {
+      player.comboStep = 0;
+      player.comboDelayUntil = now + (combo?.recoveryMs || 0);
+      return;
+    }
+
+    player.comboStep = combo.isFinisher ? 0 : combo.step;
+    const recoveryUntil = now + Math.max(combo.recoveryMs || 0, combo.delayAfterMs || 0);
+    player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, recoveryUntil);
   }
 
   /**
@@ -1174,11 +1065,12 @@ export class Game {
     };
 
     this.renderer.render(
-      state, 
-      this.localPlayerId, 
-      this.camera, 
-      this.mapWidth, 
-      this.mapHeight
+      state,
+      this.localPlayerId,
+      this.camera,
+      this.mapWidth,
+      this.mapHeight,
+      this.visualSettings
     );
   }
 
@@ -1434,7 +1326,7 @@ export class Game {
       this.animationFrameId = null;
     }
     window.removeEventListener('resize', this._resizeBound);
-    this._cleanupHudLayoutEditor();
+    this._cleanupVisualSettingsPanel();
     
     // Clear background tab active preservation loops
     if (this._visibilityChangeHandler) {
@@ -1587,6 +1479,8 @@ export class Game {
             p.dashCdLeft = (snap.dashCdMs || 0) / 1000;
             p.spearThrown = Boolean(snap.spearThrown);
             p.arrowStacks = Math.max(0, Math.floor(snap.arrowStacks || 0));
+            p.comboStep = Math.max(0, Math.floor(snap.comboStep || 0));
+            p.comboDelayUntil = Date.now() + Math.max(0, Math.round(snap.comboDelayMs || 0));
             p.color = snap.color;
             p.accentColor = snap.accentColor;
 
@@ -1766,9 +1660,4 @@ function positiveFinite(value) {
 function clamp01(value) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
-}
-
-function clamp(value, min, max) {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
 }

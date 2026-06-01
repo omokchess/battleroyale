@@ -78,41 +78,113 @@ canvas {
   animation: announcePulse 3s forwards cubic-bezier(0.175, 0.885, 0.32, 1.2);
 }
 
+#gameHudOverlay {
+  left: 1rem;
+  right: auto;
+  top: 1rem;
+  width: min(360px, calc(100vw - 2rem));
+  padding: 0;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.75rem;
+}
+
+#hudPlayerPanel,
+#hudRightCluster,
+#hudRoomPanel,
+#hudSettingsPanel,
+#abilityHud {
+  width: 100%;
+  max-width: none;
+}
+
+#hudRightCluster {
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+#hudPlayerPanel,
+#hudRoomPanel,
+#hudSettingsPanel,
+#abilityHud {
+  padding: 1rem;
+  box-shadow: 0 0 18px rgba(69, 243, 255, 0.18);
+}
+
+#abilityHud {
+  left: 1rem;
+  top: 24rem;
+  bottom: auto;
+  width: min(360px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+#hudName {
+  max-width: 210px;
+  font-size: 1.05rem;
+}
+
+#hudWeapon,
+#hudRoomCode {
+  font-size: 0.9rem;
+}
+
+#hudHpText,
+#hudKills,
+#hudAlive,
+#hudSkillState,
+#hudDashState,
+#hudPing {
+  font-size: 0.8rem;
+}
+
+#hudSettingsPanel label {
+  font-size: 0.82rem;
+}
+
+.visual-setting-toggle {
+  appearance: none;
+  width: 2.75rem;
+  height: 1.45rem;
+  flex: 0 0 auto;
+  border: 1px solid #45f3ff;
+  background: #0b0c10;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.visual-setting-toggle::after {
+  content: "";
+  position: absolute;
+  left: 0.18rem;
+  top: 0.18rem;
+  width: 0.95rem;
+  height: 0.95rem;
+  background: #6b7280;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
+  transition: transform 0.14s ease, background 0.14s ease;
+}
+
+.visual-setting-toggle:checked {
+  background: rgba(69, 243, 255, 0.16);
+  border-color: #66fcf1;
+}
+
+.visual-setting-toggle:checked::after {
+  transform: translateX(1.25rem);
+  background: #66fcf1;
+}
+
 @media (min-width: 1024px) and (pointer: fine) {
-  #gameHudOverlay {
-    padding: 1.25rem;
-  }
-
-  #hudPlayerPanel,
-  #hudRightCluster,
+  #gameHudOverlay,
   #abilityHud {
-    transform: scale(1.12);
-  }
-
-  #hudPlayerPanel {
-    transform-origin: top left;
-  }
-
-  #hudRightCluster {
-    transform-origin: top right;
+    width: 390px;
   }
 
   #abilityHud {
-    transform-origin: bottom left;
-    width: 13rem;
-  }
-
-  #hudName {
-    max-width: 160px;
-    font-size: 0.98rem;
-  }
-
-  #hudHpText,
-  #hudKills,
-  #hudAlive,
-  #hudSkillState,
-  #hudDashState {
-    font-size: 0.75rem;
+    top: 25rem;
   }
 
   #lobbyMenu .weapon-card {
@@ -125,42 +197,17 @@ canvas {
   }
 }
 
-@media (pointer: fine) {
-  .hud-editable.hud-layout-active {
-    pointer-events: auto;
-    cursor: move;
-    touch-action: none;
-    will-change: left, top, transform;
+@media (pointer: coarse), (max-width: 640px) {
+  #gameHudOverlay {
+    width: min(300px, calc(100vw - 1.5rem));
+    left: 0.75rem;
+    top: 0.75rem;
   }
 
-  .hud-editable.hud-layout-dragging {
-    opacity: 0.94;
-    box-shadow: 0 0 0 1px rgba(102, 252, 241, 0.7), 0 0 18px rgba(69, 243, 255, 0.3);
-  }
-
-  .hud-editable .hud-resize-handle {
-    position: absolute;
-    right: -7px;
-    bottom: -7px;
-    width: 15px;
-    height: 15px;
-    border: 1px solid #66fcf1;
-    background: linear-gradient(135deg, transparent 0 42%, #66fcf1 43% 57%, transparent 58%);
-    box-shadow: 0 0 8px rgba(102, 252, 241, 0.55);
-    cursor: nwse-resize;
-    opacity: 0;
-    pointer-events: auto;
-    transition: opacity 0.12s ease;
-  }
-
-  .hud-editable:hover .hud-resize-handle,
-  .hud-editable.hud-layout-dragging .hud-resize-handle {
-    opacity: 1;
-  }
-}
-
-@media (pointer: coarse) {
-  .hud-resize-handle {
-    display: none;
+  #abilityHud {
+    width: min(300px, calc(100vw - 1.5rem));
+    left: 0.75rem;
+    top: auto;
+    bottom: 0.75rem;
   }
 }

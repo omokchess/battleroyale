@@ -130,6 +130,57 @@ export const SkillConfig = {
   }
 };
 
+// --- Automatic attack combo tuning -----------------------------------------
+export const ComboConfig = {
+  sword: {
+    cycle: 3,
+    delayAfterStep: 2,
+    delayBeforeFinisherMs: 880,
+    comboResetMs: 2100,
+    finisher: {
+      type: 'melee_circle',
+      damage: 28,
+      range: 78,
+      angle: 360,
+      cooldown: 760
+    }
+  },
+  axe: {
+    cycle: 3,
+    delayAfterStep: 2,
+    delayBeforeFinisherMs: 1280,
+    comboResetMs: 2800,
+    finisher: {
+      type: 'melee_arc',
+      damage: 64,
+      range: 92,
+      angle: 150,
+      cooldown: 1120
+    }
+  },
+  spear: {
+    cycle: 5,
+    comboResetMs: 1800,
+    finisher: {
+      range: 155,
+      width: 18,
+      damage: 20,
+      cooldown: 560
+    }
+  },
+  gauntlet: {
+    cycle: 7,
+    comboResetMs: 950,
+    finisher: {
+      type: 'melee_line',
+      range: 118,
+      width: 24,
+      damage: 28,
+      cooldown: 240
+    }
+  }
+};
+
 /**
  * Resolve a weapon's *effective* combat stats given an active skill buff.
  * Always returns a fresh object so callers never mutate the base config.

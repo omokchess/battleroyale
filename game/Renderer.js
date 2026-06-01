@@ -17,7 +17,7 @@ export class Renderer {
   /**
    * Main render call
    */
-  render(gameState, localPlayerId, camera, mapWidth, mapHeight) {
+  render(gameState, localPlayerId, camera, mapWidth, mapHeight, visualSettings = {}) {
     const ctx = this.ctx;
     const cw = this.canvas.width;
     const ch = this.canvas.height;
@@ -52,7 +52,7 @@ export class Renderer {
 
     // Draw Active Attack Visual Effects
     if (activeEffects.length) {
-      this._drawEffects(ctx, camera, cw, ch, activeEffects, gameState.players);
+      this._drawEffects(ctx, camera, cw, ch, activeEffects, gameState.players, localPlayerId, visualSettings);
     }
 
     // Draw Bow Projectiles
@@ -62,7 +62,7 @@ export class Renderer {
 
     // Draw All Connected Players
     if (gameState.players) {
-      this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects, mapWidth, mapHeight);
+      this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects, mapWidth, mapHeight, visualSettings);
     }
 
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
@@ -605,7 +605,7 @@ export class Renderer {
   /**
    * Fading graphic slices for melee collisions
    */
-  _drawEffects(ctx, camera, cw, ch, effects, players = {}) {
+  _drawEffects(ctx, camera, cw, ch, effects, players = {}, localPlayerId = null, visualSettings = {}) {
     ctx.save();
     const zoom = camera.zoom || 1;
 
@@ -620,16 +620,20 @@ export class Renderer {
       // fixes the spear effect spilling past its hitbox on zoomed-out screens.
       const weapon = {
         ...baseWeapon,
-        range: (baseWeapon.range || 0) * zoom,
-        width: (baseWeapon.width || 0) * zoom
+        range: (Number.isFinite(e.range) ? e.range : (baseWeapon.range || 0)) * zoom,
+        width: (Number.isFinite(e.width) ? e.width : (baseWeapon.width || 0)) * zoom,
+        angle: Number.isFinite(e.angleDeg) ? e.angleDeg : baseWeapon.angle
       };
-      const alpha = clamp01(1 - e.progress);
+      const isEnemyEffect = Boolean(e.attackerId && e.attackerId !== localPlayerId);
+      const minimized = Boolean(visualSettings.minimizeEnemyAttackEffects && isEnemyEffect && this._isCombatEffect(e));
+      let alpha = clamp01(1 - e.progress);
+      if (minimized) alpha *= 0.28;
 
       if (scr.x < -260 || scr.x > cw + 260 || scr.y < -260 || scr.y > ch + 260) {
         return;
       }
 
-      ctx.shadowBlur = 14 * alpha;
+      ctx.shadowBlur = (minimized ? 4 : 14) * alpha;
       ctx.shadowColor = weapon.color;
 
       if (e.type === 'melee_arc') {
@@ -666,7 +670,8 @@ export class Renderer {
   _drawArcSlash(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const sweep = easeOutCubic(clamp01(progress / 0.72));
-    const radius = weapon.range * (0.82 + 0.18 * sweep);
+    const finisher = Boolean(e.comboFinisher);
+    const radius = weapon.range * ((finisher ? 0.74 : 0.82) + (finisher ? 0.26 : 0.18) * sweep);
     const halfAngleRad = (weapon.angle * Math.PI) / 360;
     const startAngle = e.angle - halfAngleRad;
     const endAngle = e.angle + halfAngleRad;
@@ -681,22 +686,22 @@ export class Renderer {
 
     ctx.save();
 
-    ctx.fillStyle = this._hexToRGB(weapon.color, 0.11 * alpha);
+    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.18 : 0.11) * alpha);
     ctx.beginPath();
     ctx.moveTo(scr.x, scr.y);
     ctx.arc(scr.x, scr.y, radius, startAngle, endAngle);
     ctx.closePath();
     ctx.fill();
 
-    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.78 * alpha);
-    ctx.lineWidth = 10 * (0.35 + alpha * 0.65);
+    ctx.strokeStyle = this._hexToRGB(weapon.color, (finisher ? 0.92 : 0.78) * alpha);
+    ctx.lineWidth = (finisher ? 15 : 10) * (0.35 + alpha * 0.65);
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.arc(scr.x, scr.y, radius, trailAngle, leadingAngle, swingDirection < 0);
     ctx.stroke();
 
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
-    ctx.lineWidth = 3.2 * alpha;
+    ctx.lineWidth = (finisher ? 4.6 : 3.2) * alpha;
     ctx.beginPath();
     ctx.arc(scr.x, scr.y, radius - 4, trailAngle + 0.05 * swingDirection, leadingAngle, swingDirection < 0);
     ctx.stroke();
@@ -707,6 +712,15 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(hitX, hitY, 3.5 + 3 * alpha, 0, Math.PI * 2);
     ctx.fill();
+
+    if (finisher) {
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.34 * alpha);
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, radius * (0.45 + 0.45 * sweep), e.angle - halfAngleRad * 0.85, e.angle + halfAngleRad * 0.85);
+      ctx.stroke();
+    }
 
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.3 * alpha);
     ctx.lineWidth = 1.4;
@@ -758,20 +772,21 @@ export class Renderer {
 
   _drawAxeSpin(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
+    const finisher = Boolean(e.comboFinisher);
     const scale = progress < 0.22
       ? easeOutCubic(progress / 0.22)
-      : 1 + (progress - 0.22) * 0.06;
+      : 1 + (progress - 0.22) * (finisher ? 0.18 : 0.06);
     const radius = Math.max(2, weapon.range * scale);
-    const spinAngle = e.angle + progress * Math.PI * 4.4;
+    const spinAngle = e.angle + progress * Math.PI * (finisher ? 6.2 : 4.4);
 
     ctx.save();
-    ctx.fillStyle = this._hexToRGB(weapon.color, 0.13 * alpha);
+    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.2 : 0.13) * alpha);
     ctx.beginPath();
     ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = this._hexToRGB(weapon.color, 0.72 * alpha);
-    ctx.lineWidth = 8 * alpha;
+    ctx.lineWidth = (finisher ? 11 : 8) * alpha;
     ctx.beginPath();
     ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
     ctx.stroke();
@@ -784,13 +799,14 @@ export class Renderer {
       ctx.stroke();
     }
 
-    for (let i = 0; i < 3; i++) {
-      const a = spinAngle + i * (Math.PI * 2 / 3);
+    const bladeCount = finisher ? 4 : 3;
+    for (let i = 0; i < bladeCount; i++) {
+      const a = spinAngle + i * (Math.PI * 2 / bladeCount);
       ctx.strokeStyle = i === 0 ? this._hexToRGB('#ffffff', 0.85 * alpha) : this._hexToRGB(weapon.color, 0.82 * alpha);
-      ctx.lineWidth = i === 0 ? 4 * alpha : 3 * alpha;
+      ctx.lineWidth = i === 0 ? (finisher ? 5.4 : 4) * alpha : (finisher ? 4 : 3) * alpha;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius * 0.76, a, a + Math.PI * 0.52);
+      ctx.arc(scr.x, scr.y, radius * 0.76, a, a + Math.PI * (finisher ? 0.68 : 0.52));
       ctx.stroke();
     }
 
@@ -799,6 +815,7 @@ export class Renderer {
 
   _drawSpearThrust(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
+    const finisher = Boolean(e.comboFinisher);
     const length = weapon.range;
     const width = weapon.width;
     const ext = progress < 0.16
@@ -814,16 +831,16 @@ export class Renderer {
     ctx.save();
 
     if (progress < 0.5) {
-      const laneAlpha = 0.16 * (1 - progress / 0.5);
+      const laneAlpha = (finisher ? 0.25 : 0.16) * (1 - progress / 0.5);
       this._drawAttackLane(ctx, scr.x, scr.y, e.angle, length, width, this._hexToRGB(weapon.color, laneAlpha));
     }
 
-    const headSize = Math.max(6, width * 0.52) * (0.75 + alpha * 0.25);
+    const headSize = Math.max(6, width * (finisher ? 0.68 : 0.52)) * (0.75 + alpha * 0.25);
     const shaftEndX = scr.x + Math.cos(angle) * Math.max(0, length * ext - headSize * 0.6);
     const shaftEndY = scr.y + Math.sin(angle) * Math.max(0, length * ext - headSize * 0.6);
 
-    this._drawCapsuleLine(ctx, scr.x, scr.y, shaftEndX, shaftEndY, width * 0.78 * alpha, this._hexToRGB(weapon.color, 0.54 * alpha), 'butt');
-    this._drawCapsuleLine(ctx, scr.x, scr.y, shaftEndX, shaftEndY, 4.0 * alpha, this._hexToRGB('#ffffff', 0.86 * alpha), 'butt');
+    this._drawCapsuleLine(ctx, scr.x, scr.y, shaftEndX, shaftEndY, width * (finisher ? 0.96 : 0.78) * alpha, this._hexToRGB(weapon.color, (finisher ? 0.68 : 0.54) * alpha), 'butt');
+    this._drawCapsuleLine(ctx, scr.x, scr.y, shaftEndX, shaftEndY, (finisher ? 5.2 : 4.0) * alpha, this._hexToRGB('#ffffff', 0.86 * alpha), 'butt');
 
     ctx.fillStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
     ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
@@ -852,8 +869,20 @@ export class Renderer {
     ctx.restore();
   }
 
+  _isCombatEffect(effect) {
+    return Boolean(effect && (
+      effect.type === 'melee_arc' ||
+      effect.type === 'melee_circle' ||
+      effect.type === 'melee_line' ||
+      effect.type === 'projectile_shot' ||
+      effect.type === 'projectile_burst' ||
+      effect.type === 'railbeam'
+    ));
+  }
+
   _drawGauntletLance(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
+    const finisher = Boolean(e.comboFinisher);
     const length = weapon.range;
     const width = weapon.width;
     const rawThrust = progress < 0.14
@@ -861,8 +890,8 @@ export class Renderer {
       : Math.max(0, 1 - (progress - 0.14) / 0.86);
     const thrust = clamp01(rawThrust);
     const angle = e.angle;
-    const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * 8);
-    const fistRadius = Math.max(6, width * 0.42) * pulse;
+    const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * (finisher ? 11 : 8));
+    const fistRadius = Math.max(6, width * (finisher ? 0.56 : 0.42)) * pulse;
     const burstRadius = progress < 0.28 ? Math.min(width * 0.5, 7 + 12 * progress) : 0;
     const maxVisualRadius = Math.max(fistRadius, burstRadius);
     const rawReach = length * (0.28 + 0.62 * thrust);
@@ -874,7 +903,7 @@ export class Renderer {
     ctx.lineCap = 'round';
 
     if (progress < 0.55) {
-      const laneAlpha = 0.13 * (1 - progress / 0.55);
+      const laneAlpha = (finisher ? 0.24 : 0.13) * (1 - progress / 0.55);
       this._drawAttackLane(ctx, scr.x, scr.y, angle, length, width, this._hexToRGB(weapon.color, laneAlpha));
     }
 
@@ -885,8 +914,8 @@ export class Renderer {
       scr.y + Math.sin(angle) * trailStart,
       fistX,
       fistY,
-      width * 0.72 * alpha,
-      this._hexToRGB(weapon.color, 0.36 * alpha),
+      width * (finisher ? 0.92 : 0.72) * alpha,
+      this._hexToRGB(weapon.color, (finisher ? 0.52 : 0.36) * alpha),
       'round'
     );
     this._drawCapsuleLine(
@@ -895,7 +924,7 @@ export class Renderer {
       scr.y + Math.sin(angle) * Math.max(8, reach - length * 0.28),
       fistX,
       fistY,
-      4.2 * alpha,
+      (finisher ? 5.4 : 4.2) * alpha,
       this._hexToRGB('#ffffff', 0.72 * alpha),
       'round'
     );
@@ -1205,15 +1234,16 @@ export class Renderer {
       bodyScale = 1.1 * draw;
     } else if (effect.type === 'melee_circle') {
       const spin = easeOutCubic(Math.min(1, progress / 0.6));
-      weaponAngle = angle + spin * Math.PI * 2.1;
-      bodyScale = 1.5 * Math.sin(Math.PI * clamp01(progress));
+      weaponAngle = angle + spin * Math.PI * (effect.comboFinisher ? 2.8 : 2.1);
+      bodyScale = (effect.comboFinisher ? 2.4 : 1.5) * Math.sin(Math.PI * clamp01(progress));
     } else if (effect.type === 'melee_line') {
       const thrust = progress < 0.18
         ? easeOutBack(progress / 0.18)
         : Math.max(0, 1 - (progress - 0.18) / 0.82);
-      lunge = 8 * thrust;
-      weaponReach = 18 * thrust;
-      bodyScale = 1.2 * thrust;
+      const finisherBoost = effect.comboFinisher ? 1.45 : 1;
+      lunge = 8 * thrust * finisherBoost;
+      weaponReach = 18 * thrust * finisherBoost;
+      bodyScale = 1.2 * thrust * finisherBoost;
     } else if (effect.weapon === 'gauntlet') {
       const punch = progress < 0.28
         ? easeOutBack(progress / 0.28)
@@ -1224,10 +1254,11 @@ export class Renderer {
     } else {
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
       const slash = Math.sin(Math.PI * clamp01(progress * 0.95));
-      lunge = 4 * slash;
-      weaponReach = 10 * slash;
-      weaponAngle = angle + swingDirection * (-0.9 + easeOutCubic(progress) * 1.8);
-      bodyScale = 1.0 * slash;
+      const finisherBoost = effect.comboFinisher ? 1.7 : 1;
+      lunge = 4 * slash * finisherBoost;
+      weaponReach = 10 * slash * finisherBoost;
+      weaponAngle = angle + swingDirection * (-0.9 + easeOutCubic(progress) * 1.8) * finisherBoost;
+      bodyScale = 1.0 * slash * finisherBoost;
     }
 
     return {
@@ -1244,7 +1275,7 @@ export class Renderer {
   /**
    * Draw Players with beautiful pixel graphics
    */
-  _drawPlayers(ctx, camera, cw, ch, players, localPlayerId, activeEffects = [], mapWidth = 0, mapHeight = 0) {
+  _drawPlayers(ctx, camera, cw, ch, players, localPlayerId, activeEffects = [], mapWidth = 0, mapHeight = 0, visualSettings = {}) {
     const radius = 14;
     const activeAttacks = this._getActiveAttacks(activeEffects);
 
@@ -1264,7 +1295,9 @@ export class Renderer {
         y: scr.y + motion.bodyY
       };
 
-      this._drawPlayerAttackRange(ctx, camera, cw, ch, scr, p, isLocal, Boolean(activeAttack), mapWidth, mapHeight);
+      if (isLocal || !visualSettings.hideEnemyAttackPreviews) {
+        this._drawPlayerAttackRange(ctx, camera, cw, ch, scr, p, isLocal, Boolean(activeAttack), mapWidth, mapHeight, activeAttack);
+      }
 
       ctx.save();
       
@@ -1596,7 +1629,7 @@ export class Renderer {
   /**
    * Draw attack range helper outline and subtle fill
    */
-  _drawPlayerAttackRange(ctx, camera, cw, ch, scr, player, isLocal, isAttacking = false, mapWidth = 0, mapHeight = 0) {
+  _drawPlayerAttackRange(ctx, camera, cw, ch, scr, player, isLocal, isAttacking = false, mapWidth = 0, mapHeight = 0, activeAttack = null) {
     if (!player || player.isDead) return;
     const baseWeapon = getEffectiveWeapon(player.weapon, player.buffType);
     if (!baseWeapon) return;
@@ -1608,8 +1641,10 @@ export class Renderer {
     const zoom = camera.zoom || 1;
     const weapon = {
       ...baseWeapon,
-      range: (baseWeapon.range || 0) * zoom,
-      width: (baseWeapon.width || 0) * zoom
+      type: activeAttack?.type || baseWeapon.type,
+      range: (Number.isFinite(activeAttack?.range) ? activeAttack.range : (baseWeapon.range || 0)) * zoom,
+      width: (Number.isFinite(activeAttack?.width) ? activeAttack.width : (baseWeapon.width || 0)) * zoom,
+      angle: Number.isFinite(activeAttack?.angleDeg) ? activeAttack.angleDeg : baseWeapon.angle
     };
 
     ctx.save();
