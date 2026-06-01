@@ -232,9 +232,7 @@ export class Game {
           // Host applies its own dash/skill directly (it is authoritative).
           if (this.input.consumeDash()) {
             const { dx, dy } = this.input.getMoveVector();
-            if (!this._tryDaggerQteInput(hp, now)) {
-              this._tryDash(hp, dx, dy);
-            }
+            this._tryDash(hp, dx, dy);
           }
           if (this.input.consumeSkillDown()) {
             this._handleSkillPressed(hp, now);
@@ -805,9 +803,7 @@ export class Game {
     if (data.action === 'dash') {
       const hasDir = Number.isFinite(data.dx) || Number.isFinite(data.dy);
       const v = hasDir ? { dx: data.dx || 0, dy: data.dy || 0 } : dirFromKeys(player.keys || {});
-      if (!this._tryDaggerQteInput(player, now)) {
-        this._tryDash(player, v.dx, v.dy);
-      }
+      this._tryDash(player, v.dx, v.dy);
     } else if (data.action === 'skill' || data.action === 'skillDown') {
       this._handleSkillPressed(player, now);
     } else if (data.action === 'skillUp') {
@@ -817,11 +813,16 @@ export class Game {
 
   _tryDash(player, dirX, dirY) {
     if (!player || player.isDead) return;
+    if (player.daggerQte) return;
     player.startDash(dirX, dirY);
   }
 
   _handleSkillPressed(player, now) {
     if (!player || player.isDead || player.stunTimeLeft > 0) return;
+    if (player.weapon === 'dagger' && player.daggerQte) {
+      this._tryDaggerQteInput(player, now);
+      return;
+    }
     if (player.weapon === 'greatsword') {
       this._startGreatswordCharge(player, now);
       return;
@@ -953,6 +954,7 @@ export class Game {
       weapon: 'greatsword',
       type: 'greatsword_charge',
       range: sk.range,
+      width: sk.width,
       angleDeg: sk.angle,
       progress: 0,
       timestamp: now,
@@ -986,6 +988,7 @@ export class Game {
       weapon: 'greatsword',
       type: attackConfig.type,
       range: attackConfig.range,
+      width: attackConfig.width,
       angleDeg: attackConfig.angle,
       comboFinisher: true,
       isSkill: true,
@@ -1024,8 +1027,10 @@ export class Game {
       phase: 'lock',
       actionAt: now + sk.lockMs,
       perfectAt: 0,
-      expiresAt: now + sk.lockMs + sk.windowMs
+      expiresAt: now + sk.lockMs + sk.windowMs,
+      iframeUntil: now + sk.lockMs + sk.windowMs
     };
+    player.iframeTimeLeft = Math.max(player.iframeTimeLeft || 0, (sk.lockMs + sk.windowMs) / 1000);
     player.skillCdLeft = sk.cooldownMs / 1000;
     this.effects.push({
       attackerId: player.id,
@@ -1047,7 +1052,7 @@ export class Game {
 
       const target = this.players[qte.targetId];
       if (!target || target.isDead || player.isDead) {
-        player.daggerQte = null;
+        this._clearDaggerQte(player, qte, now);
         return;
       }
 
@@ -1058,6 +1063,7 @@ export class Game {
         qte.phase = 'window';
         qte.perfectAt = now + sk.perfectMs;
         qte.expiresAt = now + sk.windowMs;
+        qte.iframeUntil = now + sk.windowMs;
         this.effects.push({
           attackerId: player.id,
           targetId: target.id,
@@ -1072,8 +1078,12 @@ export class Game {
         });
       }
 
+      if (qte.phase === 'window') {
+        player.angle = Math.atan2(target.y - player.y, target.x - player.x);
+      }
+
       if (qte.phase === 'window' && now > qte.expiresAt) {
-        player.daggerQte = null;
+        this._failDaggerQte(player, qte, now);
       }
     });
   }
@@ -1083,26 +1093,20 @@ export class Game {
     if (!qte || qte.phase !== 'window') return false;
 
     const target = this.players[qte.targetId];
-    player.daggerQte = null;
-    if (!target || target.isDead || target.isInvincible()) return true;
+    if (!target || target.isDead || target.isInvincible()) {
+      this._clearDaggerQte(player, qte, now);
+      return true;
+    }
 
     const sk = SkillConfig.dagger;
     const diff = Math.abs(now - qte.perfectAt);
     const success = diff <= (sk.toleranceMs || 150);
     if (!success) {
-      this.effects.push({
-        attackerId: player.id,
-        x: player.x,
-        y: player.y,
-        weapon: 'dagger',
-        type: 'dagger_qte_fail',
-        progress: 0,
-        timestamp: now,
-        lifetime: 320
-      });
+      this._failDaggerQte(player, qte, now);
       return true;
     }
 
+    this._clearDaggerQte(player, qte, now);
     player.angle = Math.atan2(target.y - player.y, target.x - player.x);
     this._lungePlayer(player, sk.dashDistance || 64);
     const died = target.takeDamage(sk.damage || 70, player.nickname);
@@ -1120,6 +1124,36 @@ export class Game {
       lifetime: 420
     });
     return true;
+  }
+
+  _clearDaggerQte(player, qte, now) {
+    if (!player) return;
+    player.daggerQte = null;
+    if (qte?.iframeUntil) {
+      player.iframeTimeLeft = 0;
+    }
+  }
+
+  _failDaggerQte(player, qte, now) {
+    const sk = SkillConfig.dagger;
+    this._clearDaggerQte(player, qte, now);
+    const failDamage = sk.failDamage || 10;
+    player.hp = Math.max(0, player.hp - failDamage);
+    if (player.hp <= 0) {
+      player.isDead = true;
+    } else {
+      player.stunTimeLeft = Math.max(player.stunTimeLeft || 0, (sk.failStunMs || 300) / 1000);
+    }
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      weapon: 'dagger',
+      type: 'dagger_qte_fail',
+      progress: 0,
+      timestamp: now,
+      lifetime: 320
+    });
   }
 
   _findNearestEnemy(player) {

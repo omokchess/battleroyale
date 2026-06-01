@@ -896,33 +896,44 @@ export class Renderer {
   }
 
   _drawGreatswordWave(ctx, scr, angle, zoom) {
-    const length = 38 * Math.max(0.75, zoom);
-    const width = 18 * Math.max(0.75, zoom);
+    const radius = Math.max(28, Weapons.greatsword.range * 0.46) * Math.max(0.7, zoom);
+    const halfAngle = ((Weapons.greatsword.angle || 100) * Math.PI) / 360;
+    const apexX = -radius;
 
     ctx.save();
     ctx.translate(scr.x, scr.y);
     ctx.rotate(angle);
     ctx.shadowBlur = 16;
     ctx.shadowColor = Weapons.greatsword.color;
+    ctx.lineCap = 'round';
 
-    ctx.fillStyle = 'rgba(139, 211, 255, 0.18)';
-    ctx.strokeStyle = Weapons.greatsword.color;
-    ctx.lineWidth = 2.4;
+    ctx.fillStyle = 'rgba(139, 211, 255, 0.17)';
     ctx.beginPath();
-    ctx.moveTo(length * 0.5, 0);
-    ctx.lineTo(-length * 0.45, -width * 0.58);
-    ctx.lineTo(-length * 0.2, 0);
-    ctx.lineTo(-length * 0.45, width * 0.58);
+    ctx.moveTo(apexX, 0);
+    ctx.arc(apexX, 0, radius, -halfAngle, halfAngle);
     ctx.closePath();
     ctx.fill();
+
+    ctx.strokeStyle = Weapons.greatsword.color;
+    ctx.lineWidth = 5.8;
+    ctx.beginPath();
+    ctx.arc(apexX, 0, radius, -halfAngle, halfAngle);
     ctx.stroke();
 
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.4;
     ctx.beginPath();
-    ctx.moveTo(-length * 0.32, 0);
-    ctx.lineTo(length * 0.45, 0);
+    ctx.arc(apexX, 0, radius - 5, -halfAngle * 0.9, halfAngle * 0.9);
     ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 1.6;
+    [-halfAngle, 0, halfAngle].forEach(edge => {
+      ctx.beginPath();
+      ctx.moveTo(apexX + Math.cos(edge) * 10, Math.sin(edge) * 10);
+      ctx.lineTo(apexX + Math.cos(edge) * (radius - 3), Math.sin(edge) * (radius - 3));
+      ctx.stroke();
+    });
     ctx.restore();
   }
 
@@ -956,27 +967,33 @@ export class Renderer {
 
   _drawGreatswordCharge(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
-    const radius = weapon.range * (0.42 + 0.58 * progress);
-    const halfAngle = ((weapon.angle || 115) * Math.PI) / 360;
+    const length = weapon.range * (0.35 + 0.65 * progress);
+    const width = weapon.width || 34;
     const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 80);
 
     ctx.save();
-    ctx.fillStyle = this._hexToRGB(weapon.color, 0.05 + 0.12 * progress);
-    ctx.strokeStyle = this._hexToRGB(weapon.color, (0.38 + 0.35 * pulse) * alpha);
-    ctx.lineWidth = (2 + 4 * progress) * alpha;
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius, e.angle - halfAngle, e.angle + halfAngle);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, width, this._hexToRGB(weapon.color, (0.08 + 0.13 * progress) * alpha));
 
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.5 * alpha * progress);
-    ctx.lineWidth = 2.2 * alpha;
-    ctx.beginPath();
-    ctx.moveTo(scr.x + Math.cos(e.angle) * 18, scr.y + Math.sin(e.angle) * 18);
-    ctx.lineTo(scr.x + Math.cos(e.angle) * radius, scr.y + Math.sin(e.angle) * radius);
-    ctx.stroke();
+    this._drawCapsuleLine(
+      ctx,
+      scr.x,
+      scr.y,
+      scr.x + Math.cos(e.angle) * length,
+      scr.y + Math.sin(e.angle) * length,
+      width * (0.35 + 0.25 * pulse) * alpha,
+      this._hexToRGB(weapon.color, 0.42 * alpha),
+      'butt'
+    );
+    this._drawCapsuleLine(
+      ctx,
+      scr.x,
+      scr.y,
+      scr.x + Math.cos(e.angle) * length,
+      scr.y + Math.sin(e.angle) * length,
+      (3 + 2 * progress) * alpha,
+      this._hexToRGB('#ffffff', 0.78 * alpha),
+      'butt'
+    );
     ctx.restore();
   }
 

@@ -174,10 +174,10 @@ test('new melee weapon families expose distinct hit mechanics', () => {
 
   const dagger = new Player('dagger-owner', 'Shade', 'dagger', 100, 100);
   dagger.angle = 0;
-  const daggerTarget = new Player('dagger-target', 'Back', 'sword', 142, 100);
+  const daggerTarget = new Player('dagger-target', 'Back', 'sword', 150, 100);
   daggerTarget.angle = 0;
   hit = game._resolveMeleeHitResult(dagger, daggerTarget, Weapons.dagger);
-  assert.equal(hit.damage, Weapons.dagger.backstabDamage);
+  assert.equal(hit.damage, Weapons.dagger.critDamage);
 
   const rapier = new Player('rapier-owner', 'Needle', 'rapier', 100, 100);
   rapier.angle = 0;
@@ -192,7 +192,7 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   assert.equal(hit.knockback, Weapons.hammer.knockback);
 });
 
-test('greatsword skill charges up to a max-damage heavy cleave', () => {
+test('greatsword skill charges quickly into a max-damage heavy line', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -213,6 +213,7 @@ test('greatsword skill charges up to a max-damage heavy cleave', () => {
 
   game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs);
   assert.equal(game.pendingMeleeHits.length, 1);
+  assert.equal(game.effects.some(e => e.type === 'melee_heavy_line' && e.width === SkillConfig.greatsword.width), true);
   assert.equal(target.hp, target.maxHp);
 
   game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs + SkillConfig.greatsword.delayDamageMs - 1);
@@ -244,6 +245,7 @@ test('greatsword third combo fires a short sword wave', () => {
   assert.equal(game.projectiles.length, 1);
   assert.equal(game.projectiles[0].kind, 'greatswordwave');
   assert.equal(game.projectiles[0].damage, 25);
+  assert.equal(game.projectiles[0].radius, 18);
 });
 
 test('rapier hit tempo refunds cooldown on contact', () => {
@@ -265,7 +267,7 @@ test('rapier hit tempo refunds cooldown on contact', () => {
   assert.equal(owner.lastAttackTime, 1000 - Weapons.rapier.hitCooldownRefundMs);
 });
 
-test('dagger skill QTE teleports behind target and rewards timed space input', () => {
+test('dagger skill QTE teleports behind target and rewards timed F input', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -281,15 +283,47 @@ test('dagger skill QTE teleports behind target and rewards timed space input', (
 
   game._startDaggerQte(owner, 1000);
   assert.equal(owner.daggerQte.targetId, target.id);
+  assert.equal(owner.iframeTimeLeft, (SkillConfig.dagger.lockMs + SkillConfig.dagger.windowMs) / 1000);
   assert.equal(game.effects.some(e => e.type === 'dagger_qte_lock'), true);
 
   game._processDaggerQtes(1000 + SkillConfig.dagger.lockMs);
   assert.equal(owner.daggerQte.phase, 'window');
   assert.ok(owner.x < target.x);
+  assert.equal(owner.angle, 0);
 
   const hpBefore = target.hp;
-  assert.equal(game._tryDaggerQteInput(owner, owner.daggerQte.perfectAt), true);
+  game._handlePlayerAction(owner, { action: 'dash', dx: 1, dy: 0 }, owner.daggerQte.perfectAt);
+  assert.equal(target.hp, hpBefore);
+  assert.equal(owner.daggerQte.phase, 'window');
+
+  game._handleSkillPressed(owner, owner.daggerQte.perfectAt);
   assert.equal(target.hp, hpBefore - SkillConfig.dagger.damage);
+  assert.equal(owner.daggerQte, null);
+  assert.equal(owner.iframeTimeLeft, 0);
+});
+
+test('dagger QTE mistiming self-damages and stuns instead of attacking', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('dagger-owner', 'Shade', 'dagger', 100, 100);
+  const target = new Player('dagger-target', 'Mark', 'sword', 180, 100);
+  target.angle = 0;
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._startDaggerQte(owner, 1000);
+  game._processDaggerQtes(1000 + SkillConfig.dagger.lockMs);
+
+  const targetHpBefore = target.hp;
+  game._handleSkillPressed(owner, owner.daggerQte.perfectAt + SkillConfig.dagger.toleranceMs + 50);
+  assert.equal(target.hp, targetHpBefore);
+  assert.equal(owner.hp, owner.maxHp - SkillConfig.dagger.failDamage);
+  assert.equal(owner.stunTimeLeft, SkillConfig.dagger.failStunMs / 1000);
   assert.equal(owner.daggerQte, null);
 });
 

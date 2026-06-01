@@ -104,13 +104,14 @@ export const Weapons = {
   dagger: {
     name: '단검',
     damage: 14,
-    backstabDamage: 38,
     maxHp: 90,
     cooldown: 300,
     moveSpeed: 1.35,
-    range: 48,
-    angle: 82,
-    type: 'melee_backstab',
+    range: 58,
+    width: 1,
+    critDamage: 20,
+    hitCooldownRefundMs: 40,
+    type: 'melee_precise_line',
     description: '빠른 초근접 무기입니다. 3타마다 짧게 대시하고, 적의 등 뒤를 찌르면 큰 피해를 줍니다.',
     skill: 'F 스킬: 가장 가까운 적을 찍고 2초 뒤 배후 QTE를 시작합니다. 원이 맞을 때 Space를 누르면 70 피해.',
     color: '#f8fafc'
@@ -147,6 +148,16 @@ export const Weapons = {
     color: '#fb923c'
   }
 };
+
+Object.assign(Weapons.greatsword, {
+  description: '전방 100도를 같은 방향으로 두 번 베고, 3타에 넓은 검기를 발사하는 중량 무기입니다.',
+  skill: 'F 홀드: 최대 1초 예열 후 창처럼 뻗는 상단베기로 최대 85 피해를 줍니다.'
+});
+
+Object.assign(Weapons.dagger, {
+  description: '레이피어처럼 얇은 직선 판정으로 빠르게 찌르는 암살 무기입니다.',
+  skill: 'F 스킬: 가장 가까운 적과 0.7초간 사슬을 잇고, 원 타이밍에 F를 누르면 배후 공격으로 70 피해를 줍니다.'
+});
 
 // --- Dash (Spacebar) tuning --------------------------------------------------
 // All values are easy to retune here without touching game logic.
@@ -206,12 +217,12 @@ export const SkillConfig = {
   },
   greatsword: {
     cooldownMs: 7000,
-    chargeMaxMs: 3000,
+    chargeMaxMs: 1000,
     minDamage: 45,
     damage: 85,
-    type: 'melee_heavy_arc',
-    range: 118,
-    angle: 115,
+    type: 'melee_heavy_line',
+    range: 128,
+    width: 34,
     delayDamageMs: 70,
     knockback: 82
   },
@@ -227,12 +238,14 @@ export const SkillConfig = {
   },
   dagger: {
     cooldownMs: 5000,
-    lockMs: 2000,
+    lockMs: 700,
     windowMs: 900,
     perfectMs: 560,
     toleranceMs: 150,
     dashDistance: 64,
-    damage: 70
+    damage: 70,
+    failDamage: 10,
+    failStunMs: 300
   },
   rapier: {
     cooldownMs: 5500,
@@ -315,6 +328,7 @@ export const ComboConfig = {
       damage: 25,
       range: 185,
       speed: 760,
+      radius: 18,
       projectileKind: 'greatswordwave',
       projectileWeapon: 'greatsword',
       cooldown: 760
@@ -332,19 +346,6 @@ export const ComboConfig = {
       angle: 210,
       pull: 42,
       cooldown: 780
-    }
-  },
-  dagger: {
-    cycle: 3,
-    comboResetMs: 1200,
-    finisher: {
-      type: 'melee_backstab',
-      damage: 22,
-      backstabDamage: 58,
-      range: 66,
-      angle: 120,
-      lungeDistance: 34,
-      cooldown: 380
     }
   }
 };

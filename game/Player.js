@@ -97,6 +97,10 @@ export class Player {
       this._tickTimers(deltaTime);
       return;
     }
+    if (this.daggerQte) {
+      this._tickTimers(deltaTime);
+      return;
+    }
 
     // A dash overrides normal locomotion with a fixed-direction burst. Consume
     // (up to) the remaining dash window *before* advancing the timers so even a
