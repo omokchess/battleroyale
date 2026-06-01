@@ -138,7 +138,7 @@ export const ComboConfig = {
     delayBeforeFinisherMs: 880,
     comboResetMs: 2600,
     finisher: {
-      type: 'melee_circle',
+      type: 'melee_arc',
       damage: 28,
       range: 78,
       angle: 360,

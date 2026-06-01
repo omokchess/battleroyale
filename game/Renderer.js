@@ -669,21 +669,22 @@ export class Renderer {
 
   _drawArcSlash(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
-    const sweep = easeOutCubic(clamp01(progress / 0.72));
+    const headT = easeOutCubic(clamp01(progress / 0.58));
+    const tailT = progress < 0.58 ? 0 : easeOutCubic((progress - 0.58) / 0.42);
+    const sweep = headT;
     const finisher = Boolean(e.comboFinisher);
+    const isFullCircleSlash = weapon.angle >= 359;
     const radius = weapon.range * ((finisher ? 0.74 : 0.82) + (finisher ? 0.26 : 0.18) * sweep);
     const halfAngleRad = (weapon.angle * Math.PI) / 360;
     const startAngle = e.angle - halfAngleRad;
     const endAngle = e.angle + halfAngleRad;
     const swingDirection = e.swingDirection === -1 ? -1 : 1;
     const arcSize = endAngle - startAngle;
-    const leadingAngle = swingDirection > 0
-      ? startAngle + arcSize * sweep
-      : endAngle - arcSize * sweep;
-    const trailSpan = halfAngleRad * (finisher ? 1.08 : 0.9);
-    const trailAngle = swingDirection > 0
-      ? Math.max(startAngle, leadingAngle - trailSpan)
-      : Math.min(endAngle, leadingAngle + trailSpan);
+    const angleAt = t => swingDirection > 0
+      ? startAngle + arcSize * t
+      : endAngle - arcSize * t;
+    const leadingAngle = angleAt(headT);
+    const trailAngle = angleAt(tailT);
 
     ctx.save();
 
@@ -701,13 +702,9 @@ export class Renderer {
     ctx.closePath();
     ctx.clip();
 
-    const activeStart = swingDirection > 0 ? trailAngle : leadingAngle;
-    const activeEnd = swingDirection > 0 ? leadingAngle : trailAngle;
-    const sweepStart = Math.min(activeStart, activeEnd);
-    const sweepEnd = Math.max(activeStart, activeEnd);
-    const activeArcStart = swingDirection > 0 ? sweepStart : sweepEnd;
-    const activeArcEnd = swingDirection > 0 ? sweepEnd : sweepStart;
-    const activeSpan = Math.max(0.001, sweepEnd - sweepStart);
+    const activeArcStart = trailAngle;
+    const activeArcEnd = leadingAngle;
+    const activeSpan = Math.max(0.001, Math.abs(headT - tailT) * arcSize);
     const anticlockwise = swingDirection < 0;
     const bladeEdge = leadingAngle;
     const normal = bladeEdge + Math.PI / 2 * swingDirection;
@@ -837,7 +834,7 @@ export class Renderer {
     ctx.arc(hitX, hitY, 3.5 + 3 * alpha, 0, Math.PI * 2);
     ctx.fill();
 
-    if (finisher) {
+    if (finisher && !isFullCircleSlash) {
       ctx.strokeStyle = this._hexToRGB('#ffffff', 0.34 * alpha);
       ctx.lineWidth = 2.2;
       ctx.setLineDash([]);
@@ -846,13 +843,15 @@ export class Renderer {
       ctx.stroke();
     }
 
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.3 * alpha);
-    ctx.lineWidth = 1.4;
-    ctx.setLineDash([8, 6]);
-    ctx.beginPath();
-    ctx.moveTo(scr.x + Math.cos(e.angle) * 18, scr.y + Math.sin(e.angle) * 18);
-    ctx.lineTo(scr.x + Math.cos(e.angle) * (weapon.range + 18), scr.y + Math.sin(e.angle) * (weapon.range + 18));
-    ctx.stroke();
+    if (!isFullCircleSlash) {
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.3 * alpha);
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(e.angle) * 18, scr.y + Math.sin(e.angle) * 18);
+      ctx.lineTo(scr.x + Math.cos(e.angle) * (weapon.range + 18), scr.y + Math.sin(e.angle) * (weapon.range + 18));
+      ctx.stroke();
+    }
 
     ctx.restore();
   }

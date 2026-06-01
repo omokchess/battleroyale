@@ -85,6 +85,10 @@ export const Collision = {
     }
 
     if (weapon.type === 'melee_arc') {
+      if ((weapon.angle || 0) >= 360) {
+        return true;
+      }
+
       // Angular arc check (Sword/Gauntlets)
       // Angle between attacker aim direction and target vector
       const targetAngle = Math.atan2(dy, dx);

@@ -110,8 +110,11 @@ test('melee combo finishers change weapon shape after the required hits', () => 
   const swordFinisher = game._resolveComboAttack(sword, Weapons.sword, sword.comboDelayUntil);
   assert.equal(swordFinisher.step, 4);
   assert.equal(swordFinisher.isFinisher, true);
-  assert.equal(swordFinisher.weaponConfig.type, 'melee_circle');
+  assert.equal(swordFinisher.weaponConfig.type, 'melee_arc');
   assert.equal(swordFinisher.weaponConfig.angle, 360);
+  sword.angle = 0;
+  const swordBehindTarget = new Player('sword-behind', 'BehindBlade', 'sword', -60, 0);
+  assert.equal(Collision.checkMeleeHit(sword, swordBehindTarget, swordFinisher.weaponConfig), true);
 
   const axe = new Player('axe-combo', 'Chopper', 'axe', 0, 0);
   axe.comboStep = 2;
