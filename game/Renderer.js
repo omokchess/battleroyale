@@ -680,9 +680,10 @@ export class Renderer {
     const leadingAngle = swingDirection > 0
       ? startAngle + arcSize * sweep
       : endAngle - arcSize * sweep;
+    const trailSpan = halfAngleRad * (finisher ? 1.08 : 0.9);
     const trailAngle = swingDirection > 0
-      ? Math.max(startAngle, leadingAngle - halfAngleRad * 0.62)
-      : Math.min(endAngle, leadingAngle + halfAngleRad * 0.62);
+      ? Math.max(startAngle, leadingAngle - trailSpan)
+      : Math.min(endAngle, leadingAngle + trailSpan);
 
     ctx.save();
 
@@ -708,6 +709,12 @@ export class Renderer {
     const activeArcEnd = swingDirection > 0 ? sweepEnd : sweepStart;
     const activeSpan = Math.max(0.001, sweepEnd - sweepStart);
     const anticlockwise = swingDirection < 0;
+    const bladeEdge = leadingAngle;
+    const normal = bladeEdge + Math.PI / 2 * swingDirection;
+    const tipX = scr.x + Math.cos(bladeEdge) * radius;
+    const tipY = scr.y + Math.sin(bladeEdge) * radius;
+    const rootX = scr.x;
+    const rootY = scr.y;
 
     ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.24 : 0.16) * alpha);
     ctx.beginPath();
@@ -734,8 +741,8 @@ export class Renderer {
       const bandT = routeBands === 1 ? 1 : i / (routeBands - 1);
       const easedBand = easeOutCubic(bandT);
       const bandRadius = radius * (0.08 + easedBand * 0.86);
-      const startTrim = (0.04 + bandT * 0.03) * trimScale;
-      const endTrim = (0.24 * (1 - bandT) + 0.03) * trimScale;
+      const startTrim = (0.012 + bandT * 0.014) * trimScale;
+      const endTrim = (0.075 * (1 - bandT) + 0.006) * trimScale;
       const bandStart = activeArcStart + directedSpan * startTrim;
       const bandEnd = activeArcEnd - directedSpan * endTrim;
       const bandWidth = (finisher ? 7.2 : 5.2) * (1 - bandT * 0.28) * alpha;
@@ -755,14 +762,51 @@ export class Renderer {
       ctx.arc(scr.x, scr.y, bandRadius, bandStart, bandEnd, anticlockwise);
       ctx.stroke();
     }
-    ctx.restore();
 
-    const bladeEdge = leadingAngle;
-    const normal = bladeEdge + Math.PI / 2 * swingDirection;
-    const tipX = scr.x + Math.cos(bladeEdge) * radius;
-    const tipY = scr.y + Math.sin(bladeEdge) * radius;
-    const rootX = scr.x;
-    const rootY = scr.y;
+    const bladeStart = Math.max(8, radius * 0.08);
+    const bladeEnd = radius * 0.98;
+    const bladeStartX = scr.x + Math.cos(bladeEdge) * bladeStart;
+    const bladeStartY = scr.y + Math.sin(bladeEdge) * bladeStart;
+    const bladeEndX = scr.x + Math.cos(bladeEdge) * bladeEnd;
+    const bladeEndY = scr.y + Math.sin(bladeEdge) * bladeEnd;
+    this._drawCapsuleLine(
+      ctx,
+      bladeStartX,
+      bladeStartY,
+      bladeEndX,
+      bladeEndY,
+      (finisher ? 13 : 10) * alpha,
+      this._hexToRGB(weapon.color, (finisher ? 0.66 : 0.52) * alpha)
+    );
+    this._drawCapsuleLine(
+      ctx,
+      bladeStartX,
+      bladeStartY,
+      bladeEndX,
+      bladeEndY,
+      (finisher ? 6.2 : 4.8) * alpha,
+      this._hexToRGB('#ffffff', (finisher ? 0.92 : 0.84) * alpha)
+    );
+
+    const tipForward = finisher ? 14 : 10;
+    const tipHalf = finisher ? 8 : 6;
+    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.72 : 0.56) * alpha);
+    ctx.beginPath();
+    ctx.moveTo(
+      bladeEndX + Math.cos(bladeEdge) * tipForward,
+      bladeEndY + Math.sin(bladeEdge) * tipForward
+    );
+    ctx.lineTo(
+      bladeEndX - Math.cos(bladeEdge) * 5 + Math.cos(normal) * tipHalf,
+      bladeEndY - Math.sin(bladeEdge) * 5 + Math.sin(normal) * tipHalf
+    );
+    ctx.lineTo(
+      bladeEndX - Math.cos(bladeEdge) * 5 - Math.cos(normal) * tipHalf,
+      bladeEndY - Math.sin(bladeEdge) * 5 - Math.sin(normal) * tipHalf
+    );
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
     ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.22 : 0.14) * alpha);
     ctx.beginPath();
     ctx.moveTo(rootX + Math.cos(normal) * 4, rootY + Math.sin(normal) * 4);
