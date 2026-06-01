@@ -114,7 +114,7 @@ canvas {
 
 #abilityHud {
   left: 1rem;
-  top: 24rem;
+  top: 31rem;
   bottom: auto;
   width: min(360px, calc(100vw - 2rem));
   pointer-events: none;
@@ -141,6 +141,12 @@ canvas {
 
 #hudSettingsPanel label {
   font-size: 0.82rem;
+}
+
+#hudActionRow button {
+  min-height: 2.35rem;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .visual-setting-toggle {
@@ -184,7 +190,7 @@ canvas {
   }
 
   #abilityHud {
-    top: 25rem;
+    top: 32rem;
   }
 
   #lobbyMenu .weapon-card {
