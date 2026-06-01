@@ -32,6 +32,8 @@ export class Game {
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];
+    this.pendingRapierStrikes = [];
+    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
@@ -77,6 +79,8 @@ export class Game {
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];
+    this.pendingRapierStrikes = [];
+    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.effects = [];
@@ -228,10 +232,15 @@ export class Game {
           // Host applies its own dash/skill directly (it is authoritative).
           if (this.input.consumeDash()) {
             const { dx, dy } = this.input.getMoveVector();
-            this._tryDash(hp, dx, dy);
+            if (!this._tryDaggerQteInput(hp, now)) {
+              this._tryDash(hp, dx, dy);
+            }
           }
-          if (this.input.consumeSkill()) {
-            this._activateSkill(hp, now);
+          if (this.input.consumeSkillDown()) {
+            this._handleSkillPressed(hp, now);
+          }
+          if (this.input.consumeSkillUp()) {
+            this._handleSkillReleased(hp, now);
           }
         }
       }
@@ -262,8 +271,11 @@ export class Game {
           localPlayer.startDash(dx, dy);
           this.networkManager.sendToHost(Protocol.clientAction('dash', dx, dy));
         }
-        if (this.input.consumeSkill()) {
-          this.networkManager.sendToHost(Protocol.clientAction('skill'));
+        if (this.input.consumeSkillDown()) {
+          this.networkManager.sendToHost(Protocol.clientAction('skillDown'));
+        }
+        if (this.input.consumeSkillUp()) {
+          this.networkManager.sendToHost(Protocol.clientAction('skillUp'));
         }
 
         // Optimistic local update for zero input latency feel
@@ -326,6 +338,10 @@ export class Game {
     this._releaseDueBowRailguns(now);
     this._processSpearThrowQueue(now);
     this._processPendingMeleeHits(now);
+    this._processGreatswordCharges(now);
+    this._processDaggerQtes(now);
+    this._processRapierStrikes(now);
+    this._processHammerSlams(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -361,7 +377,7 @@ export class Game {
             x: proj.x,
             y: proj.y,
             angle: Math.atan2(proj.vy, proj.vx),
-            weapon: 'bow',
+            weapon: proj.weapon || (proj.kind === 'greatswordwave' ? 'greatsword' : 'bow'),
             type: 'projectile_burst',
             progress: 0,
             timestamp: now,
@@ -386,8 +402,10 @@ export class Game {
           }
 
           proj.isDead = true;
-          this._awardBowArrowStack(this.players[proj.ownerId]);
-          const died = target.takeDamage(proj.damage, 'arrow');
+          if (proj.kind === 'arrow') {
+            this._awardBowArrowStack(this.players[proj.ownerId]);
+          }
+          const died = target.takeDamage(proj.damage, proj.kind === 'greatswordwave' ? 'greatswordwave' : 'arrow');
           if (died) this._creditKill(proj.ownerId, target, '활로');
         }
       });
@@ -417,6 +435,8 @@ export class Game {
           this._clearPendingSwordWavesFor(p.id);
           this._clearPendingRailgunsFor(p.id);
           this._clearPendingMeleeHitsFor(p.id);
+          this._clearPendingRapierStrikesFor(p.id);
+          this._clearPendingHammerSlamsFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
@@ -450,7 +470,12 @@ export class Game {
   _performAutomaticAttack(player, weaponConfig, now) {
     const combo = this._resolveComboAttack(player, weaponConfig, now);
     const attackConfig = combo.weaponConfig;
-    const swingDirection = player.triggerAttack(now);
+    const swingDirection = Number.isFinite(attackConfig.fixedSwingDirection)
+      ? attackConfig.fixedSwingDirection
+      : player.triggerAttack(now);
+    if (Number.isFinite(attackConfig.fixedSwingDirection)) {
+      player.lastAttackTime = now;
+    }
     this._applyComboRecovery(player, combo, now);
 
     if (attackConfig.type !== 'projectile') {
@@ -491,7 +516,9 @@ export class Game {
     }
 
     const spawnDist = player.radius + 3;
-    const arrowId = `${player.id}-arrow-${now}`;
+    const projectileKind = attackConfig.projectileKind || 'arrow';
+    const projectileWeapon = attackConfig.projectileWeapon || player.weapon;
+    const arrowId = `${player.id}-${projectileKind}-${now}`;
     this.effects.push({
       attackerId: player.id,
       x: player.x,
@@ -499,6 +526,7 @@ export class Game {
       angle: player.angle,
       weapon: player.weapon,
       type: 'projectile_shot',
+      projectileKind,
       progress: 0,
       timestamp: now,
       lifetime: Math.min(attackConfig.cooldown * 0.45, 260)
@@ -512,8 +540,11 @@ export class Game {
       player.angle,
       attackConfig.speed,
       attackConfig.range,
-      attackConfig.damage
+      attackConfig.damage,
+      projectileKind
     );
+    proj.weapon = projectileWeapon;
+    if (attackConfig.radius) proj.radius = attackConfig.radius;
     this.projectiles.push(proj);
   }
 
@@ -584,6 +615,9 @@ export class Game {
       hitCount++;
       this._applyMeleeHitMovement(attacker, target, hit);
       const died = target.takeDamage(hit.damage, attacker.nickname);
+      if (!died && hit.stunMs) {
+        target.stunTimeLeft = Math.max(target.stunTimeLeft || 0, hit.stunMs / 1000);
+      }
       if (died) this._creditKill(attacker.id, target);
     });
 
@@ -629,7 +663,7 @@ export class Game {
       }
     }
 
-    return { damage, pull, knockback };
+    return { damage, pull, knockback, stunMs: weapon.stunMs || 0 };
   }
 
   _applyMeleeHitMovement(attacker, target, hit) {
@@ -771,9 +805,13 @@ export class Game {
     if (data.action === 'dash') {
       const hasDir = Number.isFinite(data.dx) || Number.isFinite(data.dy);
       const v = hasDir ? { dx: data.dx || 0, dy: data.dy || 0 } : dirFromKeys(player.keys || {});
-      this._tryDash(player, v.dx, v.dy);
-    } else if (data.action === 'skill') {
-      this._activateSkill(player, now);
+      if (!this._tryDaggerQteInput(player, now)) {
+        this._tryDash(player, v.dx, v.dy);
+      }
+    } else if (data.action === 'skill' || data.action === 'skillDown') {
+      this._handleSkillPressed(player, now);
+    } else if (data.action === 'skillUp') {
+      this._handleSkillReleased(player, now);
     }
   }
 
@@ -782,11 +820,28 @@ export class Game {
     player.startDash(dirX, dirY);
   }
 
+  _handleSkillPressed(player, now) {
+    if (!player || player.isDead || player.stunTimeLeft > 0) return;
+    if (player.weapon === 'greatsword') {
+      this._startGreatswordCharge(player, now);
+      return;
+    }
+    this._activateSkill(player, now);
+  }
+
+  _handleSkillReleased(player, now) {
+    if (!player || player.isDead) return;
+    if (player.weapon === 'greatsword') {
+      this._releaseGreatswordCharge(player, now);
+    }
+  }
+
   _canUseSkill(player) {
-    if (!player || player.isDead ||
+    if (!player || player.isDead || player.stunTimeLeft > 0 ||
         player.buffTimeLeft > 0 || player.skillCdLeft > 0 || player.spearThrown) {
       return false;
     }
+    if (player.greatswordChargeStart > 0 || player.daggerQte) return false;
     if (!SkillConfig[player.weapon]) return false;
     if (player.weapon === 'bow') {
       return (player.arrowStacks || 0) > 0;
@@ -806,13 +861,11 @@ export class Game {
       case 'bow': this._castRailgun(player, now); break;
       case 'spear': this._throwSpear(player, now); break;
       case 'gauntlet': this._startBuff(player, 'gauntlet_lance', SkillConfig.gauntlet.buffMs, now); break;
-      case 'greatsword':
-      case 'scythe':
-      case 'dagger':
-      case 'rapier':
-      case 'hammer':
-        this._castMeleeSkill(player, now);
-        break;
+      case 'greatsword': this._startGreatswordCharge(player, now); break;
+      case 'scythe': this._castMeleeSkill(player, now); break;
+      case 'dagger': this._startDaggerQte(player, now); break;
+      case 'rapier': this._castRapierFlurry(player, now); break;
+      case 'hammer': this._castHammerSkill(player, now); break;
       default: break;
     }
   }
@@ -885,6 +938,343 @@ export class Game {
     player.skillCdLeft = sk.cooldownMs / 1000;
   }
 
+  _startGreatswordCharge(player, now) {
+    if (!this._canUseSkill(player)) return;
+    const sk = SkillConfig.greatsword;
+    player.greatswordChargeStart = now;
+    player.greatswordChargeAngle = player.angle;
+    player.comboStep = 0;
+    player.comboDelayUntil = 0;
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'greatsword',
+      type: 'greatsword_charge',
+      range: sk.range,
+      angleDeg: sk.angle,
+      progress: 0,
+      timestamp: now,
+      lifetime: sk.chargeMaxMs
+    });
+  }
+
+  _releaseGreatswordCharge(player, now) {
+    if (!player || player.greatswordChargeStart <= 0) return;
+    const sk = SkillConfig.greatsword;
+    const heldMs = Math.max(0, now - player.greatswordChargeStart);
+    const chargeRatio = clamp01(heldMs / (sk.chargeMaxMs || 3000));
+    const damage = Math.round((sk.minDamage || sk.damage) + ((sk.damage || 85) - (sk.minDamage || sk.damage)) * chargeRatio);
+    player.greatswordChargeStart = 0;
+    player.greatswordChargeAngle = 0;
+    player.skillCdLeft = sk.cooldownMs / 1000;
+
+    const attackConfig = {
+      ...Weapons.greatsword,
+      ...sk,
+      damage,
+      cooldown: Weapons.greatsword.cooldown,
+      chargeRatio
+    };
+
+    const effect = {
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'greatsword',
+      type: attackConfig.type,
+      range: attackConfig.range,
+      angleDeg: attackConfig.angle,
+      comboFinisher: true,
+      isSkill: true,
+      chargeRatio,
+      swingDirection: 1,
+      progress: 0,
+      timestamp: now,
+      lifetime: 720
+    };
+    this.effects.push(effect);
+    const hitCount = this._queueOrApplyMeleeHit(player, attackConfig, now);
+    if (hitCount !== null) this._applyAttackTempoResult(player, attackConfig, hitCount, now);
+  }
+
+  _processGreatswordCharges(now) {
+    const maxMs = SkillConfig.greatsword?.chargeMaxMs || 3000;
+    Object.values(this.players).forEach(player => {
+      if (!player || player.isDead || player.weapon !== 'greatsword') return;
+      if (player.greatswordChargeStart > 0 && now - player.greatswordChargeStart >= maxMs) {
+        this._releaseGreatswordCharge(player, now);
+      }
+    });
+  }
+
+  _startDaggerQte(player, now) {
+    if (!this._canUseSkill(player)) return;
+    const target = this._findNearestEnemy(player);
+    const sk = SkillConfig.dagger;
+    if (!target) {
+      player.skillCdLeft = Math.min(1.5, sk.cooldownMs / 1000);
+      return;
+    }
+
+    player.daggerQte = {
+      targetId: target.id,
+      phase: 'lock',
+      actionAt: now + sk.lockMs,
+      perfectAt: 0,
+      expiresAt: now + sk.lockMs + sk.windowMs
+    };
+    player.skillCdLeft = sk.cooldownMs / 1000;
+    this.effects.push({
+      attackerId: player.id,
+      targetId: target.id,
+      x: player.x,
+      y: player.y,
+      weapon: 'dagger',
+      type: 'dagger_qte_lock',
+      progress: 0,
+      timestamp: now,
+      lifetime: sk.lockMs
+    });
+  }
+
+  _processDaggerQtes(now) {
+    Object.values(this.players).forEach(player => {
+      const qte = player?.daggerQte;
+      if (!qte) return;
+
+      const target = this.players[qte.targetId];
+      if (!target || target.isDead || player.isDead) {
+        player.daggerQte = null;
+        return;
+      }
+
+      if (qte.phase === 'lock' && now >= qte.actionAt) {
+        const sk = SkillConfig.dagger;
+        this._placeBehindTarget(player, target, 34);
+        player.angle = Math.atan2(target.y - player.y, target.x - player.x);
+        qte.phase = 'window';
+        qte.perfectAt = now + sk.perfectMs;
+        qte.expiresAt = now + sk.windowMs;
+        this.effects.push({
+          attackerId: player.id,
+          targetId: target.id,
+          x: player.x,
+          y: player.y,
+          weapon: 'dagger',
+          type: 'dagger_qte_window',
+          progress: 0,
+          timestamp: now,
+          lifetime: sk.windowMs,
+          perfectMs: sk.perfectMs
+        });
+      }
+
+      if (qte.phase === 'window' && now > qte.expiresAt) {
+        player.daggerQte = null;
+      }
+    });
+  }
+
+  _tryDaggerQteInput(player, now) {
+    const qte = player?.daggerQte;
+    if (!qte || qte.phase !== 'window') return false;
+
+    const target = this.players[qte.targetId];
+    player.daggerQte = null;
+    if (!target || target.isDead || target.isInvincible()) return true;
+
+    const sk = SkillConfig.dagger;
+    const diff = Math.abs(now - qte.perfectAt);
+    const success = diff <= (sk.toleranceMs || 150);
+    if (!success) {
+      this.effects.push({
+        attackerId: player.id,
+        x: player.x,
+        y: player.y,
+        weapon: 'dagger',
+        type: 'dagger_qte_fail',
+        progress: 0,
+        timestamp: now,
+        lifetime: 320
+      });
+      return true;
+    }
+
+    player.angle = Math.atan2(target.y - player.y, target.x - player.x);
+    this._lungePlayer(player, sk.dashDistance || 64);
+    const died = target.takeDamage(sk.damage || 70, player.nickname);
+    if (died) this._creditKill(player.id, target, '암습으로');
+    this.effects.push({
+      attackerId: player.id,
+      targetId: target.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'dagger',
+      type: 'dagger_qte_hit',
+      progress: 0,
+      timestamp: now,
+      lifetime: 420
+    });
+    return true;
+  }
+
+  _findNearestEnemy(player) {
+    let best = null;
+    let bestDist = Infinity;
+    Object.values(this.players).forEach(target => {
+      if (!target || target.id === player.id || target.isDead) return;
+      const dist = Math.hypot(target.x - player.x, target.y - player.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = target;
+      }
+    });
+    return best;
+  }
+
+  _placeBehindTarget(player, target, distance = 34) {
+    const angle = (target.angle || 0) + Math.PI;
+    player.x = target.x + Math.cos(angle) * distance;
+    player.y = target.y + Math.sin(angle) * distance;
+    Collision.clampToMap(player, this.mapWidth, this.mapHeight);
+  }
+
+  _castRapierFlurry(player, now) {
+    if (!this._canUseSkill(player)) return;
+    const sk = SkillConfig.rapier;
+    const count = Math.max(1, Math.floor(sk.strikeCount || 7));
+    const interval = Math.max(0, sk.strikeIntervalMs || 120);
+    if (!this.pendingRapierStrikes) this.pendingRapierStrikes = [];
+    for (let i = 0; i < count; i++) {
+      this.pendingRapierStrikes.push({
+        playerId: player.id,
+        releaseAt: now + i * interval,
+        sequence: i
+      });
+    }
+    player.skillCdLeft = sk.cooldownMs / 1000;
+  }
+
+  _processRapierStrikes(now) {
+    if (!this.pendingRapierStrikes?.length) return;
+    const waiting = [];
+    for (const strike of this.pendingRapierStrikes) {
+      if (now < strike.releaseAt) {
+        waiting.push(strike);
+        continue;
+      }
+      const player = this.players[strike.playerId];
+      if (!player || player.isDead || player.weapon !== 'rapier') continue;
+      this._executeRapierStrike(player, now, strike.sequence);
+    }
+    this.pendingRapierStrikes = waiting;
+  }
+
+  _executeRapierStrike(player, now, sequence = 0) {
+    const sk = SkillConfig.rapier;
+    const attackConfig = {
+      ...Weapons.rapier,
+      ...sk,
+      cooldown: Weapons.rapier.cooldown
+    };
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'rapier',
+      type: attackConfig.type,
+      range: attackConfig.range,
+      width: attackConfig.width,
+      comboFinisher: false,
+      isSkill: true,
+      sequence,
+      progress: 0,
+      timestamp: now,
+      lifetime: 210
+    });
+    const hitCount = this._applyMeleeHits(this._snapshotMeleeAttacker(player), attackConfig, now);
+    this._applyAttackTempoResult(player, attackConfig, hitCount, now);
+  }
+
+  _clearPendingRapierStrikesFor(playerId) {
+    if (!this.pendingRapierStrikes?.length) return;
+    this.pendingRapierStrikes = this.pendingRapierStrikes.filter(strike => strike.playerId !== playerId);
+  }
+
+  _castHammerSkill(player, now) {
+    if (!this._canUseSkill(player)) return;
+    const sk = SkillConfig.hammer;
+    if (!this.pendingHammerSlams) this.pendingHammerSlams = [];
+    this.pendingHammerSlams.push({
+      playerId: player.id,
+      releaseAt: now + (sk.delayMs || 1000)
+    });
+    player.skillCdLeft = sk.cooldownMs / 1000;
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      weapon: 'hammer',
+      type: 'hammer_windup',
+      range: sk.range,
+      progress: 0,
+      timestamp: now,
+      lifetime: sk.delayMs || 1000
+    });
+  }
+
+  _processHammerSlams(now) {
+    if (!this.pendingHammerSlams?.length) return;
+    const waiting = [];
+    for (const slam of this.pendingHammerSlams) {
+      if (now < slam.releaseAt) {
+        waiting.push(slam);
+        continue;
+      }
+      const player = this.players[slam.playerId];
+      if (!player || player.isDead || player.weapon !== 'hammer') continue;
+      this._executeHammerSkillSlam(player, now);
+    }
+    this.pendingHammerSlams = waiting;
+  }
+
+  _executeHammerSkillSlam(player, now) {
+    const sk = SkillConfig.hammer;
+    const attackConfig = {
+      ...Weapons.hammer,
+      ...sk,
+      shockwaveDamage: sk.damage,
+      cooldown: Weapons.hammer.cooldown,
+      type: 'melee_slam'
+    };
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'hammer',
+      type: 'melee_slam',
+      range: attackConfig.range,
+      innerRange: attackConfig.innerRange,
+      comboFinisher: true,
+      isSkill: true,
+      progress: 0,
+      timestamp: now,
+      lifetime: 680
+    });
+    this._applyMeleeHits(this._snapshotMeleeAttacker(player), attackConfig, now);
+  }
+
+  _clearPendingHammerSlamsFor(playerId) {
+    if (!this.pendingHammerSlams?.length) return;
+    this.pendingHammerSlams = this.pendingHammerSlams.filter(slam => slam.playerId !== playerId);
+  }
+
   /**
    * Sword skill: release three sword-energy projectiles on a short cadence.
    */
@@ -939,6 +1329,7 @@ export class Game {
     );
     proj.explosionRadius = sk.explosionRadius;
     proj.explosionDamage = sk.explosionDamage;
+    proj.weapon = 'sword';
     this.projectiles.push(proj);
   }
 
@@ -1201,6 +1592,7 @@ export class Game {
     proj.vx = -dirX * returnSpeed;
     proj.vy = -dirY * returnSpeed;
     proj.angle = angle + Math.PI;
+    proj.weapon = 'spear';
     this.projectiles.push(proj);
 
     // Railbeam and vibration feedback.
@@ -1331,6 +1723,7 @@ export class Game {
       const p = this.players[id];
       if (p.iframeTimeLeft > 0) p.iframeTimeLeft = Math.max(0, p.iframeTimeLeft - deltaTime);
       if (p.buffTimeLeft > 0) p.buffTimeLeft = Math.max(0, p.buffTimeLeft - deltaTime);
+      if (p.stunTimeLeft > 0) p.stunTimeLeft = Math.max(0, p.stunTimeLeft - deltaTime);
     });
 
     // Smoothly drag and interpolate positions
@@ -1505,6 +1898,20 @@ export class Game {
         skillState.textContent = `버프 ${local.buffTimeLeft.toFixed(1)}s`;
         skillBar.style.width = `${clamp01(local.buffTimeLeft / total) * 100}%`;
         skillBar.style.background = weaponColor;
+      } else if (local.greatswordChargeStart > 0) {
+        const totalMs = sk?.chargeMaxMs || 3000;
+        const chargedMs = Date.now() - local.greatswordChargeStart;
+        skillState.textContent = `차지 ${(Math.min(totalMs, chargedMs) / 1000).toFixed(1)}s`;
+        skillBar.style.width = `${clamp01(chargedMs / totalMs) * 100}%`;
+        skillBar.style.background = weaponColor;
+      } else if (local.daggerQte) {
+        skillState.textContent = local.daggerQte.phase === 'window' ? 'QTE!' : '표식';
+        skillBar.style.width = '100%';
+        skillBar.style.background = weaponColor;
+      } else if (local.stunTimeLeft > 0) {
+        skillState.textContent = `스턴 ${local.stunTimeLeft.toFixed(1)}s`;
+        skillBar.style.width = '100%';
+        skillBar.style.background = '#f97316';
       } else if (local.spearThrown) {
         skillState.textContent = '비행 중';
         skillBar.style.width = '100%';
@@ -1655,6 +2062,8 @@ export class Game {
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];
+    this.pendingRapierStrikes = [];
+    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.canvas.style.cursor = '';
@@ -1793,8 +2202,17 @@ export class Game {
             p.buffTimeLeft = (snap.buffMs || 0) / 1000;
             p.skillCdLeft = (snap.skillCdMs || 0) / 1000;
             p.dashCdLeft = (snap.dashCdMs || 0) / 1000;
+            p.stunTimeLeft = (snap.stunMs || 0) / 1000;
             p.spearThrown = Boolean(snap.spearThrown);
             p.arrowStacks = Math.max(0, Math.floor(snap.arrowStacks || 0));
+            p.greatswordChargeStart = snap.greatswordChargeMs > 0 ? Date.now() - snap.greatswordChargeMs : 0;
+            p.daggerQte = snap.daggerQte ? {
+              targetId: snap.daggerQte.targetId,
+              phase: snap.daggerQte.phase || 'lock',
+              actionAt: Date.now() + Math.max(0, Math.round(snap.daggerQte.actionMs || 0)),
+              perfectAt: Date.now() + Math.max(0, Math.round(snap.daggerQte.perfectMs || 0)),
+              expiresAt: Date.now() + Math.max(0, Math.round(snap.daggerQte.expiresMs || 0))
+            } : null;
             p.comboStep = Math.max(0, Math.floor(snap.comboStep || 0));
             p.comboDelayUntil = Date.now() + Math.max(0, Math.round(snap.comboDelayMs || 0));
             p.color = snap.color;
@@ -1843,6 +2261,7 @@ export class Game {
             // Keep the host's exact velocity so client extrapolation matches.
             if (Number.isFinite(snap.vx)) proj.vx = snap.vx;
             if (Number.isFinite(snap.vy)) proj.vy = snap.vy;
+            proj.weapon = snap.weapon || (snap.kind === 'greatswordwave' ? 'greatsword' : proj.weapon);
             proj.isDead = snap.isDead;
             return proj;
           });

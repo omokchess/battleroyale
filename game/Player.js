@@ -36,6 +36,7 @@ export class Player {
     this.dashCdLeft = 0;
     this.dashDirX = 0;
     this.dashDirY = 0;
+    this.stunTimeLeft = 0;
 
     // --- F skill state ---
     this.skillCdLeft = 0;     // seconds remaining on the skill cooldown
@@ -43,6 +44,9 @@ export class Player {
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
     this.arrowStacks = 0;     // bow skill charges earned by landing arrows
+    this.greatswordChargeStart = 0;
+    this.greatswordChargeAngle = 0;
+    this.daggerQte = null;
 
     // Generate unique colors based on hash of peer ID
     const colors = this._generateColorsFromId(id);
@@ -81,6 +85,7 @@ export class Player {
     if (this.dashTimeLeft > 0) this.dashTimeLeft = Math.max(0, this.dashTimeLeft - deltaTime);
     if (this.iframeTimeLeft > 0) this.iframeTimeLeft = Math.max(0, this.iframeTimeLeft - deltaTime);
     if (this.dashCdLeft > 0) this.dashCdLeft = Math.max(0, this.dashCdLeft - deltaTime);
+    if (this.stunTimeLeft > 0) this.stunTimeLeft = Math.max(0, this.stunTimeLeft - deltaTime);
   }
 
   /**
@@ -88,6 +93,10 @@ export class Player {
    */
   updatePosition(deltaTime, keys, mapWidth, mapHeight) {
     if (this.isDead) return;
+    if (this.stunTimeLeft > 0) {
+      this._tickTimers(deltaTime);
+      return;
+    }
 
     // A dash overrides normal locomotion with a fixed-direction burst. Consume
     // (up to) the remaining dash window *before* advancing the timers so even a
@@ -126,7 +135,7 @@ export class Player {
    * no movement is held. Returns true when the dash actually started.
    */
   startDash(dirX = 0, dirY = 0) {
-    if (this.isDead || this.dashCdLeft > 0 || this.dashTimeLeft > 0) return false;
+    if (this.isDead || this.stunTimeLeft > 0 || this.dashCdLeft > 0 || this.dashTimeLeft > 0) return false;
 
     let len = Math.hypot(dirX, dirY);
     if (len < 1e-4) {
@@ -157,11 +166,15 @@ export class Player {
     this.dashCdLeft = 0;
     this.dashDirX = 0;
     this.dashDirY = 0;
+    this.stunTimeLeft = 0;
     this.skillCdLeft = 0;
     this.buffType = null;
     this.buffTimeLeft = 0;
     this.spearThrown = false;
     this.arrowStacks = 0;
+    this.greatswordChargeStart = 0;
+    this.greatswordChargeAngle = 0;
+    this.daggerQte = null;
     this.comboStep = 0;
     this.comboDelayUntil = 0;
   }
@@ -170,7 +183,7 @@ export class Player {
    * Try to initiate an attack based on weapon cooldown
    */
   canAttack(now) {
-    if (this.isDead || this.spearThrown) return false;
+    if (this.isDead || this.stunTimeLeft > 0 || this.spearThrown || this.greatswordChargeStart > 0 || this.daggerQte) return false;
     const ignoresComboDelay = this.weapon === 'axe' && this.buffType === 'axe_rage';
     if (!ignoresComboDelay && now < (this.comboDelayUntil || 0)) return false;
     const weaponConfig = getEffectiveWeapon(this.weapon, this.buffType);
@@ -216,8 +229,11 @@ export class Player {
       buffMs: Math.round(this.buffTimeLeft * 1000),
       skillCdMs: Math.round(this.skillCdLeft * 1000),
       dashCdMs: Math.round(this.dashCdLeft * 1000),
+      stunMs: Math.round(this.stunTimeLeft * 1000),
       spearThrown: this.spearThrown,
       arrowStacks: this.arrowStacks || 0,
+      greatswordChargeMs: this.greatswordChargeStart > 0 ? Math.max(0, Date.now() - this.greatswordChargeStart) : 0,
+      daggerQte: serializeDaggerQte(this.daggerQte),
       comboStep: this.comboStep || 0,
       comboDelayMs: Math.max(0, Math.round((this.comboDelayUntil || 0) - Date.now())),
       color: this.color,
@@ -241,8 +257,11 @@ export class Player {
     this.buffTimeLeft = (data.buffMs || 0) / 1000;
     this.skillCdLeft = (data.skillCdMs || 0) / 1000;
     this.dashCdLeft = (data.dashCdMs || 0) / 1000;
+    this.stunTimeLeft = (data.stunMs || 0) / 1000;
     this.spearThrown = Boolean(data.spearThrown);
     this.arrowStacks = Math.max(0, Math.floor(data.arrowStacks || 0));
+    this.greatswordChargeStart = data.greatswordChargeMs > 0 ? Date.now() - data.greatswordChargeMs : 0;
+    this.daggerQte = deserializeDaggerQte(data.daggerQte);
     this.comboStep = Math.max(0, Math.floor(data.comboStep || 0));
     this.comboDelayUntil = Date.now() + Math.max(0, Math.round(data.comboDelayMs || 0));
     this.color = data.color;
@@ -254,4 +273,28 @@ export class Player {
     this.y = data.y;
     this.angle = data.angle;
   }
+}
+
+function serializeDaggerQte(qte) {
+  if (!qte) return null;
+  const now = Date.now();
+  return {
+    targetId: qte.targetId,
+    phase: qte.phase || 'lock',
+    actionMs: Math.max(0, Math.round((qte.actionAt || now) - now)),
+    perfectMs: Math.max(0, Math.round((qte.perfectAt || now) - now)),
+    expiresMs: Math.max(0, Math.round((qte.expiresAt || now) - now))
+  };
+}
+
+function deserializeDaggerQte(qte) {
+  if (!qte) return null;
+  const now = Date.now();
+  return {
+    targetId: qte.targetId,
+    phase: qte.phase || 'lock',
+    actionAt: now + Math.max(0, Math.round(qte.actionMs || 0)),
+    perfectAt: now + Math.max(0, Math.round(qte.perfectMs || 0)),
+    expiresAt: now + Math.max(0, Math.round(qte.expiresMs || 0))
+  };
 }

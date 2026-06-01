@@ -30,6 +30,10 @@ export class Input {
     // Edge-triggered one-shot actions consumed once per frame by the game loop.
     this.dashRequested = false;
     this.skillRequested = false;
+    this.skillDownRequested = false;
+    this.skillUpRequested = false;
+    this.skillHeld = false;
+    this.lastSkillPointerAt = 0;
 
     // Detect if device is touch-capable or loaded from stored preference
     const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -50,7 +54,9 @@ export class Input {
     this._touchEndHandler = null;
     this._toggleBtnHandler = null;
     this._dashBtnHandler = null;
-    this._skillBtnHandler = null;
+    this._skillBtnDownHandler = null;
+    this._skillBtnUpHandler = null;
+    this._skillBtnClickHandler = null;
 
     // Mobile Virtual Joystick bound entries
     this._leftTouchStart = null;
@@ -94,7 +100,7 @@ export class Input {
 
       // Space = dash, F = weapon skill (edge-triggered, ignore auto-repeat)
       if (key === ' ' && !e.repeat) this.dashRequested = true;
-      if (key === 'f' && !e.repeat) this.skillRequested = true;
+      if (key === 'f' && !e.repeat) this._requestSkillDown();
 
       // Prevent scrolling behaviors on gaming buttons
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(e.key.toLowerCase())) {
@@ -108,6 +114,7 @@ export class Input {
       if (key === 's' || e.key === 'ArrowDown') this.keys.s = false;
       if (key === 'a' || e.key === 'ArrowLeft') this.keys.a = false;
       if (key === 'd' || e.key === 'ArrowRight') this.keys.d = false;
+      if (key === 'f') this._requestSkillUp();
     };
 
     this._mouseMoveHandler = (e) => {
@@ -234,12 +241,26 @@ export class Input {
 
     const skillBtn = document.getElementById('skillBtn');
     if (skillBtn) {
-      this._skillBtnHandler = (e) => {
+      this._skillBtnDownHandler = (e) => {
         if (e.cancelable) e.preventDefault();
-        this.skillRequested = true;
+        this.lastSkillPointerAt = Date.now();
+        this._requestSkillDown();
       };
-      skillBtn.addEventListener('touchstart', this._skillBtnHandler, { passive: false });
-      skillBtn.addEventListener('click', this._skillBtnHandler);
+      this._skillBtnUpHandler = (e) => {
+        if (e.cancelable) e.preventDefault();
+        this.lastSkillPointerAt = Date.now();
+        this._requestSkillUp();
+      };
+      this._skillBtnClickHandler = (e) => {
+        if (e.cancelable) e.preventDefault();
+        if (Date.now() - this.lastSkillPointerAt < 450) return;
+        if (!this.skillHeld) this._requestSkillDown();
+      };
+      skillBtn.addEventListener('pointerdown', this._skillBtnDownHandler);
+      skillBtn.addEventListener('pointerup', this._skillBtnUpHandler);
+      skillBtn.addEventListener('pointercancel', this._skillBtnUpHandler);
+      skillBtn.addEventListener('pointerleave', this._skillBtnUpHandler);
+      skillBtn.addEventListener('click', this._skillBtnClickHandler);
     }
 
     if (leftContainer && leftKnob && rightContainer && rightKnob) {
@@ -412,6 +433,30 @@ export class Input {
     return true;
   }
 
+  consumeSkillDown() {
+    if (!this.skillDownRequested) return false;
+    this.skillDownRequested = false;
+    return true;
+  }
+
+  consumeSkillUp() {
+    if (!this.skillUpRequested) return false;
+    this.skillUpRequested = false;
+    return true;
+  }
+
+  _requestSkillDown() {
+    this.skillRequested = true;
+    this.skillDownRequested = true;
+    this.skillHeld = true;
+  }
+
+  _requestSkillUp() {
+    if (!this.skillHeld && !this.skillDownRequested) return;
+    this.skillHeld = false;
+    this.skillUpRequested = true;
+  }
+
   /**
    * Movement direction vector implied by the currently held keys.
    */
@@ -472,13 +517,21 @@ export class Input {
     }
 
     const skillBtn = document.getElementById('skillBtn');
-    if (skillBtn && this._skillBtnHandler) {
-      skillBtn.removeEventListener('touchstart', this._skillBtnHandler);
-      skillBtn.removeEventListener('click', this._skillBtnHandler);
+    if (skillBtn) {
+      if (this._skillBtnDownHandler) skillBtn.removeEventListener('pointerdown', this._skillBtnDownHandler);
+      if (this._skillBtnUpHandler) {
+        skillBtn.removeEventListener('pointerup', this._skillBtnUpHandler);
+        skillBtn.removeEventListener('pointercancel', this._skillBtnUpHandler);
+        skillBtn.removeEventListener('pointerleave', this._skillBtnUpHandler);
+      }
+      if (this._skillBtnClickHandler) skillBtn.removeEventListener('click', this._skillBtnClickHandler);
     }
 
     this.dashRequested = false;
     this.skillRequested = false;
+    this.skillDownRequested = false;
+    this.skillUpRequested = false;
+    this.skillHeld = false;
 
     const leftContainer = document.getElementById('leftJoystickContainer');
     const rightContainer = document.getElementById('rightJoystickContainer');

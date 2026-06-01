@@ -181,7 +181,7 @@ test('new melee weapon families expose distinct hit mechanics', () => {
 
   const rapier = new Player('rapier-owner', 'Needle', 'rapier', 100, 100);
   rapier.angle = 0;
-  const rapierTarget = new Player('rapier-target', 'Line', 'sword', 220, 102);
+  const rapierTarget = new Player('rapier-target', 'Line', 'sword', 180, 102);
   hit = game._resolveMeleeHitResult(rapier, rapierTarget, Weapons.rapier);
   assert.equal(hit.damage, Weapons.rapier.critDamage);
 
@@ -192,7 +192,7 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   assert.equal(hit.knockback, Weapons.hammer.knockback);
 });
 
-test('delayed heavy melee attacks resolve after their windup', () => {
+test('greatsword skill charges up to a max-damage heavy cleave', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -203,20 +203,47 @@ test('delayed heavy melee attacks resolve after their windup', () => {
 
   const owner = new Player('greatsword-owner', 'Heavy', 'greatsword', 100, 100);
   owner.angle = 0;
-  const target = new Player('greatsword-target', 'Dummy', 'sword', 178, 100);
+  const target = new Player('greatsword-target', 'Dummy', 'sword', 190, 100);
   game.players[owner.id] = owner;
   game.players[target.id] = target;
 
-  game._performAutomaticAttack(owner, Weapons.greatsword, 1000);
+  game._startGreatswordCharge(owner, 1000);
+  assert.equal(owner.greatswordChargeStart, 1000);
+  assert.equal(game.effects.some(e => e.type === 'greatsword_charge'), true);
+
+  game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs);
   assert.equal(game.pendingMeleeHits.length, 1);
   assert.equal(target.hp, target.maxHp);
 
-  game._processPendingMeleeHits(1000 + Weapons.greatsword.delayDamageMs - 1);
+  game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs + SkillConfig.greatsword.delayDamageMs - 1);
   assert.equal(target.hp, target.maxHp);
 
-  game._processPendingMeleeHits(1000 + Weapons.greatsword.delayDamageMs);
+  game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs + SkillConfig.greatsword.delayDamageMs);
   assert.equal(game.pendingMeleeHits.length, 0);
-  assert.equal(target.hp, target.maxHp - Weapons.greatsword.damage);
+  assert.equal(target.hp, target.maxHp - SkillConfig.greatsword.damage);
+  assert.equal(owner.skillCdLeft, SkillConfig.greatsword.cooldownMs / 1000);
+});
+
+test('greatsword third combo fires a short sword wave', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.projectiles = [];
+  game.effects = [];
+  game.pendingMeleeHits = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('greatsword-combo', 'Heavy', 'greatsword', 100, 100);
+  owner.angle = 0;
+  owner.comboStep = 2;
+  owner.lastAttackTime = 1000;
+  game.players[owner.id] = owner;
+
+  game._performAutomaticAttack(owner, Weapons.greatsword, 1400);
+  assert.equal(game.projectiles.length, 1);
+  assert.equal(game.projectiles[0].kind, 'greatswordwave');
+  assert.equal(game.projectiles[0].damage, 25);
 });
 
 test('rapier hit tempo refunds cooldown on contact', () => {
@@ -230,12 +257,86 @@ test('rapier hit tempo refunds cooldown on contact', () => {
 
   const owner = new Player('rapier-owner', 'Tempo', 'rapier', 100, 100);
   owner.angle = 0;
-  const target = new Player('rapier-target', 'Dummy', 'sword', 220, 100);
+  const target = new Player('rapier-target', 'Dummy', 'sword', 180, 100);
   game.players[owner.id] = owner;
   game.players[target.id] = target;
 
   game._performAutomaticAttack(owner, Weapons.rapier, 1000);
   assert.equal(owner.lastAttackTime, 1000 - Weapons.rapier.hitCooldownRefundMs);
+});
+
+test('dagger skill QTE teleports behind target and rewards timed space input', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('dagger-owner', 'Shade', 'dagger', 100, 100);
+  const target = new Player('dagger-target', 'Mark', 'sword', 180, 100);
+  target.angle = 0;
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._startDaggerQte(owner, 1000);
+  assert.equal(owner.daggerQte.targetId, target.id);
+  assert.equal(game.effects.some(e => e.type === 'dagger_qte_lock'), true);
+
+  game._processDaggerQtes(1000 + SkillConfig.dagger.lockMs);
+  assert.equal(owner.daggerQte.phase, 'window');
+  assert.ok(owner.x < target.x);
+
+  const hpBefore = target.hp;
+  assert.equal(game._tryDaggerQteInput(owner, owner.daggerQte.perfectAt), true);
+  assert.equal(target.hp, hpBefore - SkillConfig.dagger.damage);
+  assert.equal(owner.daggerQte, null);
+});
+
+test('rapier skill queues seven rapid needle strikes', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingRapierStrikes = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('rapier-flurry', 'Needle', 'rapier', 100, 100);
+  owner.angle = 0;
+  const target = new Player('rapier-target', 'Dummy', 'sword', 180, 100);
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._castRapierFlurry(owner, 1000);
+  assert.equal(game.pendingRapierStrikes.length, SkillConfig.rapier.strikeCount);
+  game._processRapierStrikes(1000);
+  assert.equal(game.effects.filter(e => e.type === 'melee_precise_line' && e.weapon === 'rapier').length, 1);
+});
+
+test('hammer skill lands after one second and stuns enemies', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingHammerSlams = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('hammer-owner', 'Bell', 'hammer', 100, 100);
+  const target = new Player('hammer-target', 'Dummy', 'sword', 210, 100);
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._castHammerSkill(owner, 1000);
+  assert.equal(game.pendingHammerSlams.length, 1);
+  assert.equal(game.effects.some(e => e.type === 'hammer_windup'), true);
+  game._processHammerSlams(1000 + SkillConfig.hammer.delayMs - 1);
+  assert.equal(target.hp, target.maxHp);
+
+  game._processHammerSlams(1000 + SkillConfig.hammer.delayMs);
+  assert.equal(target.hp, target.maxHp - SkillConfig.hammer.damage);
+  assert.equal(target.stunTimeLeft, SkillConfig.hammer.stunMs / 1000);
 });
 
 test('bow railgun vibration only fires for the local caster once', () => {

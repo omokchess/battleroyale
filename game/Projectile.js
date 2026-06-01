@@ -21,6 +21,7 @@ export class Projectile {
     this.maxRange = maxRange;
     this.damage = damage;
     this.kind = kind; // 'arrow' | 'swordwave' | 'thrownspear'
+    this.weapon = kind === 'swordwave' ? 'sword' : 'bow';
     this.isDead = false;
     this.radius = 5; // Hit detection radius
 
@@ -87,6 +88,7 @@ export class Projectile {
       maxRange: Number.isFinite(this.maxRange) ? this.maxRange : null,
       damage: this.damage,
       kind: this.kind,
+      weapon: this.weapon,
       isDead: this.isDead
     };
   }

@@ -452,6 +452,8 @@ export class Renderer {
         this._drawThrownSpear(ctx, scr, angle, zoom);
       } else if (p.kind === 'swordwave') {
         this._drawSwordWave(ctx, scr, angle, zoom);
+      } else if (p.kind === 'greatswordwave') {
+        this._drawGreatswordWave(ctx, scr, angle, zoom);
       } else {
         this._drawArrow(ctx, scr, angle);
       }
@@ -647,16 +649,28 @@ export class Renderer {
 
       if (e.type === 'melee_heavy_arc') {
         this._drawHeavyCleave(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'greatsword_charge') {
+        this._drawGreatswordCharge(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_sweet_arc') {
         this._drawScytheSweep(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_backstab') {
         this._drawDaggerStab(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'dagger_qte_lock') {
+        this._drawDaggerQteLock(ctx, camera, cw, ch, scr, anchoredEffect, players, weapon, alpha);
+      } else if (e.type === 'dagger_qte_window') {
+        this._drawDaggerQteWindow(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'dagger_qte_hit') {
+        this._drawDaggerQteHit(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'dagger_qte_fail') {
+        this._drawDaggerQteFail(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_precise_line') {
         this._drawRapierPierce(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_heavy_line') {
         this._drawHeavyLine(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_slam') {
         this._drawHammerSlam(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'hammer_windup') {
+        this._drawHammerWindup(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_arc') {
         if (e.weapon === 'gauntlet') {
           this._drawPunchCombo(ctx, scr, anchoredEffect, weapon, alpha);
@@ -881,6 +895,37 @@ export class Renderer {
     ctx.restore();
   }
 
+  _drawGreatswordWave(ctx, scr, angle, zoom) {
+    const length = 38 * Math.max(0.75, zoom);
+    const width = 18 * Math.max(0.75, zoom);
+
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(angle);
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = Weapons.greatsword.color;
+
+    ctx.fillStyle = 'rgba(139, 211, 255, 0.18)';
+    ctx.strokeStyle = Weapons.greatsword.color;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(length * 0.5, 0);
+    ctx.lineTo(-length * 0.45, -width * 0.58);
+    ctx.lineTo(-length * 0.2, 0);
+    ctx.lineTo(-length * 0.45, width * 0.58);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-length * 0.32, 0);
+    ctx.lineTo(length * 0.45, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   _drawHeavyCleave(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const charge = clamp01(progress / 0.42);
@@ -907,6 +952,32 @@ export class Renderer {
     ctx.restore();
 
     this._drawArcSlash(ctx, scr, { ...e, progress: Math.max(progress, release * 0.9), comboFinisher: true }, weapon, alpha);
+  }
+
+  _drawGreatswordCharge(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const radius = weapon.range * (0.42 + 0.58 * progress);
+    const halfAngle = ((weapon.angle || 115) * Math.PI) / 360;
+    const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 80);
+
+    ctx.save();
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.05 + 0.12 * progress);
+    ctx.strokeStyle = this._hexToRGB(weapon.color, (0.38 + 0.35 * pulse) * alpha);
+    ctx.lineWidth = (2 + 4 * progress) * alpha;
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.arc(scr.x, scr.y, radius, e.angle - halfAngle, e.angle + halfAngle);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.5 * alpha * progress);
+    ctx.lineWidth = 2.2 * alpha;
+    ctx.beginPath();
+    ctx.moveTo(scr.x + Math.cos(e.angle) * 18, scr.y + Math.sin(e.angle) * 18);
+    ctx.lineTo(scr.x + Math.cos(e.angle) * radius, scr.y + Math.sin(e.angle) * radius);
+    ctx.stroke();
+    ctx.restore();
   }
 
   _drawScytheSweep(ctx, scr, e, weapon, alpha) {
@@ -1000,6 +1071,82 @@ export class Renderer {
     ctx.restore();
   }
 
+  _drawDaggerQteLock(ctx, camera, cw, ch, scr, e, players, weapon, alpha) {
+    const target = this._findPlayerById(players, e.targetId);
+    if (!target || target.isDead) return;
+    const targetScr = camera.toScreen(target.x, target.y, cw, ch);
+    const progress = clamp01(e.progress);
+
+    ctx.save();
+    ctx.setLineDash([7, 7]);
+    ctx.strokeStyle = `rgba(209, 213, 219, ${0.25 + 0.35 * (1 - progress)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.lineTo(targetScr.x, targetScr.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const scanR = 14 + 28 * progress;
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.65 * alpha);
+    ctx.beginPath();
+    ctx.arc(targetScr.x, targetScr.y, scanR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawDaggerQteWindow(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const perfectT = clamp01((e.perfectMs || 560) / (e.lifetime || 900));
+    const outer = 52 - 36 * progress;
+    const target = 52 - 36 * perfectT;
+
+    ctx.save();
+    ctx.shadowBlur = 14 * alpha;
+    ctx.shadowColor = weapon.color;
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.65 * alpha);
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, target, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.9 * alpha);
+    ctx.lineWidth = 4.2;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, Math.max(4, outer), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawDaggerQteHit(ctx, scr, e, weapon, alpha) {
+    ctx.save();
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.86 * alpha);
+    ctx.lineWidth = 5 * alpha;
+    ctx.beginPath();
+    ctx.moveTo(scr.x - 28, scr.y + 18);
+    ctx.lineTo(scr.x + 26, scr.y - 18);
+    ctx.stroke();
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.75 * alpha);
+    ctx.lineWidth = 2.2 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, 18 + 22 * e.progress, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawDaggerQteFail(ctx, scr, e, weapon, alpha) {
+    ctx.save();
+    ctx.strokeStyle = this._hexToRGB('#ef4444', 0.8 * alpha);
+    ctx.lineWidth = 3 * alpha;
+    ctx.beginPath();
+    ctx.moveTo(scr.x - 12, scr.y - 12);
+    ctx.lineTo(scr.x + 12, scr.y + 12);
+    ctx.moveTo(scr.x + 12, scr.y - 12);
+    ctx.lineTo(scr.x - 12, scr.y + 12);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   _drawRapierPierce(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const thrust = progress < 0.16
@@ -1016,6 +1163,22 @@ export class Renderer {
     }
     this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, width * 1.55 * alpha, this._hexToRGB(weapon.color, 0.42 * alpha), 'butt');
     this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 2.4 * alpha, this._hexToRGB('#ffffff', 0.92 * alpha), 'butt');
+
+    ctx.fillStyle = this._hexToRGB('#ffffff', 0.86 * alpha);
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.9 * alpha);
+    ctx.lineWidth = 1.5;
+    ctx.save();
+    ctx.translate(tipX, tipY);
+    ctx.rotate(e.angle);
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.lineTo(-6, -3.2);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-6, 3.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
 
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.72 * alpha);
     ctx.lineWidth = 1.4 * alpha;
@@ -1087,6 +1250,32 @@ export class Renderer {
       ctx.beginPath();
       ctx.moveTo(scr.x + Math.cos(a) * start, scr.y + Math.sin(a) * start);
       ctx.lineTo(scr.x + Math.cos(a + 0.12) * end, scr.y + Math.sin(a + 0.12) * end);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawHammerWindup(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const radius = weapon.range * (0.35 + 0.65 * progress);
+    const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 70);
+
+    ctx.save();
+    ctx.setLineDash([9, 7]);
+    ctx.strokeStyle = this._hexToRGB(weapon.color, (0.35 + 0.35 * pulse) * alpha);
+    ctx.lineWidth = 2.2 + 2.4 * progress;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3 + progress * 0.6;
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.28 * alpha * progress);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(a) * 18, scr.y + Math.sin(a) * 18);
+      ctx.lineTo(scr.x + Math.cos(a) * radius, scr.y + Math.sin(a) * radius);
       ctx.stroke();
     }
     ctx.restore();
@@ -1267,6 +1456,11 @@ export class Renderer {
       effect.type === 'melee_precise_line' ||
       effect.type === 'melee_heavy_line' ||
       effect.type === 'melee_slam' ||
+      effect.type === 'greatsword_charge' ||
+      effect.type === 'dagger_qte_lock' ||
+      effect.type === 'dagger_qte_window' ||
+      effect.type === 'dagger_qte_hit' ||
+      effect.type === 'hammer_windup' ||
       effect.type === 'projectile_shot' ||
       effect.type === 'projectile_burst' ||
       effect.type === 'railbeam'
@@ -1603,6 +1797,11 @@ export class Renderer {
       effect.type === 'melee_precise_line' ||
       effect.type === 'melee_heavy_line' ||
       effect.type === 'melee_slam' ||
+      effect.type === 'greatsword_charge' ||
+      effect.type === 'dagger_qte_lock' ||
+      effect.type === 'dagger_qte_window' ||
+      effect.type === 'dagger_qte_hit' ||
+      effect.type === 'hammer_windup' ||
       effect.type === 'spear_windup' ||
       effect.type === 'finisher_ready'
     );
@@ -1702,6 +1901,27 @@ export class Renderer {
       weaponReach = -12 * chargeT;
       weaponAngle = angle + Math.PI * 0.82 * chargeT; // weapon rotates toward lower-left
       bodyScale = 1.4 * chargeT;
+
+    } else if (effect.type === 'greatsword_charge') {
+      const chargeT = easeOutCubic(progress);
+      lunge = -5 * chargeT;
+      weaponReach = -16 * chargeT;
+      weaponAngle = angle - 1.25 * chargeT;
+      bodyScale = 1.8 * chargeT;
+
+    } else if (effect.type === 'hammer_windup') {
+      const chargeT = easeOutCubic(progress);
+      lunge = -4 * chargeT;
+      weaponReach = -12 * chargeT;
+      weaponAngle = angle - Math.PI * 0.72 * chargeT;
+      bodyScale = 1.8 * chargeT;
+
+    } else if (effect.type === 'dagger_qte_hit') {
+      const stab = progress < 0.22 ? easeOutBack(progress / 0.22) : Math.max(0, 1 - (progress - 0.22) / 0.78);
+      lunge = 15 * stab;
+      weaponReach = 24 * stab;
+      weaponAngle = angle;
+      bodyScale = 1.4 * stab;
 
     } else if (effect.type === 'melee_heavy_arc' || effect.type === 'melee_heavy_line') {
       const chargeT = progress < 0.45 ? easeOutCubic(progress / 0.45) : 1;
