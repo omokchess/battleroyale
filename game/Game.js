@@ -899,6 +899,19 @@ export class Game {
     proj.angle = player.angle + Math.PI;
     this.projectiles.push(proj);
 
+    // Brief pull-back windup effect (visual only — damage is already applied above)
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'spear',
+      type: 'spear_windup',
+      progress: 0,
+      timestamp: now,
+      lifetime: 240
+    });
+
     const throwEffect = {
       id: `${player.id}-spear-rail-${now}`,
       attackerId: player.id,

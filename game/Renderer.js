@@ -1358,7 +1358,8 @@ export class Renderer {
       effect.type === 'projectile_shot' ||
       effect.type === 'melee_arc' ||
       effect.type === 'melee_circle' ||
-      effect.type === 'melee_line'
+      effect.type === 'melee_line' ||
+      effect.type === 'spear_windup'
     );
   }
 
@@ -1438,10 +1439,45 @@ export class Renderer {
       lunge = -2 * draw;
       weaponReach = -11 * draw;
       bodyScale = 1.1 * draw;
+
+    } else if (effect.type === 'spear_windup') {
+      // Brief pull-back when spear skill is thrown
+      const pullT = progress < 0.5
+        ? easeOutCubic(progress / 0.5)
+        : 1 - easeOutCubic((progress - 0.5) / 0.5);
+      lunge = -5 * pullT;
+      weaponReach = -14 * pullT;  // negative = tip retreats toward body
+      bodyScale = 1.1 * pullT;
+
     } else if (effect.type === 'melee_circle' && effect.weapon !== 'axe') {
       const spin = easeOutCubic(Math.min(1, progress / 0.6));
       weaponAngle = angle + spin * Math.PI * (effect.comboFinisher ? 2.8 : 2.1);
       bodyScale = (effect.comboFinisher ? 2.4 : 1.5) * Math.sin(Math.PI * clamp01(progress));
+
+    } else if (effect.weapon === 'axe') {
+      // Axe: spin the weapon around the body on every attack (regular + finisher)
+      const spinMult = effect.comboFinisher ? 3.0 : 2.2;
+      const spin = easeOutCubic(Math.min(1, progress / 0.65));
+      weaponAngle = angle + spin * Math.PI * spinMult;
+      bodyScale = (effect.comboFinisher ? 2.6 : 1.8) * Math.sin(Math.PI * clamp01(progress));
+
+    } else if (effect.weapon === 'sword' && effect.comboFinisher && (effect.angle || 0) >= 360) {
+      // Sword finisher: pull blade to lower-left then sweep 360°
+      if (progress < 0.28) {
+        const t = easeOutCubic(progress / 0.28);
+        lunge = -7 * t;
+        weaponReach = -16 * t;
+        weaponAngle = angle + Math.PI * 0.85 * t;   // rotate toward lower-left
+        bodyScale = 2.0 * t;
+      } else {
+        const t = easeOutCubic((progress - 0.28) / 0.72);
+        const fadeOut = Math.max(0, 1 - (progress - 0.28) / 0.35);
+        lunge = -7 * fadeOut;
+        weaponReach = Math.max(0, 10 * t);
+        weaponAngle = angle + Math.PI * 0.85 + t * Math.PI * 2; // full 360° sweep
+        bodyScale = 2.0 * (1 - easeOutCubic(Math.min(1, (progress - 0.28) / 0.72)));
+      }
+
     } else if (effect.type === 'melee_line') {
       const thrust = progress < 0.18
         ? easeOutBack(progress / 0.18)
@@ -1450,6 +1486,7 @@ export class Renderer {
       lunge = 8 * thrust * finisherBoost;
       weaponReach = 18 * thrust * finisherBoost;
       bodyScale = 1.2 * thrust * finisherBoost;
+
     } else if (effect.weapon === 'gauntlet') {
       const punch = progress < 0.28
         ? easeOutBack(progress / 0.28)
@@ -1457,6 +1494,7 @@ export class Renderer {
       lunge = 7 * punch;
       weaponReach = 16 * punch;
       bodyScale = 1.4 * punch;
+
     } else {
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
       const slash = Math.sin(Math.PI * clamp01(progress * 0.95));
@@ -1470,6 +1508,8 @@ export class Renderer {
     return {
       active: true,
       effectType: effect.type,
+      attackProgress: progress,
+      isFinisher: Boolean(effect.comboFinisher),
       bodyX: Math.cos(angle) * lunge,
       bodyY: Math.sin(angle) * lunge,
       bodyScale,
@@ -1682,13 +1722,26 @@ export class Renderer {
     const weaponType = player.weapon;
 
     if (weaponType === 'sword') {
-      ctx.translate(wX, wY);
-      ctx.rotate(weaponAngle + Math.PI / 4);
+      // Finisher: orbit the sword around the body along weaponAngle (lower-left pull → 360° sweep)
+      const isFinisherSpin = motion.isFinisher && active;
+      const orbitAngle = isFinisherSpin ? weaponAngle : (weaponAngle + Math.PI / 4);
+      const orbitDist = isFinisherSpin
+        ? radius + 4 + Math.max(0, reach * 0.4)
+        : radius + Math.max(0, reach * 0.38);
+      const swX = isFinisherSpin
+        ? scr.x + Math.cos(weaponAngle) * orbitDist
+        : wX;
+      const swY = isFinisherSpin
+        ? scr.y + Math.sin(weaponAngle) * orbitDist
+        : wY;
+      ctx.translate(swX, swY);
+      ctx.rotate(orbitAngle);
       ctx.strokeStyle = '#dbeafe';
       ctx.lineWidth = 2.2;
+      const ext = isFinisherSpin ? 18 : (15 + Math.max(0, reach * 0.32));
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.lineTo(15 + Math.max(0, reach * 0.32), -15 - Math.max(0, reach * 0.32));
+      ctx.lineTo(ext, -ext);
       ctx.stroke();
 
       ctx.strokeStyle = player.accentColor;
@@ -1697,29 +1750,32 @@ export class Renderer {
       ctx.moveTo(-4, 2);
       ctx.lineTo(3, -4);
       ctx.stroke();
-    } 
-    
+    }
+
     else if (weaponType === 'axe') {
       const idleHoldAngle = -Math.PI / 4;
-      const idleX = scr.x + Math.cos(idleHoldAngle) * (radius + 2);
-      const idleY = scr.y + Math.sin(idleHoldAngle) * (radius + 2);
       const rageActive = player.buffType === 'axe_rage';
-      const rageX = scr.x + Math.cos(player.angle) * (radius + 1 + Math.max(0, reach * 0.08));
-      const rageY = scr.y + Math.sin(player.angle) * (radius + 1 + Math.max(0, reach * 0.08));
-      const axeX = rageActive ? rageX : idleX;
-      const axeY = rageActive ? rageY : idleY;
-      const axeAngle = rageActive ? weaponAngle : idleHoldAngle;
-      const shaftStart = rageActive ? 0 : -8;
-      const shaftEnd = rageActive ? 19 + Math.max(0, reach * 0.24) : 9 + Math.max(0, reach * 0.18);
-      const bladeRoot = rageActive ? shaftEnd - 6 : 4;
-      const bladeTip = rageActive ? shaftEnd + 5 : 13;
+
+      // During any attack: orbit the axe around the body using the spinning weaponAngle.
+      const orbitAngle = active ? weaponAngle : (rageActive ? player.angle : idleHoldAngle);
+      const orbitR = active
+        ? radius + 4 + Math.max(0, reach * 0.08)
+        : rageActive
+          ? radius + 1
+          : radius + 2;
+      const axeX = scr.x + Math.cos(orbitAngle) * orbitR;
+      const axeY = scr.y + Math.sin(orbitAngle) * orbitR;
+
+      const shaftEnd = active ? 12 : (rageActive ? 19 + Math.max(0, reach * 0.24) : 9);
+      const bladeRoot = shaftEnd - 6;
+      const bladeTip = shaftEnd + 5;
 
       ctx.translate(axeX, axeY);
-      ctx.rotate(axeAngle);
+      ctx.rotate(orbitAngle);
       ctx.strokeStyle = '#d1d5db';
       ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(shaftStart, 0);
+      ctx.moveTo(-8, 0);
       ctx.lineTo(shaftEnd, 0);
       ctx.stroke();
 
@@ -1735,40 +1791,50 @@ export class Renderer {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-    } 
-    
+    }
+
     else if (weaponType === 'bow') {
-      // Hold the bow at the player's front edge, oriented along the aim line so
-      // the limb bulges forward and the string sits across the body.
       const bowX = scr.x + Math.cos(player.angle) * (radius - 1);
       const bowY = scr.y + Math.sin(player.angle) * (radius - 1);
       ctx.translate(bowX, bowY);
       ctx.rotate(player.angle);
 
-      // Bow limb (forward-facing arc)
+      // Bow limb
       ctx.strokeStyle = player.accentColor;
       ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.arc(0, 0, 9, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
 
-      // Bowstring + nock (pulled back while firing)
-      const stringPull = Math.max(0, -reach);
+      // String is always drawn back (ready to fire). On attack, it snaps
+      // forward (releases) then returns to full draw.
+      const maxPull = 6;
+      let stringPull;
+      if (active) {
+        // Release: quick forward snap using attackProgress
+        const releaseT = clamp01((motion.attackProgress || 0) / 0.35);
+        stringPull = maxPull * (1 - easeOutCubic(releaseT));
+      } else {
+        stringPull = maxPull; // always at full draw between shots
+      }
       const nockX = -3 - stringPull;
-      ctx.strokeStyle = active ? '#ffffff' : 'rgba(255, 255, 255, 0.6)';
+      ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = active ? 1 : 0.75;
       ctx.lineWidth = 1.3;
       ctx.beginPath();
       ctx.moveTo(0, -9);
       ctx.lineTo(nockX, 0);
       ctx.lineTo(0, 9);
       ctx.stroke();
+      ctx.globalAlpha = 1;
 
-      if (active) {
+      // Arrow nock visible when drawn
+      if (stringPull > 1) {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.1;
         ctx.beginPath();
         ctx.moveTo(nockX, 0);
-        ctx.lineTo(6, 0);
+        ctx.lineTo(5, 0);
         ctx.stroke();
       }
     }
@@ -1831,7 +1897,7 @@ export class Renderer {
     const baseWeapon = getEffectiveWeapon(player.weapon, player.buffType);
     if (!baseWeapon) return;
     if (!isLocal && !isAttacking) return;
-    if (!isAttacking && baseWeapon.type !== 'projectile') return;
+    // Local player always shows the dashed range guide; attacking overlays it with the solid shape.
 
     // Scale the world-space reach to screen pixels so the guide matches the
     // real hitbox at any zoom (and reflects active skill buffs).
@@ -1921,8 +1987,9 @@ export class Renderer {
       ctx.arc(endScr.x, endScr.y, isAttacking ? 4 : 3, 0, Math.PI * 2);
       ctx.fill();
 
-      // Upgrade the wall-endpoint dot to a crosshair for the local player.
-      if (isLocal) this._drawCrosshair(ctx, endScr.x, endScr.y, guideColor, isAttacking);
+      // Crosshair always visible for local player — use weapon color so it
+      // stands out clearly against any background, regardless of attack state.
+      if (isLocal) this._drawCrosshair(ctx, endScr.x, endScr.y, weapon.color || guideColor, true);
     }
 
     // Dashed aim line + crosshair at reach tip for melee arc/line (local player).
