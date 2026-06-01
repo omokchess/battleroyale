@@ -216,7 +216,7 @@ export class Game {
       if (hp) {
         this.camera.update(hp.x, hp.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
         if (!hp.isDead) {
-          this.input.updateAimAngle(hp, this.camera, this.canvas.width, this.canvas.height);
+          this.input.updateAimAngle(hp, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
           hp.angle = this.input.aimAngle;
           // Host applies its own dash/skill directly (it is authoritative).
           if (this.input.consumeDash()) {
@@ -245,7 +245,7 @@ export class Game {
         this.camera.update(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
 
         // Calibrate accurate aiming angle taking camera boundaries into account
-        this.input.updateAimAngle(localPlayer, this.camera, this.canvas.width, this.canvas.height);
+        this.input.updateAimAngle(localPlayer, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
         localPlayer.angle = this.input.aimAngle;
 
         // Dash is applied optimistically for snappy feel, then reconciled by

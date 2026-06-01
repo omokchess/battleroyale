@@ -429,7 +429,7 @@ export class Input {
   /**
    * Dynamically calibrate aim angle taking clamping boundaries & active camera offsets into consideration
    */
-  updateAimAngle(player, camera, canvasWidth, canvasHeight) {
+  updateAimAngle(player, camera, canvasWidth, canvasHeight, mapWidth = 0, mapHeight = 0) {
     if (this.joystickEnabled) {
       // With virtual controls enabled, the right joystick owns aim. Keeping the
       // last angle after release prevents touch devices from snapping aim to
@@ -437,10 +437,16 @@ export class Input {
       return;
     }
     if (!player || !camera) return;
-    const screenPos = camera.toScreen(player.x, player.y, canvasWidth, canvasHeight);
-    
-    // Calculate accurate direction from player's exact screen coordinate to current mouse cursor
-    this.aimAngle = Math.atan2(this.mouse.y - screenPos.y, this.mouse.x - screenPos.x);
+    this.aimAngle = resolvePointerAimAngle(
+      player,
+      camera,
+      this.mouse,
+      canvasWidth,
+      canvasHeight,
+      mapWidth,
+      mapHeight,
+      this.aimAngle
+    );
   }
 
   /**
@@ -501,4 +507,61 @@ export class Input {
 
     this.keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
   }
+}
+
+export function resolvePointerAimAngle(
+  player,
+  camera,
+  pointer,
+  canvasWidth,
+  canvasHeight,
+  mapWidth = 0,
+  mapHeight = 0,
+  fallbackAngle = 0
+) {
+  if (!player || !camera || !pointer) return normalizeFallbackAngle(fallbackAngle);
+
+  const screenPos = camera.toScreen(player.x, player.y, canvasWidth, canvasHeight);
+  const fallback = Math.atan2(pointer.y - screenPos.y, pointer.x - screenPos.x);
+  const safeFallback = Number.isFinite(fallback) ? fallback : normalizeFallbackAngle(fallbackAngle);
+
+  if (!mapWidth || !mapHeight || typeof camera.toWorld !== 'function') {
+    return safeFallback;
+  }
+
+  const pointerWorld = camera.toWorld(pointer.x, pointer.y, canvasWidth, canvasHeight);
+  const centerX = mapWidth / 2;
+  const centerY = mapHeight / 2;
+  const dirXRaw = pointerWorld.x - centerX;
+  const dirYRaw = pointerWorld.y - centerY;
+  const dirLen = Math.hypot(dirXRaw, dirYRaw);
+
+  // When the pointer is effectively at arena center there is no direction to
+  // project. Keep the previous aim instead of snapping toward the map center.
+  if (dirLen < 0.001) {
+    return normalizeFallbackAngle(fallbackAngle);
+  }
+
+  const dirX = dirXRaw / dirLen;
+  const dirY = dirYRaw / dirLen;
+  const wallDist = rayToMapWallDistance(centerX, centerY, dirX, dirY, mapWidth, mapHeight);
+  if (!Number.isFinite(wallDist)) return safeFallback;
+
+  const targetX = Math.max(0, Math.min(mapWidth, centerX + dirX * wallDist));
+  const targetY = Math.max(0, Math.min(mapHeight, centerY + dirY * wallDist));
+  const angle = Math.atan2(targetY - player.y, targetX - player.x);
+  return Number.isFinite(angle) ? angle : safeFallback;
+}
+
+function normalizeFallbackAngle(angle) {
+  return Number.isFinite(angle) ? angle : 0;
+}
+
+function rayToMapWallDistance(x, y, dirX, dirY, mapWidth, mapHeight) {
+  const candidates = [];
+  if (dirX > 0) candidates.push((mapWidth - x) / dirX);
+  if (dirX < 0) candidates.push((0 - x) / dirX);
+  if (dirY > 0) candidates.push((mapHeight - y) / dirY);
+  if (dirY < 0) candidates.push((0 - y) / dirY);
+  return Math.min(...candidates.filter(v => Number.isFinite(v) && v >= 0));
 }
