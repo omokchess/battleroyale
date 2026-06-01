@@ -116,12 +116,9 @@ export class Input {
       const scaleY = rect.height ? canvas.height / rect.height : 1;
       this.mouse.x = (e.clientX - rect.left) * scaleX;
       this.mouse.y = (e.clientY - rect.top) * scaleY;
-
-      // Calculate directional radians from player center (canvas center) as fallback
-      const centerY = canvas.height / 2;
-      const centerX = canvas.width / 2;
-
-      this.aimAngle = Math.atan2(this.mouse.y - centerY, this.mouse.x - centerX);
+      // Angle is computed in updateAimAngle() each frame — do NOT compute it
+      // here. Computing from canvas center here would fight with the correct
+      // player→mouse calculation and cause visible aim jitter.
     };
 
     // Mobile / Tablet General Screen Touch Event Fallbacks
@@ -139,15 +136,13 @@ export class Input {
       this.mouse.x = (touch.clientX - rect.left) * scaleX;
       this.mouse.y = (touch.clientY - rect.top) * scaleY;
 
-      // Direct movement towards touch coordinate from center
-      const centerY = canvas.height / 2;
+      // Single-touch fallback movement: move toward touch from canvas center.
+      // Angle is computed in updateAimAngle() each frame — not here.
       const centerX = canvas.width / 2;
-      
+      const centerY = canvas.height / 2;
       const dx = this.mouse.x - centerX;
       const dy = this.mouse.y - centerY;
       const dist = Math.sqrt(dx * dx + dy * dy);
-
-      this.aimAngle = Math.atan2(this.mouse.y - centerY, this.mouse.x - centerX);
 
       // If touched sufficiently far from center, trigger movement
       if (dist > 18) {
@@ -442,11 +437,9 @@ export class Input {
     const dx = this.mouse.x - screenPos.x;
     const dy = this.mouse.y - screenPos.y;
 
-    // Deadzone: hold last angle when cursor is right on top of the player so
-    // tiny hand movement doesn't cause a snap.
-    const deadzone = Math.max(28, (player.radius + 10) * (camera.zoom || 1));
-    if (Math.hypot(dx, dy) < deadzone) return;
-
+    // Direct player → cursor angle. No deadzone — the cursor crosshair is the
+    // aim indicator, so it must always track the mouse exactly.
+    if (dx === 0 && dy === 0) return; // cursor exactly on player: hold last angle
     this.aimAngle = Math.atan2(dy, dx);
   }
 
