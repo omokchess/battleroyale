@@ -171,7 +171,8 @@ export class Player {
    */
   canAttack(now) {
     if (this.isDead || this.spearThrown) return false;
-    if (now < (this.comboDelayUntil || 0)) return false;
+    const ignoresComboDelay = this.weapon === 'axe' && this.buffType === 'axe_rage';
+    if (!ignoresComboDelay && now < (this.comboDelayUntil || 0)) return false;
     const weaponConfig = getEffectiveWeapon(this.weapon, this.buffType);
     return (now - this.lastAttackTime) >= weaponConfig.cooldown;
   }

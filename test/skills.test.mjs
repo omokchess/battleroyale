@@ -97,18 +97,18 @@ test('melee combo finishers change weapon shape after the required hits', () => 
   const game = Object.create(Game.prototype);
 
   const sword = new Player('sword-combo', 'Blade', 'sword', 0, 0);
-  sword.comboStep = 1;
+  sword.comboStep = 2;
   sword.lastAttackTime = 700;
-  const swordSecond = game._resolveComboAttack(sword, Weapons.sword, 1000);
-  assert.equal(swordSecond.step, 2);
-  assert.equal(swordSecond.isFinisher, false);
-  assert.equal(swordSecond.delayAfterMs, ComboConfig.sword.delayBeforeFinisherMs);
-  game._applyComboRecovery(sword, swordSecond, 1000);
-  assert.equal(sword.comboStep, 2);
+  const swordThird = game._resolveComboAttack(sword, Weapons.sword, 1000);
+  assert.equal(swordThird.step, 3);
+  assert.equal(swordThird.isFinisher, false);
+  assert.equal(swordThird.delayAfterMs, ComboConfig.sword.delayBeforeFinisherMs);
+  game._applyComboRecovery(sword, swordThird, 1000);
+  assert.equal(sword.comboStep, 3);
   assert.equal(sword.comboDelayUntil, 1000 + ComboConfig.sword.delayBeforeFinisherMs);
 
   const swordFinisher = game._resolveComboAttack(sword, Weapons.sword, sword.comboDelayUntil);
-  assert.equal(swordFinisher.step, 3);
+  assert.equal(swordFinisher.step, 4);
   assert.equal(swordFinisher.isFinisher, true);
   assert.equal(swordFinisher.weaponConfig.type, 'melee_circle');
   assert.equal(swordFinisher.weaponConfig.angle, 360);
@@ -118,9 +118,23 @@ test('melee combo finishers change weapon shape after the required hits', () => 
   axe.lastAttackTime = 2500;
   const axeFinisher = game._resolveComboAttack(axe, Weapons.axe, 3000);
   assert.equal(axeFinisher.isFinisher, true);
-  assert.equal(axeFinisher.weaponConfig.type, 'melee_arc');
+  assert.equal(axeFinisher.weaponConfig.type, 'melee_circle');
   assert.ok(axeFinisher.weaponConfig.range > Weapons.axe.range);
   assert.ok(axeFinisher.weaponConfig.damage > Weapons.axe.damage);
+  axe.angle = 0;
+  const behindTarget = new Player('behind', 'Behind', 'sword', -60, 0);
+  assert.equal(Collision.checkMeleeHit(axe, behindTarget, axeFinisher.weaponConfig), true);
+
+  const ragingAxe = new Player('axe-skill-combo', 'Raging', 'axe', 0, 0);
+  ragingAxe.buffType = 'axe_rage';
+  ragingAxe.comboStep = 2;
+  ragingAxe.lastAttackTime = 2500;
+  ragingAxe.comboDelayUntil = 5000;
+  assert.equal(ragingAxe.canAttack(3000), true);
+  const lockedAxeCombo = game._resolveComboAttack(ragingAxe, getEffectiveWeapon('axe', 'axe_rage'), 3000);
+  assert.equal(lockedAxeCombo.isFinisher, false);
+  assert.equal(lockedAxeCombo.weaponConfig.type, SkillConfig.axe.type);
+  assert.equal(ragingAxe.comboStep, 0);
 
   const spear = new Player('spear-combo', 'Pike', 'spear', 0, 0);
   spear.comboStep = 4;

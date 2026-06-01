@@ -504,7 +504,8 @@ export class Game {
 
   _resolveComboAttack(player, weaponConfig, now) {
     const comboConfig = ComboConfig[player.weapon];
-    if (!comboConfig || weaponConfig.type === 'projectile') {
+    const comboLockedBySkill = player.weapon === 'axe' && player.buffType === 'axe_rage';
+    if (!comboConfig || weaponConfig.type === 'projectile' || comboLockedBySkill) {
       player.comboStep = 0;
       return {
         weaponConfig,
@@ -612,6 +613,10 @@ export class Game {
   _startBuff(player, buffType, buffMs, now) {
     player.buffType = buffType;
     player.buffTimeLeft = buffMs / 1000;
+    if (buffType === 'axe_rage') {
+      player.comboStep = 0;
+      player.comboDelayUntil = 0;
+    }
     this.effects.push({
       attackerId: player.id,
       x: player.x,

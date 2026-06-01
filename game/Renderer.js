@@ -693,6 +693,47 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.arc(scr.x, scr.y, radius, startAngle, endAngle);
+    ctx.closePath();
+    ctx.clip();
+
+    const innerStart = 12;
+    const activeStart = swingDirection > 0 ? trailAngle : leadingAngle;
+    const activeEnd = swingDirection > 0 ? leadingAngle : trailAngle;
+    const sweepStart = Math.min(activeStart, activeEnd);
+    const sweepEnd = Math.max(activeStart, activeEnd);
+    const bladeBands = finisher ? 5 : 4;
+    for (let i = 0; i < bladeBands; i++) {
+      const bandT = (i + 1) / (bladeBands + 1);
+      const bandRadius = radius * (0.24 + bandT * 0.7);
+      const bandAlpha = (finisher ? 0.36 : 0.26) * alpha * (1 - i * 0.08);
+      ctx.strokeStyle = this._hexToRGB(i % 2 === 0 ? '#ffffff' : weapon.color, bandAlpha);
+      ctx.lineWidth = (finisher ? 4.2 : 2.9) * (1 - i * 0.08);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, bandRadius, sweepStart, sweepEnd, swingDirection < 0);
+      ctx.stroke();
+    }
+
+    const bladeEdge = leadingAngle;
+    const normal = bladeEdge + Math.PI / 2 * swingDirection;
+    const tipX = scr.x + Math.cos(bladeEdge) * radius;
+    const tipY = scr.y + Math.sin(bladeEdge) * radius;
+    const rootX = scr.x + Math.cos(bladeEdge) * innerStart;
+    const rootY = scr.y + Math.sin(bladeEdge) * innerStart;
+    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.22 : 0.14) * alpha);
+    ctx.beginPath();
+    ctx.moveTo(rootX + Math.cos(normal) * 4, rootY + Math.sin(normal) * 4);
+    ctx.lineTo(tipX + Math.cos(normal) * (finisher ? 16 : 10), tipY + Math.sin(normal) * (finisher ? 16 : 10));
+    ctx.lineTo(tipX - Math.cos(normal) * (finisher ? 9 : 6), tipY - Math.sin(normal) * (finisher ? 9 : 6));
+    ctx.lineTo(rootX - Math.cos(normal) * 3, rootY - Math.sin(normal) * 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
     ctx.strokeStyle = this._hexToRGB(weapon.color, (finisher ? 0.92 : 0.78) * alpha);
     ctx.lineWidth = (finisher ? 15 : 10) * (0.35 + alpha * 0.65);
     ctx.lineCap = 'round';
@@ -807,6 +848,34 @@ export class Renderer {
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.arc(scr.x, scr.y, radius * 0.76, a, a + Math.PI * (finisher ? 0.68 : 0.52));
+      ctx.stroke();
+    }
+
+    if (finisher) {
+      const swirlCount = 7;
+      for (let i = 0; i < swirlCount; i++) {
+        const a = spinAngle + i * (Math.PI * 2 / swirlCount);
+        const inner = radius * 0.18;
+        const outer = radius * 0.95;
+        const mid = radius * 0.58;
+        ctx.strokeStyle = this._hexToRGB(i % 2 === 0 ? '#ffffff' : weapon.color, (i % 2 === 0 ? 0.52 : 0.36) * alpha);
+        ctx.lineWidth = (i % 2 === 0 ? 3.2 : 2.4) * alpha;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(scr.x + Math.cos(a - 0.32) * inner, scr.y + Math.sin(a - 0.32) * inner);
+        ctx.quadraticCurveTo(
+          scr.x + Math.cos(a + 0.55) * mid,
+          scr.y + Math.sin(a + 0.55) * mid,
+          scr.x + Math.cos(a + 1.02) * outer,
+          scr.y + Math.sin(a + 1.02) * outer
+        );
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.28 * alpha);
+      ctx.lineWidth = 2.2 * alpha;
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, radius * 0.45, spinAngle, spinAngle + Math.PI * 2);
       ctx.stroke();
     }
 

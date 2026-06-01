@@ -133,10 +133,10 @@ export const SkillConfig = {
 // --- Automatic attack combo tuning -----------------------------------------
 export const ComboConfig = {
   sword: {
-    cycle: 3,
-    delayAfterStep: 2,
+    cycle: 4,
+    delayAfterStep: 3,
     delayBeforeFinisherMs: 880,
-    comboResetMs: 2100,
+    comboResetMs: 2600,
     finisher: {
       type: 'melee_circle',
       damage: 28,
@@ -151,10 +151,10 @@ export const ComboConfig = {
     delayBeforeFinisherMs: 1280,
     comboResetMs: 2800,
     finisher: {
-      type: 'melee_arc',
+      type: 'melee_circle',
       damage: 64,
       range: 92,
-      angle: 150,
+      angle: 360,
       cooldown: 1120
     }
   },
