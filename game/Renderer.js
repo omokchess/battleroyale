@@ -2317,20 +2317,47 @@ export class Renderer {
         : wY;
       ctx.translate(swX, swY);
       ctx.rotate(orbitAngle);
-      ctx.strokeStyle = '#dbeafe';
-      ctx.lineWidth = 2.2;
       const ext = isFinisherSpin ? 18 : (15 + Math.max(0, reach * 0.32));
+      ctx.fillStyle = this._hexToRGB('#dbeafe', 0.88);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.1;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
+      ctx.moveTo(-1, 1);
       ctx.lineTo(ext, -ext);
+      ctx.lineTo(ext - 4, -ext + 1.2);
+      ctx.lineTo(1, 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.58);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(bladeRoot + 2, -6);
+      ctx.quadraticCurveTo(shaftEnd + 5, 0, bladeRoot + 2, 6);
+      ctx.stroke();
+      ctx.fillStyle = player.accentColor;
+      ctx.beginPath();
+      ctx.arc(shaftEnd - 2, 0, 1.7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.55);
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(3, -1);
+      ctx.lineTo(ext - 5, -ext + 5);
       ctx.stroke();
 
       ctx.strokeStyle = player.accentColor;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3.1;
       ctx.beginPath();
-      ctx.moveTo(-4, 2);
-      ctx.lineTo(3, -4);
+      ctx.moveTo(-6, 4);
+      ctx.lineTo(4, -6);
       ctx.stroke();
+      ctx.fillStyle = '#111216';
+      ctx.beginPath();
+      ctx.arc(-6, 4, 2.1, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     else if (weaponType === 'axe') {
@@ -2417,6 +2444,15 @@ export class Renderer {
         ctx.moveTo(nockX, 0);
         ctx.lineTo(5, 0);
         ctx.stroke();
+
+        ctx.fillStyle = player.accentColor;
+        ctx.beginPath();
+        ctx.moveTo(8, 0);
+        ctx.lineTo(3, -2.2);
+        ctx.lineTo(4.5, 0);
+        ctx.lineTo(3, 2.2);
+        ctx.closePath();
+        ctx.fill();
       }
     }
     
@@ -2436,6 +2472,15 @@ export class Renderer {
       ctx.lineTo(tipX, tipY);
       ctx.stroke();
 
+      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.55);
+      ctx.lineWidth = 1;
+      const sideX = Math.cos(player.angle + Math.PI / 2) * 2;
+      const sideY = Math.sin(player.angle + Math.PI / 2) * 2;
+      ctx.beginPath();
+      ctx.moveTo(baseX + sideX, baseY + sideY);
+      ctx.lineTo(tipX + sideX, tipY + sideY);
+      ctx.stroke();
+
       ctx.fillStyle = player.accentColor;
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1.2;
@@ -2444,9 +2489,9 @@ export class Renderer {
       ctx.rotate(player.angle);
       ctx.beginPath();
       ctx.moveTo(5, 0);
-      ctx.lineTo(-4, -4);
+      ctx.lineTo(-5, -5);
       ctx.lineTo(-2, 0);
-      ctx.lineTo(-4, 4);
+      ctx.lineTo(-5, 5);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
@@ -2467,6 +2512,11 @@ export class Renderer {
         ctx.strokeStyle = active ? '#ffffff' : '#111216';
         ctx.lineWidth = 1.2;
         ctx.stroke();
+        ctx.fillStyle = this._hexToRGB('#ffffff', active ? 0.82 : 0.55);
+        ctx.beginPath();
+        ctx.arc(fistX - Math.cos(fistAngle) * 1.8, fistY - Math.sin(fistAngle) * 1.8, active ? 1.6 : 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = player.accentColor;
       });
     }
 
@@ -2474,72 +2524,140 @@ export class Renderer {
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle + Math.PI / 4);
       const len = 23 + Math.max(0, reach * 0.28);
-      ctx.strokeStyle = '#e5e7eb';
-      ctx.lineWidth = 5;
+      ctx.fillStyle = this._hexToRGB('#e5e7eb', 0.9);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(-6, 3);
+      ctx.moveTo(-5, 4);
       ctx.lineTo(len, -len);
+      ctx.lineTo(len - 5, -len + 1);
+      ctx.lineTo(-1, 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.6);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(0, 3);
+      ctx.lineTo(len - 6, -len + 6);
       ctx.stroke();
       ctx.strokeStyle = player.accentColor;
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 3.2;
       ctx.beginPath();
-      ctx.moveTo(-8, 5);
-      ctx.lineTo(0, -2);
+      ctx.moveTo(-10, 8);
+      ctx.lineTo(2, -4);
       ctx.stroke();
+      ctx.fillStyle = '#111216';
+      ctx.beginPath();
+      ctx.arc(-8, 6, 2.4, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     else if (weaponType === 'scythe') {
-      const handleLen = 31 + Math.max(0, reach * 0.28);
-      ctx.translate(wX, wY);
-      ctx.rotate(weaponAngle - 0.18);
+      const scytheAngle = weaponAngle + (active ? 0.1 : -0.08);
+      const gripX = scr.x + Math.cos(player.angle) * 4;
+      const gripY = scr.y + Math.sin(player.angle) * 4;
+      const handleTop = -36 - Math.max(0, reach * 0.12);
+      const handleBottom = 64;
+      ctx.translate(gripX, gripY);
+      ctx.rotate(scytheAngle);
+
+      ctx.shadowBlur = active ? 11 : 5;
+      ctx.shadowColor = player.accentColor;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.lineWidth = 4.4;
+      ctx.beginPath();
+      ctx.moveTo(-8, handleBottom + 8);
+      ctx.lineTo(9, handleTop);
+      ctx.stroke();
+
       ctx.strokeStyle = '#d1d5db';
       ctx.lineWidth = 2.1;
       ctx.beginPath();
-      ctx.moveTo(-12, 0);
-      ctx.lineTo(handleLen, 0);
+      ctx.moveTo(-8, handleBottom + 8);
+      ctx.lineTo(9, handleTop);
       ctx.stroke();
 
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.48);
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(-6, handleBottom + 4);
+      ctx.lineTo(11, handleTop + 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.42);
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(-10, handleBottom + 6);
+      ctx.lineTo(7, handleTop + 1);
+      ctx.stroke();
+
+      const jointX = 9;
+      const jointY = handleTop;
       ctx.fillStyle = '#111216';
       ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.95);
       ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(handleLen - 1, -2);
-      ctx.bezierCurveTo(handleLen + 9, -21, handleLen + 30, -17, handleLen + 34, -2);
-      ctx.bezierCurveTo(handleLen + 20, -10, handleLen + 10, -6, handleLen + 3, 4);
+      ctx.moveTo(jointX - 4, jointY + 1);
+      ctx.bezierCurveTo(jointX + 18, jointY - 17, jointX + 50, jointY - 20, jointX + 74, jointY - 12);
+      ctx.bezierCurveTo(jointX + 51, jointY - 9, jointX + 24, jointY - 4, jointX + 1, jointY + 8);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.1;
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(handleLen + 4, -4);
-      ctx.bezierCurveTo(handleLen + 14, -15, handleLen + 25, -13, handleLen + 31, -3);
+      ctx.moveTo(jointX + 2, jointY - 1);
+      ctx.bezierCurveTo(jointX + 23, jointY - 14, jointX + 52, jointY - 16, jointX + 70, jointY - 11);
       ctx.stroke();
 
       ctx.strokeStyle = player.accentColor;
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(handleLen - 4, -5);
-      ctx.lineTo(handleLen + 2, 5);
+      ctx.moveTo(jointX - 4, jointY - 5);
+      ctx.lineTo(jointX + 7, jointY + 6);
       ctx.stroke();
+
+      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.75);
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(jointX + 2, jointY + 3);
+      ctx.quadraticCurveTo(jointX + 10, jointY + 10, jointX + 18, jointY + 7);
+      ctx.stroke();
+
+      ctx.fillStyle = this._hexToRGB('#ffffff', 0.92);
+      ctx.beginPath();
+      ctx.arc(jointX + 1, jointY + 1, 2.4, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     else if (weaponType === 'dagger') {
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle);
       const len = 13 + Math.max(0, reach * 0.22);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.6;
+      ctx.fillStyle = this._hexToRGB('#ffffff', 0.86);
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(-3, 0);
-      ctx.lineTo(len, 0);
+      ctx.moveTo(len + 4, 0);
+      ctx.lineTo(0, -3.2);
+      ctx.lineTo(2, 0);
+      ctx.lineTo(0, 3.2);
+      ctx.closePath();
+      ctx.fill();
       ctx.stroke();
       ctx.strokeStyle = player.accentColor;
       ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(1, -4);
       ctx.lineTo(1, 4);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-4, 0);
+      ctx.lineTo(1, 0);
       ctx.stroke();
     }
 
@@ -2553,11 +2671,21 @@ export class Renderer {
       ctx.moveTo(-5, 0);
       ctx.lineTo(len, 0);
       ctx.stroke();
+      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.7);
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(-2, -1.8);
+      ctx.lineTo(len - 4, -1.8);
+      ctx.stroke();
       ctx.strokeStyle = player.accentColor;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(-4, 0, 5, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(len, 0, 1.6, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     else if (weaponType === 'hammer') {
@@ -2575,6 +2703,18 @@ export class Renderer {
       ctx.lineWidth = 2.2;
       ctx.fillRect(len - 2, -7, 13, 14);
       ctx.strokeRect(len - 2, -7, 13, 14);
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.5);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(len + 1, -4);
+      ctx.lineTo(len + 8, -4);
+      ctx.moveTo(len + 1, 4);
+      ctx.lineTo(len + 8, 4);
+      ctx.stroke();
+      ctx.fillStyle = player.accentColor;
+      ctx.beginPath();
+      ctx.arc(len - 2, 0, 2.2, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.restore();
