@@ -700,45 +700,62 @@ export class Renderer {
     ctx.closePath();
     ctx.clip();
 
-    const innerStart = 2;
     const activeStart = swingDirection > 0 ? trailAngle : leadingAngle;
     const activeEnd = swingDirection > 0 ? leadingAngle : trailAngle;
     const sweepStart = Math.min(activeStart, activeEnd);
     const sweepEnd = Math.max(activeStart, activeEnd);
+    const activeArcStart = swingDirection > 0 ? sweepStart : sweepEnd;
+    const activeArcEnd = swingDirection > 0 ? sweepEnd : sweepStart;
+    const activeSpan = Math.max(0.001, sweepEnd - sweepStart);
+    const anticlockwise = swingDirection < 0;
 
     ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.24 : 0.16) * alpha);
     ctx.beginPath();
     ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius, sweepStart, sweepEnd);
+    ctx.arc(scr.x, scr.y, radius, activeArcStart, activeArcEnd, anticlockwise);
     ctx.closePath();
     ctx.fill();
 
-    const radialCuts = finisher ? 10 : 8;
-    for (let i = 0; i < radialCuts; i++) {
-      const t = radialCuts === 1 ? 1 : i / (radialCuts - 1);
-      const a = sweepStart + (sweepEnd - sweepStart) * t;
-      const cutAlpha = (finisher ? 0.34 : 0.24) * alpha * (1 - Math.abs(t - 0.72) * 0.55);
-      ctx.strokeStyle = this._hexToRGB(i % 3 === 0 ? '#ffffff' : weapon.color, cutAlpha);
-      ctx.lineWidth = (finisher ? 3.4 : 2.4) * (0.55 + t * 0.45);
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(scr.x + Math.cos(a) * innerStart, scr.y + Math.sin(a) * innerStart);
-      ctx.lineTo(scr.x + Math.cos(a) * radius, scr.y + Math.sin(a) * radius);
-      ctx.stroke();
-    }
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowBlur = (finisher ? 18 : 12) * alpha;
+    ctx.shadowColor = '#ffffff';
+    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.1 : 0.07) * alpha);
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.arc(scr.x, scr.y, radius * 0.96, activeArcStart, activeArcEnd, anticlockwise);
+    ctx.closePath();
+    ctx.fill();
 
-    const bladeBands = finisher ? 5 : 4;
-    for (let i = 0; i < bladeBands; i++) {
-      const bandT = (i + 1) / (bladeBands + 1);
-      const bandRadius = radius * (0.1 + bandT * 0.84);
-      const bandAlpha = (finisher ? 0.36 : 0.26) * alpha * (1 - i * 0.08);
-      ctx.strokeStyle = this._hexToRGB(i % 2 === 0 ? '#ffffff' : weapon.color, bandAlpha);
-      ctx.lineWidth = (finisher ? 4.2 : 2.9) * (1 - i * 0.08);
+    const routeBands = finisher ? 7 : 6;
+    const trimScale = clamp01(activeSpan / 0.32);
+    const directedSpan = activeArcEnd - activeArcStart;
+    for (let i = 0; i < routeBands; i++) {
+      const bandT = routeBands === 1 ? 1 : i / (routeBands - 1);
+      const easedBand = easeOutCubic(bandT);
+      const bandRadius = radius * (0.08 + easedBand * 0.86);
+      const startTrim = (0.04 + bandT * 0.03) * trimScale;
+      const endTrim = (0.24 * (1 - bandT) + 0.03) * trimScale;
+      const bandStart = activeArcStart + directedSpan * startTrim;
+      const bandEnd = activeArcEnd - directedSpan * endTrim;
+      const bandWidth = (finisher ? 7.2 : 5.2) * (1 - bandT * 0.28) * alpha;
+      const bandAlpha = (finisher ? 0.82 : 0.68) * alpha * (1 - bandT * 0.16);
+      if (Math.abs(bandEnd - bandStart) < 0.018 || bandWidth <= 0.2) continue;
+
       ctx.lineCap = 'round';
+      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.36 * bandAlpha);
+      ctx.lineWidth = bandWidth + (finisher ? 4.2 : 3.2);
       ctx.beginPath();
-      ctx.arc(scr.x, scr.y, bandRadius, sweepStart, sweepEnd, swingDirection < 0);
+      ctx.arc(scr.x, scr.y, bandRadius, bandStart, bandEnd, anticlockwise);
+      ctx.stroke();
+
+      ctx.strokeStyle = this._hexToRGB('#ffffff', bandAlpha);
+      ctx.lineWidth = bandWidth;
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, bandRadius, bandStart, bandEnd, anticlockwise);
       ctx.stroke();
     }
+    ctx.restore();
 
     const bladeEdge = leadingAngle;
     const normal = bladeEdge + Math.PI / 2 * swingDirection;
