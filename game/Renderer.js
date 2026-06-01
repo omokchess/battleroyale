@@ -700,15 +700,37 @@ export class Renderer {
     ctx.closePath();
     ctx.clip();
 
-    const innerStart = 12;
+    const innerStart = 2;
     const activeStart = swingDirection > 0 ? trailAngle : leadingAngle;
     const activeEnd = swingDirection > 0 ? leadingAngle : trailAngle;
     const sweepStart = Math.min(activeStart, activeEnd);
     const sweepEnd = Math.max(activeStart, activeEnd);
+
+    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.24 : 0.16) * alpha);
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.arc(scr.x, scr.y, radius, sweepStart, sweepEnd);
+    ctx.closePath();
+    ctx.fill();
+
+    const radialCuts = finisher ? 10 : 8;
+    for (let i = 0; i < radialCuts; i++) {
+      const t = radialCuts === 1 ? 1 : i / (radialCuts - 1);
+      const a = sweepStart + (sweepEnd - sweepStart) * t;
+      const cutAlpha = (finisher ? 0.34 : 0.24) * alpha * (1 - Math.abs(t - 0.72) * 0.55);
+      ctx.strokeStyle = this._hexToRGB(i % 3 === 0 ? '#ffffff' : weapon.color, cutAlpha);
+      ctx.lineWidth = (finisher ? 3.4 : 2.4) * (0.55 + t * 0.45);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(a) * innerStart, scr.y + Math.sin(a) * innerStart);
+      ctx.lineTo(scr.x + Math.cos(a) * radius, scr.y + Math.sin(a) * radius);
+      ctx.stroke();
+    }
+
     const bladeBands = finisher ? 5 : 4;
     for (let i = 0; i < bladeBands; i++) {
       const bandT = (i + 1) / (bladeBands + 1);
-      const bandRadius = radius * (0.24 + bandT * 0.7);
+      const bandRadius = radius * (0.1 + bandT * 0.84);
       const bandAlpha = (finisher ? 0.36 : 0.26) * alpha * (1 - i * 0.08);
       ctx.strokeStyle = this._hexToRGB(i % 2 === 0 ? '#ffffff' : weapon.color, bandAlpha);
       ctx.lineWidth = (finisher ? 4.2 : 2.9) * (1 - i * 0.08);
@@ -722,8 +744,8 @@ export class Renderer {
     const normal = bladeEdge + Math.PI / 2 * swingDirection;
     const tipX = scr.x + Math.cos(bladeEdge) * radius;
     const tipY = scr.y + Math.sin(bladeEdge) * radius;
-    const rootX = scr.x + Math.cos(bladeEdge) * innerStart;
-    const rootY = scr.y + Math.sin(bladeEdge) * innerStart;
+    const rootX = scr.x;
+    const rootY = scr.y;
     ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.22 : 0.14) * alpha);
     ctx.beginPath();
     ctx.moveTo(rootX + Math.cos(normal) * 4, rootY + Math.sin(normal) * 4);
