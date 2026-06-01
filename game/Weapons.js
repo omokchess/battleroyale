@@ -69,6 +69,84 @@ export const Weapons = {
     description: '쉴 새 없는 연속 펀치 공격입니다. 사거리는 극도로 짧지만 공격 속도가 무시무시합니다.',
     skill: 'F 스킬: 7초간 공격이 창처럼 직선으로 변하고 공격력 30·사거리 115px · 쿨타임 버프 종료 후 7초',
     color: '#ff45db'
+  },
+  greatsword: {
+    name: '대검',
+    damage: 46,
+    maxHp: 140,
+    cooldown: 1050,
+    moveSpeed: 0.82,
+    range: 96,
+    angle: 95,
+    delayDamageMs: 260,
+    knockback: 38,
+    type: 'melee_heavy_arc',
+    description: '느린 예열 뒤 전방을 크게 베는 중량 무기입니다. 방향이 먼저 고정되고, 맞은 적을 밀어냅니다.',
+    skill: 'F 스킬: 짧은 예열 후 전방 충격파를 넓게 발사합니다.',
+    color: '#8bd3ff'
+  },
+  scythe: {
+    name: '대낫',
+    damage: 18,
+    sweetDamage: 34,
+    maxHp: 115,
+    cooldown: 680,
+    moveSpeed: 1.05,
+    range: 92,
+    innerRange: 52,
+    angle: 150,
+    pull: 24,
+    type: 'melee_sweet_arc',
+    description: '안쪽보다 바깥날이 강한 초승달 공격입니다. 바깥쪽에 맞은 적은 끌려옵니다.',
+    skill: 'F 스킬: 더 넓은 수확 베기로 바깥날 피해와 끌어당김을 강화합니다.',
+    color: '#d946ef'
+  },
+  dagger: {
+    name: '단검',
+    damage: 14,
+    backstabDamage: 38,
+    maxHp: 90,
+    cooldown: 300,
+    moveSpeed: 1.35,
+    range: 48,
+    angle: 82,
+    lungeDistance: 14,
+    type: 'melee_backstab',
+    description: '짧게 파고드는 초근접 무기입니다. 적의 등 뒤를 찌르면 큰 피해를 줍니다.',
+    skill: 'F 스킬: 전방으로 크게 파고들며 강한 배후 찌르기를 시도합니다.',
+    color: '#f8fafc'
+  },
+  rapier: {
+    name: '레이피어',
+    damage: 16,
+    critDamage: 31,
+    maxHp: 100,
+    cooldown: 430,
+    moveSpeed: 1.15,
+    range: 135,
+    width: 9,
+    hitCooldownRefundMs: 180,
+    missPenaltyMs: 150,
+    type: 'melee_precise_line',
+    description: '아주 좁은 찌르기 무기입니다. 중심선에 정확히 맞추면 강해지고 다음 공격 템포가 빨라집니다.',
+    skill: 'F 스킬: 긴 사거리의 일점 찌르기로 중심 명중 피해를 크게 올립니다.',
+    color: '#facc15'
+  },
+  hammer: {
+    name: '망치',
+    damage: 42,
+    maxHp: 145,
+    cooldown: 1150,
+    moveSpeed: 0.75,
+    range: 78,
+    innerRange: 36,
+    angle: 360,
+    delayDamageMs: 330,
+    knockback: 68,
+    type: 'melee_slam',
+    description: '착지 딜레이 후 주변을 내려찍는 무기입니다. 가까이 맞을수록 강하고 크게 밀려납니다.',
+    skill: 'F 스킬: 큰 지진파를 일으켜 넓은 원형 범위를 강하게 내려찍습니다.',
+    color: '#fb923c'
   }
 };
 
@@ -127,6 +205,52 @@ export const SkillConfig = {
     range: 115,            // matches spear
     width: 22,
     type: 'melee_line'
+  },
+  greatsword: {
+    cooldownMs: 7000,
+    type: 'melee_heavy_line',
+    damage: 42,
+    range: 230,
+    width: 52,
+    delayDamageMs: 180,
+    knockback: 70
+  },
+  scythe: {
+    cooldownMs: 6500,
+    type: 'melee_sweet_arc',
+    damage: 24,
+    sweetDamage: 46,
+    range: 130,
+    innerRange: 62,
+    angle: 210,
+    pull: 48
+  },
+  dagger: {
+    cooldownMs: 5000,
+    type: 'melee_backstab',
+    damage: 20,
+    backstabDamage: 54,
+    range: 70,
+    angle: 105,
+    lungeDistance: 54
+  },
+  rapier: {
+    cooldownMs: 5500,
+    type: 'melee_precise_line',
+    damage: 28,
+    critDamage: 44,
+    range: 190,
+    width: 10,
+    hitCooldownRefundMs: 260
+  },
+  hammer: {
+    cooldownMs: 8500,
+    type: 'melee_slam',
+    damage: 58,
+    range: 118,
+    innerRange: 52,
+    delayDamageMs: 420,
+    knockback: 110
   }
 };
 
@@ -177,6 +301,76 @@ export const ComboConfig = {
       width: 24,
       damage: 28,
       cooldown: 240
+    }
+  },
+  greatsword: {
+    cycle: 3,
+    delayAfterStep: 2,
+    delayBeforeFinisherMs: 900,
+    comboResetMs: 3300,
+    finisher: {
+      type: 'melee_heavy_arc',
+      damage: 62,
+      range: 118,
+      angle: 130,
+      delayDamageMs: 330,
+      knockback: 70,
+      cooldown: 1280
+    }
+  },
+  scythe: {
+    cycle: 3,
+    comboResetMs: 2100,
+    finisher: {
+      type: 'melee_sweet_arc',
+      damage: 24,
+      sweetDamage: 44,
+      range: 118,
+      innerRange: 56,
+      angle: 210,
+      pull: 42,
+      cooldown: 780
+    }
+  },
+  dagger: {
+    cycle: 5,
+    comboResetMs: 1200,
+    finisher: {
+      type: 'melee_backstab',
+      damage: 22,
+      backstabDamage: 58,
+      range: 66,
+      angle: 120,
+      lungeDistance: 30,
+      cooldown: 380
+    }
+  },
+  rapier: {
+    cycle: 4,
+    comboResetMs: 1500,
+    finisher: {
+      type: 'melee_precise_line',
+      damage: 25,
+      critDamage: 46,
+      range: 170,
+      width: 10,
+      hitCooldownRefundMs: 220,
+      cooldown: 520
+    }
+  },
+  hammer: {
+    cycle: 3,
+    delayAfterStep: 2,
+    delayBeforeFinisherMs: 1050,
+    comboResetMs: 3600,
+    finisher: {
+      type: 'melee_slam',
+      damage: 64,
+      range: 110,
+      innerRange: 50,
+      delayDamageMs: 430,
+      knockback: 105,
+      cooldown: 1360
     }
   }
 };

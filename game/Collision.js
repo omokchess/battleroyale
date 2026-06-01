@@ -79,12 +79,16 @@ export const Collision = {
 
     if (dist > maxRange) return false;
 
-    if (weapon.type === 'melee_circle') {
+    const circleTypes = new Set(['melee_circle', 'melee_slam']);
+    const arcTypes = new Set(['melee_arc', 'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab']);
+    const lineTypes = new Set(['melee_line', 'melee_heavy_line', 'melee_precise_line']);
+
+    if (circleTypes.has(weapon.type)) {
       // 360 degree attack
       return true;
     }
 
-    if (weapon.type === 'melee_arc') {
+    if (arcTypes.has(weapon.type)) {
       if ((weapon.angle || 0) >= 360) {
         return true;
       }
@@ -106,7 +110,7 @@ export const Collision = {
       return Math.abs(angleDiff) <= halfWeaponAngleRad;
     }
 
-    if (weapon.type === 'melee_line') {
+    if (lineTypes.has(weapon.type)) {
       // Directional thrust rect check (Spear)
       // Project target vector onto the aim unit vector
       const uX = Math.cos(attacker.angle);

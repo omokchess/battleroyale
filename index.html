@@ -43,7 +43,7 @@
           <!-- Weapon Selection -->
           <div>
             <label class="block font-mono text-xs text-[#66fcf1] uppercase mb-2">무기 선택</label>
-            <div id="weaponCards" class="grid grid-cols-5 gap-2">
+            <div id="weaponCards" class="grid grid-cols-5 md:grid-cols-10 gap-2">
               
               <!-- Sword -->
               <button data-weapon="sword" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
@@ -99,8 +99,69 @@
                 <span class="font-mono text-[9px] text-gray-400 capitalize">건틀릿</span>
               </button>
 
+              <!-- Greatsword -->
+              <button data-weapon="greatsword" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M4 20L20 4" />
+                    <path d="M14 4l6 6" />
+                    <path d="M6 18l-2 2" />
+                    <path d="M8 16l-3-3" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">대검</span>
+              </button>
+
+              <!-- Scythe -->
+              <button data-weapon="scythe" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M6 21L18 9" />
+                    <path d="M11 4c5 0 8 2 9 6" />
+                    <path d="M18 9c-2-1-4-1-7 0" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">대낫</span>
+              </button>
+
+              <!-- Dagger -->
+              <button data-weapon="dagger" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M5 19l10-10" />
+                    <path d="M13 7l4-4 4 4-4 4" />
+                    <path d="M8 16l-3 3" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">단검</span>
+              </button>
+
+              <!-- Rapier -->
+              <button data-weapon="rapier" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M3 21L21 3" />
+                    <path d="M7 17c1 2 3 3 5 3" />
+                    <path d="M9 15l-3-3" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">레이피어</span>
+              </button>
+
+              <!-- Hammer -->
+              <button data-weapon="hammer" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#0b0c10] border-2 border-gray-600 hover:border-[#66fcf1] transition-all cursor-pointer">
+                <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
+                  <svg class="w-6 h-6 stroke-[#45f3ff]" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M4 20l8-8" />
+                    <path d="M10 6l8 8" />
+                    <path d="M14 2l8 8-4 4-8-8z" />
+                  </svg>
+                </div>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">망치</span>
+              </button>
+
             </div>
-            
+
             <!-- Weapon Stats Info Display -->
             <div id="weaponStats" class="mt-2 bg-[#0b0c10] p-3 border border-gray-700 font-mono text-xs text-gray-400 min-h-[82px] flex flex-col justify-center overflow-visible">
               무기를 선택하여 능력치를 비교해 보세요.

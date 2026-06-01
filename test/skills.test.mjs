@@ -154,6 +154,90 @@ test('melee combo finishers change weapon shape after the required hits', () => 
   assert.equal(gauntletFinisher.weaponConfig.type, 'melee_line');
 });
 
+test('new melee weapon families expose distinct hit mechanics', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const scythe = new Player('scythe-owner', 'Reaper', 'scythe', 100, 100);
+  scythe.angle = 0;
+  const scytheTarget = new Player('scythe-target', 'Target', 'sword', 184, 100);
+  let hit = game._resolveMeleeHitResult(scythe, scytheTarget, Weapons.scythe);
+  assert.equal(hit.damage, Weapons.scythe.sweetDamage);
+  assert.equal(hit.pull, Weapons.scythe.pull);
+  game.players = { [scythe.id]: scythe, [scytheTarget.id]: scytheTarget };
+  const beforePullX = scytheTarget.x;
+  game._applyMeleeHits(scythe, Weapons.scythe, 1000);
+  assert.ok(scytheTarget.x < beforePullX);
+
+  const dagger = new Player('dagger-owner', 'Shade', 'dagger', 100, 100);
+  dagger.angle = 0;
+  const daggerTarget = new Player('dagger-target', 'Back', 'sword', 142, 100);
+  daggerTarget.angle = 0;
+  hit = game._resolveMeleeHitResult(dagger, daggerTarget, Weapons.dagger);
+  assert.equal(hit.damage, Weapons.dagger.backstabDamage);
+
+  const rapier = new Player('rapier-owner', 'Needle', 'rapier', 100, 100);
+  rapier.angle = 0;
+  const rapierTarget = new Player('rapier-target', 'Line', 'sword', 220, 102);
+  hit = game._resolveMeleeHitResult(rapier, rapierTarget, Weapons.rapier);
+  assert.equal(hit.damage, Weapons.rapier.critDamage);
+
+  const hammer = new Player('hammer-owner', 'Bell', 'hammer', 100, 100);
+  const hammerTarget = new Player('hammer-target', 'Outer', 'sword', 170, 100);
+  hit = game._resolveMeleeHitResult(hammer, hammerTarget, Weapons.hammer);
+  assert.equal(hit.damage, Math.round(Weapons.hammer.damage * 0.72));
+  assert.equal(hit.knockback, Weapons.hammer.knockback);
+});
+
+test('delayed heavy melee attacks resolve after their windup', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingMeleeHits = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('greatsword-owner', 'Heavy', 'greatsword', 100, 100);
+  owner.angle = 0;
+  const target = new Player('greatsword-target', 'Dummy', 'sword', 178, 100);
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._performAutomaticAttack(owner, Weapons.greatsword, 1000);
+  assert.equal(game.pendingMeleeHits.length, 1);
+  assert.equal(target.hp, target.maxHp);
+
+  game._processPendingMeleeHits(1000 + Weapons.greatsword.delayDamageMs - 1);
+  assert.equal(target.hp, target.maxHp);
+
+  game._processPendingMeleeHits(1000 + Weapons.greatsword.delayDamageMs);
+  assert.equal(game.pendingMeleeHits.length, 0);
+  assert.equal(target.hp, target.maxHp - Weapons.greatsword.damage);
+});
+
+test('rapier hit tempo refunds cooldown on contact', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingMeleeHits = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('rapier-owner', 'Tempo', 'rapier', 100, 100);
+  owner.angle = 0;
+  const target = new Player('rapier-target', 'Dummy', 'sword', 220, 100);
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._performAutomaticAttack(owner, Weapons.rapier, 1000);
+  assert.equal(owner.lastAttackTime, 1000 - Weapons.rapier.hitCooldownRefundMs);
+});
+
 test('bow railgun vibration only fires for the local caster once', () => {
   const game = Object.create(Game.prototype);
   const calls = [];

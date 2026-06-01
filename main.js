@@ -87,6 +87,16 @@ function displayWeaponStats(weaponType) {
     extraDetails = '• 범위: 주변 360° 회전';
   } else if (cfg.type === 'melee_line') {
     extraDetails = `• 범위: 정방향 직선 (${cfg.width}px 폭)`;
+  } else if (cfg.type === 'melee_heavy_arc') {
+    extraDetails = `범위: 예열 후 중량 베기 (${cfg.angle}도)`;
+  } else if (cfg.type === 'melee_sweet_arc') {
+    extraDetails = `범위: 바깥날 강화 (${cfg.innerRange}px 밖)`;
+  } else if (cfg.type === 'melee_backstab') {
+    extraDetails = `범위: 돌진 찌르기, 배후 피해 ${cfg.backstabDamage}`;
+  } else if (cfg.type === 'melee_precise_line') {
+    extraDetails = `범위: 정밀 직선 (${cfg.width}px), 중심 피해 ${cfg.critDamage}`;
+  } else if (cfg.type === 'melee_slam') {
+    extraDetails = `범위: 지연 원형 충격파 (${cfg.innerRange}px 안쪽 강화)`;
   } else if (cfg.type === 'projectile') {
     extraDetails = `• 화살 속도: ${cfg.speed}px/s`;
   }

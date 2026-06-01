@@ -31,6 +31,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
+    this.pendingMeleeHits = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
@@ -75,6 +76,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
+    this.pendingMeleeHits = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.effects = [];
@@ -323,6 +325,7 @@ export class Game {
     this._releaseDueSwordWaves(now);
     this._releaseDueBowRailguns(now);
     this._processSpearThrowQueue(now);
+    this._processPendingMeleeHits(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -413,6 +416,7 @@ export class Game {
           p.clearCombatTimers(); // drop buffs/dash/skill state on death
           this._clearPendingSwordWavesFor(p.id);
           this._clearPendingRailgunsFor(p.id);
+          this._clearPendingMeleeHitsFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
@@ -450,6 +454,10 @@ export class Game {
     this._applyComboRecovery(player, combo, now);
 
     if (attackConfig.type !== 'projectile') {
+      if (attackConfig.lungeDistance) {
+        this._lungePlayer(player, attackConfig.lungeDistance);
+      }
+
       const localFx = {
         attackerId: player.id,
         x: player.x,
@@ -460,6 +468,7 @@ export class Game {
         type: attackConfig.type,
         range: attackConfig.range,
         width: attackConfig.width,
+        innerRange: attackConfig.innerRange,
         angleDeg: attackConfig.angle,
         comboStep: combo.step,
         comboCycle: combo.cycle,
@@ -467,17 +476,17 @@ export class Game {
         swingDirection,
         progress: 0,
         timestamp: now,
-        lifetime: Math.min(Math.max((attackConfig.cooldown || weaponConfig.cooldown) * 0.78, 150), combo.isFinisher ? 760 : 520)
+        lifetime: Math.min(
+          Math.max((attackConfig.cooldown || weaponConfig.cooldown) * 0.78 + (attackConfig.delayDamageMs || 0) * 0.5, 150),
+          combo.isFinisher ? 900 : 620
+        )
       };
       this.effects.push(localFx);
 
-      Object.keys(this.players).forEach(tid => {
-        const target = this.players[tid];
-        if (Collision.checkMeleeHit(player, target, attackConfig)) {
-          const died = target.takeDamage(attackConfig.damage, player.nickname);
-          if (died) this._creditKill(player.id, target);
-        }
-      });
+      const hitCount = this._queueOrApplyMeleeHit(player, attackConfig, now);
+      if (hitCount !== null) {
+        this._applyAttackTempoResult(player, attackConfig, hitCount, now);
+      }
       return;
     }
 
@@ -506,6 +515,165 @@ export class Game {
       attackConfig.damage
     );
     this.projectiles.push(proj);
+  }
+
+  _queueOrApplyMeleeHit(player, attackConfig, now) {
+    const delayMs = Math.max(0, Math.round(attackConfig.delayDamageMs || 0));
+    const snapshot = this._snapshotMeleeAttacker(player);
+
+    if (delayMs > 0) {
+      if (!this.pendingMeleeHits) this.pendingMeleeHits = [];
+      this.pendingMeleeHits.push({
+        playerId: player.id,
+        attacker: snapshot,
+        attackConfig: { ...attackConfig },
+        releaseAt: now + delayMs
+      });
+      return null;
+    }
+
+    return this._applyMeleeHits(snapshot, attackConfig, now);
+  }
+
+  _snapshotMeleeAttacker(player) {
+    return {
+      id: player.id,
+      nickname: player.nickname,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      radius: player.radius || 14
+    };
+  }
+
+  _processPendingMeleeHits(now) {
+    if (!this.pendingMeleeHits?.length) return;
+
+    const waiting = [];
+    for (const pending of this.pendingMeleeHits) {
+      if (now < pending.releaseAt) {
+        waiting.push(pending);
+        continue;
+      }
+
+      const liveAttacker = this.players[pending.playerId];
+      if (!liveAttacker || liveAttacker.isDead) continue;
+
+      this._applyMeleeHits({
+        ...pending.attacker,
+        nickname: liveAttacker.nickname
+      }, pending.attackConfig, now);
+    }
+
+    this.pendingMeleeHits = waiting;
+  }
+
+  _clearPendingMeleeHitsFor(playerId) {
+    if (!this.pendingMeleeHits?.length) return;
+    this.pendingMeleeHits = this.pendingMeleeHits.filter(hit => hit.playerId !== playerId);
+  }
+
+  _applyMeleeHits(attacker, attackConfig, now) {
+    let hitCount = 0;
+
+    Object.keys(this.players).forEach(tid => {
+      const target = this.players[tid];
+      const hit = this._resolveMeleeHitResult(attacker, target, attackConfig);
+      if (!hit) return;
+
+      hitCount++;
+      this._applyMeleeHitMovement(attacker, target, hit);
+      const died = target.takeDamage(hit.damage, attacker.nickname);
+      if (died) this._creditKill(attacker.id, target);
+    });
+
+    return hitCount;
+  }
+
+  _resolveMeleeHitResult(attacker, target, weapon) {
+    if (!target || target.isInvincible?.()) return null;
+    if (!Collision.checkMeleeHit(attacker, target, weapon)) return null;
+
+    const dx = target.x - attacker.x;
+    const dy = target.y - attacker.y;
+    const dist = Math.hypot(dx, dy);
+    let damage = weapon.damage || 0;
+    let pull = 0;
+    let knockback = weapon.knockback || 0;
+
+    if (weapon.type === 'melee_sweet_arc') {
+      const sweetDistance = weapon.innerRange || weapon.range * 0.58;
+      if (dist >= sweetDistance) {
+        damage = weapon.sweetDamage || damage;
+        pull = weapon.pull || 0;
+      }
+    } else if (weapon.type === 'melee_backstab') {
+      const fromTargetToAttacker = Math.atan2(attacker.y - target.y, attacker.x - target.x);
+      const behindAngle = (target.angle || 0) + Math.PI;
+      const backstabWindow = ((weapon.backstabAngle || 95) * Math.PI) / 360;
+      if (angleDistance(fromTargetToAttacker, behindAngle) <= backstabWindow) {
+        damage = weapon.backstabDamage || damage;
+      }
+    } else if (weapon.type === 'melee_precise_line') {
+      const uX = Math.cos(attacker.angle);
+      const uY = Math.sin(attacker.angle);
+      const perpDiff = Math.abs(dx * uY - dy * uX);
+      const critWidth = Math.max(5, (weapon.width || 0) * 0.55) + (target.radius || 14) * 0.25;
+      if (perpDiff <= critWidth) {
+        damage = weapon.critDamage || damage;
+      }
+    } else if (weapon.type === 'melee_slam') {
+      const inner = weapon.innerRange || weapon.range * 0.45;
+      if (dist > inner + (target.radius || 14)) {
+        damage = weapon.shockwaveDamage || Math.round(damage * 0.72);
+      }
+    }
+
+    return { damage, pull, knockback };
+  }
+
+  _applyMeleeHitMovement(attacker, target, hit) {
+    if (!target || target.isDead) return;
+
+    let dx = target.x - attacker.x;
+    let dy = target.y - attacker.y;
+    let len = Math.hypot(dx, dy);
+    if (len < 1e-4) {
+      dx = Math.cos(attacker.angle || 0);
+      dy = Math.sin(attacker.angle || 0);
+      len = 1;
+    }
+    const ux = dx / len;
+    const uy = dy / len;
+
+    if (hit.pull) {
+      target.x -= ux * hit.pull;
+      target.y -= uy * hit.pull;
+    }
+    if (hit.knockback) {
+      target.x += ux * hit.knockback;
+      target.y += uy * hit.knockback;
+    }
+
+    Collision.clampToMap(target, this.mapWidth, this.mapHeight);
+  }
+
+  _applyAttackTempoResult(player, attackConfig, hitCount, now) {
+    if (hitCount > 0 && attackConfig.hitCooldownRefundMs) {
+      const refund = Math.max(0, attackConfig.hitCooldownRefundMs);
+      player.lastAttackTime -= refund;
+      player.comboDelayUntil = Math.max(now, (player.comboDelayUntil || now) - refund);
+    } else if (hitCount === 0 && attackConfig.missPenaltyMs) {
+      player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, now + (attackConfig.cooldown || 0) + attackConfig.missPenaltyMs);
+    }
+  }
+
+  _lungePlayer(player, distance) {
+    const amount = Number.isFinite(distance) ? distance : 0;
+    if (!amount) return;
+    player.x += Math.cos(player.angle) * amount;
+    player.y += Math.sin(player.angle) * amount;
+    Collision.clampToMap(player, this.mapWidth, this.mapHeight);
   }
 
   _resolveComboAttack(player, weaponConfig, now) {
@@ -619,6 +787,7 @@ export class Game {
         player.buffTimeLeft > 0 || player.skillCdLeft > 0 || player.spearThrown) {
       return false;
     }
+    if (!SkillConfig[player.weapon]) return false;
     if (player.weapon === 'bow') {
       return (player.arrowStacks || 0) > 0;
     }
@@ -637,6 +806,13 @@ export class Game {
       case 'bow': this._castRailgun(player, now); break;
       case 'spear': this._throwSpear(player, now); break;
       case 'gauntlet': this._startBuff(player, 'gauntlet_lance', SkillConfig.gauntlet.buffMs, now); break;
+      case 'greatsword':
+      case 'scythe':
+      case 'dagger':
+      case 'rapier':
+      case 'hammer':
+        this._castMeleeSkill(player, now);
+        break;
       default: break;
     }
   }
@@ -660,6 +836,53 @@ export class Game {
       timestamp: now,
       lifetime: 520
     });
+  }
+
+  _castMeleeSkill(player, now) {
+    const sk = SkillConfig[player.weapon];
+    if (!sk) return;
+
+    const base = getEffectiveWeapon(player.weapon, player.buffType);
+    const attackConfig = {
+      ...base,
+      ...sk,
+      cooldown: base.cooldown
+    };
+
+    if (attackConfig.lungeDistance) {
+      this._lungePlayer(player, attackConfig.lungeDistance);
+    }
+
+    player.swingDirection *= -1;
+    const effect = {
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: player.weapon,
+      buffType: player.buffType,
+      type: attackConfig.type,
+      range: attackConfig.range,
+      width: attackConfig.width,
+      innerRange: attackConfig.innerRange,
+      angleDeg: attackConfig.angle,
+      comboStep: 0,
+      comboCycle: 0,
+      comboFinisher: true,
+      isSkill: true,
+      swingDirection: player.swingDirection,
+      progress: 0,
+      timestamp: now,
+      lifetime: Math.min(Math.max(520 + (attackConfig.delayDamageMs || 0), 360), 980)
+    };
+    this.effects.push(effect);
+
+    const hitCount = this._queueOrApplyMeleeHit(player, attackConfig, now);
+    if (hitCount !== null) {
+      this._applyAttackTempoResult(player, attackConfig, hitCount, now);
+    }
+
+    player.skillCdLeft = sk.cooldownMs / 1000;
   }
 
   /**
@@ -1431,6 +1654,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
+    this.pendingMeleeHits = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.canvas.style.cursor = '';
@@ -1743,6 +1967,13 @@ function lerpAngle(current, target, amount) {
 
 function localCorrectDist(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by);
+}
+
+function angleDistance(a, b) {
+  let delta = a - b;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  return Math.abs(delta);
 }
 
 function positiveFinite(value) {

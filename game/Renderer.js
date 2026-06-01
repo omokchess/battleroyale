@@ -230,21 +230,23 @@ export class Renderer {
         // Only arc/circle swings emit trailing spark dots. This removes the
         // stray spear dots that flew past the hitbox, and keeps the new skill
         // effects (line thrust, railbeam, buff) clean.
-        if (e.type !== 'melee_arc' && e.type !== 'melee_circle') return;
+        const sparkArcTypes = ['melee_arc', 'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab'];
+        const sparkCircleTypes = ['melee_circle', 'melee_slam'];
+        if (!sparkArcTypes.includes(e.type) && !sparkCircleTypes.includes(e.type)) return;
 
         if (Math.random() < 0.45) {
           let px = anchoredEffect.x;
           let py = anchoredEffect.y;
           let angle = anchoredEffect.angle;
 
-          if (e.type === 'melee_arc') {
+          if (sparkArcTypes.includes(e.type)) {
             const spread = (weapon.angle * Math.PI) / 360;
             const ranAngle = anchoredEffect.angle + (Math.random() * spread * 2 - spread);
             const dist = weapon.range * (0.35 + Math.random() * 0.65);
             px += Math.cos(ranAngle) * dist;
             py += Math.sin(ranAngle) * dist;
             angle = ranAngle + Math.PI / 2;
-          } else if (e.type === 'melee_circle') {
+          } else if (sparkCircleTypes.includes(e.type)) {
             const ranAngle = Math.random() * Math.PI * 2;
             const dist = weapon.range * e.progress;
             px += Math.cos(ranAngle) * dist;
@@ -628,6 +630,7 @@ export class Renderer {
         ...baseWeapon,
         range: (Number.isFinite(e.range) ? e.range : (baseWeapon.range || 0)) * zoom,
         width: (Number.isFinite(e.width) ? e.width : (baseWeapon.width || 0)) * zoom,
+        innerRange: (Number.isFinite(e.innerRange) ? e.innerRange : (baseWeapon.innerRange || 0)) * zoom,
         angle: Number.isFinite(e.angleDeg) ? e.angleDeg : baseWeapon.angle
       };
       const isEnemyEffect = Boolean(e.attackerId && e.attackerId !== localPlayerId);
@@ -642,7 +645,19 @@ export class Renderer {
       ctx.shadowBlur = (minimized ? 4 : 14) * alpha;
       ctx.shadowColor = weapon.color;
 
-      if (e.type === 'melee_arc') {
+      if (e.type === 'melee_heavy_arc') {
+        this._drawHeavyCleave(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'melee_sweet_arc') {
+        this._drawScytheSweep(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'melee_backstab') {
+        this._drawDaggerStab(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'melee_precise_line') {
+        this._drawRapierPierce(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'melee_heavy_line') {
+        this._drawHeavyLine(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'melee_slam') {
+        this._drawHammerSlam(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'melee_arc') {
         if (e.weapon === 'gauntlet') {
           this._drawPunchCombo(ctx, scr, anchoredEffect, weapon, alpha);
         } else {
@@ -866,6 +881,217 @@ export class Renderer {
     ctx.restore();
   }
 
+  _drawHeavyCleave(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const charge = clamp01(progress / 0.42);
+    const release = progress < 0.42 ? 0 : easeOutCubic((progress - 0.42) / 0.58);
+    const pulse = 0.7 + 0.3 * Math.sin(progress * Math.PI * 8);
+
+    ctx.save();
+    if (progress < 0.42) {
+      const halfAngle = ((weapon.angle || 95) * Math.PI) / 360;
+      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.35 * alpha * pulse);
+      ctx.lineWidth = 2.4 * alpha;
+      ctx.setLineDash([6, 7]);
+      [-halfAngle, 0, halfAngle].forEach(offset => {
+        ctx.beginPath();
+        ctx.moveTo(scr.x + Math.cos(e.angle + offset) * 18, scr.y + Math.sin(e.angle + offset) * 18);
+        ctx.lineTo(
+          scr.x + Math.cos(e.angle + offset) * weapon.range * (0.45 + charge * 0.45),
+          scr.y + Math.sin(e.angle + offset) * weapon.range * (0.45 + charge * 0.45)
+        );
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+
+    this._drawArcSlash(ctx, scr, { ...e, progress: Math.max(progress, release * 0.9), comboFinisher: true }, weapon, alpha);
+  }
+
+  _drawScytheSweep(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    this._drawArcSlash(ctx, scr, e, weapon, alpha * 0.88);
+
+    const halfAngle = ((weapon.angle || 150) * Math.PI) / 360;
+    const start = e.angle - halfAngle;
+    const end = e.angle + halfAngle;
+    const sweetR = weapon.range;
+    const innerR = Math.max(8, weapon.innerRange || sweetR * 0.58);
+    const sweep = easeOutCubic(clamp01(progress / 0.65));
+    const dir = e.swingDirection === -1 ? -1 : 1;
+    const head = dir > 0 ? start + (end - start) * sweep : end - (end - start) * sweep;
+    const tail = dir > 0 ? Math.max(start, head - (end - start) * 0.26) : Math.min(end, head + (end - start) * 0.26);
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.78 * alpha);
+    ctx.lineWidth = 5.2 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, sweetR, tail, head, dir < 0);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.52 * alpha);
+    ctx.lineWidth = 2.2 * alpha;
+    ctx.setLineDash([8, 7]);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, innerR, start, end);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    for (let i = 0; i < 4; i++) {
+      const t = (i + 1) / 5;
+      const a = start + (end - start) * t;
+      const pull = 1 - progress;
+      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.23 * alpha * pull);
+      ctx.lineWidth = 1.6 * alpha;
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(a) * sweetR, scr.y + Math.sin(a) * sweetR);
+      ctx.lineTo(scr.x + Math.cos(a) * innerR, scr.y + Math.sin(a) * innerR);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawDaggerStab(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const thrust = progress < 0.22
+      ? easeOutBack(progress / 0.22)
+      : Math.max(0, 1 - (progress - 0.22) / 0.78);
+    const reach = weapon.range * (0.35 + 0.65 * thrust);
+    const side = e.swingDirection === -1 ? -1 : 1;
+    const angle = e.angle + side * 0.16;
+    const tipX = scr.x + Math.cos(angle) * reach;
+    const tipY = scr.y + Math.sin(angle) * reach;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const offset = (i - 1) * 0.18 * side;
+      const a = angle + offset;
+      const start = 12 + i * 3;
+      const end = reach - i * 5;
+      this._drawCapsuleLine(
+        ctx,
+        scr.x + Math.cos(a) * start,
+        scr.y + Math.sin(a) * start,
+        scr.x + Math.cos(a) * end,
+        scr.y + Math.sin(a) * end,
+        (5 - i) * alpha,
+        this._hexToRGB(i === 0 ? '#ffffff' : weapon.color, (0.55 - i * 0.12) * alpha)
+      );
+    }
+
+    ctx.fillStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
+    ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
+    ctx.lineWidth = 1.5;
+    ctx.save();
+    ctx.translate(tipX, tipY);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(-5, -3.5);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-5, 3.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+  }
+
+  _drawRapierPierce(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const thrust = progress < 0.16
+      ? easeOutBack(progress / 0.16)
+      : Math.max(0, 1 - (progress - 0.16) / 0.84);
+    const reach = weapon.range * (0.2 + 0.8 * thrust);
+    const width = Math.max(4, weapon.width || 8);
+    const tipX = scr.x + Math.cos(e.angle) * reach;
+    const tipY = scr.y + Math.sin(e.angle) * reach;
+
+    ctx.save();
+    if (progress < 0.42) {
+      this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, width, this._hexToRGB(weapon.color, 0.12 * alpha));
+    }
+    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, width * 1.55 * alpha, this._hexToRGB(weapon.color, 0.42 * alpha), 'butt');
+    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 2.4 * alpha, this._hexToRGB('#ffffff', 0.92 * alpha), 'butt');
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.72 * alpha);
+    ctx.lineWidth = 1.4 * alpha;
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 5 + 9 * thrust, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawHeavyLine(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const charge = clamp01(progress / 0.28);
+    const release = progress < 0.28 ? 0 : easeOutCubic((progress - 0.28) / 0.72);
+    const length = weapon.range * (0.35 + release * 0.65);
+    const width = weapon.width || 46;
+
+    ctx.save();
+    this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, width, this._hexToRGB(weapon.color, 0.13 * alpha));
+    this._drawCapsuleLine(ctx, scr.x, scr.y, scr.x + Math.cos(e.angle) * length, scr.y + Math.sin(e.angle) * length, width * 0.34 * alpha, this._hexToRGB(weapon.color, 0.44 * alpha), 'round');
+    this._drawCapsuleLine(ctx, scr.x, scr.y, scr.x + Math.cos(e.angle) * length, scr.y + Math.sin(e.angle) * length, 5.2 * alpha, this._hexToRGB('#ffffff', 0.86 * alpha), 'round');
+
+    const pX = -Math.sin(e.angle);
+    const pY = Math.cos(e.angle);
+    [0.38, 0.66, 0.9].forEach((t, i) => {
+      const cx = scr.x + Math.cos(e.angle) * weapon.range * t;
+      const cy = scr.y + Math.sin(e.angle) * weapon.range * t;
+      const crack = width * (0.2 + i * 0.07) * (0.4 + charge * 0.6);
+      ctx.strokeStyle = this._hexToRGB('#ffffff', (0.34 - i * 0.06) * alpha);
+      ctx.lineWidth = 1.7 * alpha;
+      ctx.beginPath();
+      ctx.moveTo(cx - pX * crack, cy - pY * crack);
+      ctx.lineTo(cx + pX * crack, cy + pY * crack);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  _drawHammerSlam(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const charge = clamp01(progress / 0.42);
+    const release = progress < 0.42 ? 0 : easeOutCubic((progress - 0.42) / 0.58);
+    const radius = weapon.range * (0.35 + 0.65 * Math.max(charge * 0.45, release));
+    const inner = Math.max(8, weapon.innerRange || weapon.range * 0.45);
+
+    ctx.save();
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.13 * alpha);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.72 * alpha);
+    ctx.lineWidth = (progress < 0.42 ? 2.2 : 5.4) * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.55 * alpha);
+    ctx.lineWidth = 2.2 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, inner, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let i = 0; i < 8; i++) {
+      const a = e.angle + i * Math.PI / 4 + release * 0.24;
+      const start = inner * (0.62 + 0.18 * Math.sin(i));
+      const end = radius * (0.72 + 0.22 * Math.cos(i * 1.7));
+      ctx.strokeStyle = this._hexToRGB(i % 2 === 0 ? '#ffffff' : weapon.color, 0.32 * alpha * Math.max(charge, release));
+      ctx.lineWidth = (i % 2 === 0 ? 2 : 1.4) * alpha;
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(a) * start, scr.y + Math.sin(a) * start);
+      ctx.lineTo(scr.x + Math.cos(a + 0.12) * end, scr.y + Math.sin(a + 0.12) * end);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   _drawPunchCombo(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const thrust = progress < 0.38
@@ -1035,6 +1261,12 @@ export class Renderer {
       effect.type === 'melee_arc' ||
       effect.type === 'melee_circle' ||
       effect.type === 'melee_line' ||
+      effect.type === 'melee_heavy_arc' ||
+      effect.type === 'melee_sweet_arc' ||
+      effect.type === 'melee_backstab' ||
+      effect.type === 'melee_precise_line' ||
+      effect.type === 'melee_heavy_line' ||
+      effect.type === 'melee_slam' ||
       effect.type === 'projectile_shot' ||
       effect.type === 'projectile_burst' ||
       effect.type === 'railbeam'
@@ -1365,6 +1597,12 @@ export class Renderer {
       effect.type === 'melee_arc' ||
       effect.type === 'melee_circle' ||
       effect.type === 'melee_line' ||
+      effect.type === 'melee_heavy_arc' ||
+      effect.type === 'melee_sweet_arc' ||
+      effect.type === 'melee_backstab' ||
+      effect.type === 'melee_precise_line' ||
+      effect.type === 'melee_heavy_line' ||
+      effect.type === 'melee_slam' ||
       effect.type === 'spear_windup' ||
       effect.type === 'finisher_ready'
     );
@@ -1464,6 +1702,48 @@ export class Renderer {
       weaponReach = -12 * chargeT;
       weaponAngle = angle + Math.PI * 0.82 * chargeT; // weapon rotates toward lower-left
       bodyScale = 1.4 * chargeT;
+
+    } else if (effect.type === 'melee_heavy_arc' || effect.type === 'melee_heavy_line') {
+      const chargeT = progress < 0.45 ? easeOutCubic(progress / 0.45) : 1;
+      const releaseT = progress < 0.45 ? 0 : easeOutBack((progress - 0.45) / 0.55);
+      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      lunge = -8 * chargeT + 13 * releaseT;
+      weaponReach = -12 * chargeT + 20 * releaseT;
+      weaponAngle = angle + swingDirection * (-1.15 * chargeT + 2.25 * releaseT);
+      bodyScale = 2.1 * Math.sin(Math.PI * clamp01(progress));
+
+    } else if (effect.type === 'melee_sweet_arc') {
+      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const sweep = easeOutCubic(progress);
+      lunge = 5 * Math.sin(Math.PI * progress);
+      weaponReach = 15 * Math.sin(Math.PI * progress);
+      weaponAngle = angle + swingDirection * (-1.25 + sweep * 2.5);
+      bodyScale = 1.25 * Math.sin(Math.PI * progress);
+
+    } else if (effect.type === 'melee_backstab') {
+      const stab = progress < 0.24
+        ? easeOutBack(progress / 0.24)
+        : Math.max(0, 1 - (progress - 0.24) / 0.76);
+      lunge = 12 * stab;
+      weaponReach = 18 * stab;
+      weaponAngle = angle + (effect.swingDirection === -1 ? -0.25 : 0.25) * stab;
+      bodyScale = 1.25 * stab;
+
+    } else if (effect.type === 'melee_precise_line') {
+      const thrust = progress < 0.16
+        ? easeOutBack(progress / 0.16)
+        : Math.max(0, 1 - (progress - 0.16) / 0.84);
+      lunge = 9 * thrust;
+      weaponReach = 22 * thrust;
+      weaponAngle = angle;
+      bodyScale = 1.1 * thrust;
+
+    } else if (effect.type === 'melee_slam') {
+      const lift = progress < 0.45 ? easeOutCubic(progress / 0.45) : 1 - easeOutCubic((progress - 0.45) / 0.55);
+      lunge = progress < 0.45 ? -5 * lift : 4 * (1 - lift);
+      weaponReach = progress < 0.45 ? -10 * lift : 8 * (1 - lift);
+      weaponAngle = angle - Math.PI / 2 * lift;
+      bodyScale = 2.4 * Math.sin(Math.PI * clamp01(progress));
 
     } else if (effect.type === 'melee_circle' && effect.weapon !== 'axe') {
       const spin = easeOutCubic(Math.min(1, progress / 0.6));
@@ -1905,6 +2185,93 @@ export class Renderer {
       });
     }
 
+    else if (weaponType === 'greatsword') {
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle + Math.PI / 4);
+      const len = 23 + Math.max(0, reach * 0.28);
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-6, 3);
+      ctx.lineTo(len, -len);
+      ctx.stroke();
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(-8, 5);
+      ctx.lineTo(0, -2);
+      ctx.stroke();
+    }
+
+    else if (weaponType === 'scythe') {
+      const handleLen = 25 + Math.max(0, reach * 0.24);
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.strokeStyle = '#d1d5db';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(-10, 0);
+      ctx.lineTo(handleLen, 0);
+      ctx.stroke();
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(handleLen - 2, 2, 12, -Math.PI * 0.95, -Math.PI * 0.1);
+      ctx.stroke();
+    }
+
+    else if (weaponType === 'dagger') {
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      const len = 13 + Math.max(0, reach * 0.22);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(-3, 0);
+      ctx.lineTo(len, 0);
+      ctx.stroke();
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(1, -4);
+      ctx.lineTo(1, 4);
+      ctx.stroke();
+    }
+
+    else if (weaponType === 'rapier') {
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      const len = 25 + Math.max(0, reach * 0.36);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(-5, 0);
+      ctx.lineTo(len, 0);
+      ctx.stroke();
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(-4, 0, 5, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+    }
+
+    else if (weaponType === 'hammer') {
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle - Math.PI / 8);
+      const len = 18 + Math.max(0, reach * 0.2);
+      ctx.strokeStyle = '#d1d5db';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(-8, 0);
+      ctx.lineTo(len, 0);
+      ctx.stroke();
+      ctx.fillStyle = '#111216';
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 2.2;
+      ctx.fillRect(len - 2, -7, 13, 14);
+      ctx.strokeRect(len - 2, -7, 13, 14);
+    }
+
     ctx.restore();
   }
 
@@ -1925,7 +2292,11 @@ export class Renderer {
     // spear_windup, finisher_ready) must NOT override the drawn shape, or the
     // guide vanishes mid-attack (e.g. the bow path disappears the instant you
     // fire). For those, fall back to the weapon's base shape.
-    const SHAPE_TYPES = ['melee_arc', 'melee_circle', 'melee_line', 'projectile'];
+    const SHAPE_TYPES = [
+      'melee_arc', 'melee_circle', 'melee_line', 'projectile',
+      'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab',
+      'melee_precise_line', 'melee_heavy_line', 'melee_slam'
+    ];
     const activeShapeType = SHAPE_TYPES.includes(activeAttack?.type) ? activeAttack.type : null;
 
     // Scale the world-space reach to screen pixels so the guide matches the
@@ -1936,6 +2307,7 @@ export class Renderer {
       : (Number.isFinite(activeAttack?.range) ? activeAttack.range : baseWeapon.range);
     const shapeWidth = isFinisherPreview ? activeAttack.previewWidth
       : (Number.isFinite(activeAttack?.width) ? activeAttack.width : baseWeapon.width);
+    const shapeInnerRange = Number.isFinite(activeAttack?.innerRange) ? activeAttack.innerRange : baseWeapon.innerRange;
     const shapeAngleDeg = isFinisherPreview ? activeAttack.previewAngleDeg
       : (Number.isFinite(activeAttack?.angleDeg) ? activeAttack.angleDeg : baseWeapon.angle);
 
@@ -1944,6 +2316,7 @@ export class Renderer {
       type: shapeType,
       range: (shapeRange || 0) * zoom,
       width: (shapeWidth || 0) * zoom,
+      innerRange: (shapeInnerRange || 0) * zoom,
       angle: shapeAngleDeg
     };
 
@@ -1979,15 +2352,18 @@ export class Renderer {
 
     const range = weapon.range;
     const angle = player.angle;
+    const arcShapeTypes = ['melee_arc', 'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab'];
+    const circleShapeTypes = ['melee_circle', 'melee_slam'];
+    const lineShapeTypes = ['melee_line', 'melee_precise_line', 'melee_heavy_line'];
 
-    if (weapon.type === 'melee_circle') {
+    if (circleShapeTypes.includes(weapon.type)) {
       // Circle shape (Axe)
       ctx.beginPath();
       ctx.arc(scr.x, scr.y, range, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-    } 
-    else if (weapon.type === 'melee_arc') {
+    }
+    else if (arcShapeTypes.includes(weapon.type)) {
       // Arc shape (Sword, Gauntlet)
       const halfAngleRad = (weapon.angle * Math.PI) / 360;
       const startAngle = angle - halfAngleRad;
@@ -1999,8 +2375,18 @@ export class Renderer {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-    } 
-    else if (weapon.type === 'melee_line') {
+
+      if (weapon.type === 'melee_sweet_arc' && weapon.innerRange > 0) {
+        ctx.save();
+        ctx.setLineDash([4, 5]);
+        ctx.strokeStyle = this._hexToRGB(guideColor, strokeAlpha * 0.75);
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, weapon.innerRange, startAngle, endAngle);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    else if (lineShapeTypes.includes(weapon.type)) {
       // Rectangular line/thrust shape (Spear)
       const uX = Math.cos(angle);
       const uY = Math.sin(angle);
@@ -2049,7 +2435,7 @@ export class Renderer {
     }
 
     // Dashed aim line + crosshair at reach tip for melee arc/line (local player).
-    if (isLocal && (weapon.type === 'melee_arc' || weapon.type === 'melee_line')) {
+    if (isLocal && (arcShapeTypes.includes(weapon.type) || lineShapeTypes.includes(weapon.type))) {
       const tipSx = scr.x + Math.cos(angle) * range;
       const tipSy = scr.y + Math.sin(angle) * range;
       ctx.save();
@@ -2067,7 +2453,7 @@ export class Renderer {
     }
 
     // Axe (melee_circle): direction dot at ring edge.
-    if (isLocal && weapon.type === 'melee_circle') {
+    if (isLocal && circleShapeTypes.includes(weapon.type)) {
       const dotSx = scr.x + Math.cos(angle) * range * 0.88;
       const dotSy = scr.y + Math.sin(angle) * range * 0.88;
       ctx.save();
