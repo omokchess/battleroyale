@@ -1921,10 +1921,17 @@ export class Renderer {
     // Charging up the combo finisher? Preview its (bigger) hit range instead.
     const isFinisherPreview = activeAttack?.type === 'finisher_ready' && Boolean(activeAttack.previewType);
 
+    // Only these are real hit-shapes. Motion-only effects (projectile_shot,
+    // spear_windup, finisher_ready) must NOT override the drawn shape, or the
+    // guide vanishes mid-attack (e.g. the bow path disappears the instant you
+    // fire). For those, fall back to the weapon's base shape.
+    const SHAPE_TYPES = ['melee_arc', 'melee_circle', 'melee_line', 'projectile'];
+    const activeShapeType = SHAPE_TYPES.includes(activeAttack?.type) ? activeAttack.type : null;
+
     // Scale the world-space reach to screen pixels so the guide matches the
     // real hitbox at any zoom (and reflects active skill buffs).
     const zoom = camera.zoom || 1;
-    const shapeType = isFinisherPreview ? activeAttack.previewType : (activeAttack?.type || baseWeapon.type);
+    const shapeType = isFinisherPreview ? activeAttack.previewType : (activeShapeType || baseWeapon.type);
     const shapeRange = isFinisherPreview ? activeAttack.previewRange
       : (Number.isFinite(activeAttack?.range) ? activeAttack.range : baseWeapon.range);
     const shapeWidth = isFinisherPreview ? activeAttack.previewWidth
@@ -1942,10 +1949,15 @@ export class Renderer {
 
     ctx.save();
 
+    // Ranged weapons keep a constant gray dashed path preview at all times so
+    // opponents can read & dodge incoming fire — it never flips to a solid
+    // highlight on attack.
+    const isProjectile = weapon.type === 'projectile';
+
     // Finisher preview pulses in the weapon color so the player can pre-aim the
     // big strike. Active attacks use a solid bright overlay; idle uses a faint
     // dashed guide.
-    const showStrong = isAttacking && !isFinisherPreview;
+    const showStrong = isAttacking && !isFinisherPreview && !isProjectile;
     let guideColor;
     let fillAlpha;
     let strokeAlpha;
@@ -2026,9 +2038,9 @@ export class Renderer {
       ctx.stroke();
 
       ctx.setLineDash([]);
-      ctx.fillStyle = this._hexToRGB(guideColor, isAttacking ? 0.42 : 0.2);
+      ctx.fillStyle = this._hexToRGB(guideColor, 0.25);
       ctx.beginPath();
-      ctx.arc(endScr.x, endScr.y, isAttacking ? 4 : 3, 0, Math.PI * 2);
+      ctx.arc(endScr.x, endScr.y, 3, 0, Math.PI * 2);
       ctx.fill();
 
       // Crosshair always visible for local player — use weapon color so it
