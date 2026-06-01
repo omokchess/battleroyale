@@ -18,10 +18,34 @@ html, body {
 }
 
 /* Custom selection borders & neon pulses for weapon cards */
+#weaponCards {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
 .weapon-card {
   border: 2px solid #374151;
   background-color: #0b0c10;
+  min-height: 5.25rem;
+  padding: 0.7rem 0.45rem;
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#weaponCards .weapon-card > div {
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: 0.35rem;
+}
+
+#weaponCards .weapon-card svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+#weaponCards .weapon-card span {
+  font-size: 0.7rem;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .weapon-card:hover {
@@ -194,12 +218,37 @@ canvas {
   }
 
   #lobbyMenu .weapon-card {
-    min-height: 4.4rem;
+    min-height: 5.5rem;
   }
 
   #weaponStats {
     font-size: 0.84rem;
     min-height: 7rem;
+  }
+}
+
+@media (max-width: 420px) {
+  #weaponCards {
+    gap: 0.45rem;
+  }
+
+  .weapon-card {
+    min-height: 4.6rem;
+    padding: 0.55rem 0.25rem;
+  }
+
+  #weaponCards .weapon-card > div {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  #weaponCards .weapon-card svg {
+    width: 1.7rem;
+    height: 1.7rem;
+  }
+
+  #weaponCards .weapon-card span {
+    font-size: 0.62rem;
   }
 }
 
