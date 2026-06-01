@@ -121,6 +121,9 @@ export class Game {
       this._announce('CONNECTING...');
     }
 
+    // Hide the OS cursor — the game crosshair replaces it.
+    this.canvas.style.cursor = 'none';
+
     // Trigger frame animations
     this._resizeCanvas();
     this._setupVisualSettingsPanel();
@@ -1347,6 +1350,7 @@ export class Game {
     this.pendingRailguns = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
+    this.canvas.style.cursor = '';
     this.input.cleanUp(this.canvas);
     if (this.networkManager) {
       this.networkManager.stop();

@@ -90,8 +90,21 @@ export class RoomRegistry {
     try {
       const info = JSON.parse(text);
       if (info && info.code) {
-        // Track freshness by *local* receipt time to dodge cross-device clock skew.
         info._seen = Date.now();
+
+        // MQTT retain delivers the last message to every new subscriber
+        // instantly — so _seen is always "now" even for dead hosts. Filter by
+        // the publisher's ts instead; the heartbeat keeps it fresh while alive.
+        if (Date.now() - (info.ts || 0) > STALE_MS) {
+          // Auto-clean the stale retained message from the broker so future
+          // subscribers don't see it either.
+          if (this.online) {
+            this.client.publish(`${ROOM_TOPIC}/${roomId}`, '', { retain: true, qos: 0 });
+          }
+          this.remoteRooms.delete(roomId);
+          return;
+        }
+
         this.remoteRooms.set(roomId, info);
         this._emit();
       }
@@ -190,7 +203,9 @@ export class RoomRegistry {
     const map = new Map();
 
     for (const [id, info] of this.remoteRooms) {
-      if (now - (info._seen || 0) <= STALE_MS) map.set(id, info);
+      // Use publisher's ts (not local _seen) so retained messages from dead
+      // hosts are filtered even on first subscribe.
+      if (now - (info.ts || 0) <= STALE_MS) map.set(id, info);
     }
     for (const info of this._readLocal()) {
       if (now - (info.ts || 0) <= STALE_MS) {

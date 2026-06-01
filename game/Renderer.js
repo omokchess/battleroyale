@@ -1920,8 +1920,62 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(endScr.x, endScr.y, isAttacking ? 4 : 3, 0, Math.PI * 2);
       ctx.fill();
+
+      // Upgrade the wall-endpoint dot to a crosshair for the local player.
+      if (isLocal) this._drawCrosshair(ctx, endScr.x, endScr.y, guideColor, isAttacking);
     }
 
+    // Dashed aim line + crosshair at reach tip for melee arc/line (local player).
+    if (isLocal && (weapon.type === 'melee_arc' || weapon.type === 'melee_line')) {
+      const tipSx = scr.x + Math.cos(angle) * range;
+      const tipSy = scr.y + Math.sin(angle) * range;
+      ctx.save();
+      ctx.setLineDash([4, 8]);
+      ctx.strokeStyle = this._hexToRGB(guideColor, isAttacking ? 0.42 : 0.25);
+      ctx.lineWidth = 0.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(angle) * 20, scr.y + Math.sin(angle) * 20);
+      ctx.lineTo(tipSx, tipSy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      this._drawCrosshair(ctx, tipSx, tipSy, guideColor, isAttacking);
+    }
+
+    // Axe (melee_circle): direction dot at ring edge.
+    if (isLocal && weapon.type === 'melee_circle') {
+      const dotSx = scr.x + Math.cos(angle) * range * 0.88;
+      const dotSy = scr.y + Math.sin(angle) * range * 0.88;
+      ctx.save();
+      ctx.fillStyle = this._hexToRGB(guideColor, isAttacking ? 0.85 : 0.5);
+      ctx.beginPath();
+      ctx.arc(dotSx, dotSy, isAttacking ? 4.5 : 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  _drawCrosshair(ctx, sx, sy, color, bright = false) {
+    const sz = bright ? 8 : 5;
+    const alpha = bright ? 0.9 : 0.6;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = this._hexToRGB(color, alpha);
+    ctx.lineWidth = bright ? 2.2 : 1.4;
+    ctx.lineCap = 'round';
+    ctx.shadowBlur = bright ? 8 : 0;
+    ctx.shadowColor = color;
+    ctx.beginPath();
+    ctx.moveTo(sx - sz, sy); ctx.lineTo(sx + sz, sy);
+    ctx.moveTo(sx, sy - sz); ctx.lineTo(sx, sy + sz);
+    ctx.stroke();
+    ctx.fillStyle = this._hexToRGB('#ffffff', alpha * 0.9);
+    ctx.beginPath();
+    ctx.arc(sx, sy, bright ? 2.5 : 1.8, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
