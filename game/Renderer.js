@@ -643,7 +643,11 @@ export class Renderer {
           this._drawArcSlash(ctx, scr, anchoredEffect, weapon, alpha);
         }
       } else if (e.type === 'melee_circle') {
-        this._drawAxeSpin(ctx, scr, anchoredEffect, weapon, alpha);
+        if (e.weapon === 'axe') {
+          this._drawArcSlash(ctx, scr, anchoredEffect, { ...weapon, angle: 360 }, alpha);
+        } else {
+          this._drawAxeSpin(ctx, scr, anchoredEffect, weapon, alpha);
+        }
       } else if (e.type === 'melee_line') {
         if (e.weapon === 'gauntlet') {
           this._drawGauntletLance(ctx, scr, anchoredEffect, weapon, alpha);
@@ -1235,6 +1239,8 @@ export class Renderer {
     const radius = (18 + 46 * easeOutCubic(progress)) * (0.6 + zoom * 0.4);
 
     ctx.save();
+    this._drawSustainedBuffBurst(ctx, scr, e.buffType, weapon.color, alpha, zoom, Date.now() + progress * 420);
+
     ctx.strokeStyle = this._hexToRGB(weapon.color, 0.8 * alpha);
     ctx.lineWidth = 4 * alpha + 1;
     ctx.beginPath();
@@ -1250,6 +1256,55 @@ export class Renderer {
       ctx.lineTo(scr.x + Math.cos(a) * radius * 0.9, scr.y + Math.sin(a) * radius * 0.9);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  _drawSustainedBuffBurst(ctx, scr, buffType, color, alpha = 1, zoom = 1, timeMs = Date.now()) {
+    const isAxe = buffType === 'axe_rage';
+    const baseRadius = (isAxe ? 42 : 34) * (0.7 + zoom * 0.3);
+    const spin = timeMs / (isAxe ? 520 : 460);
+    const counterSpin = -timeMs / (isAxe ? 760 : 640);
+    const pulse = 0.5 + 0.5 * Math.sin(timeMs / 150);
+    const ringRadius = baseRadius + pulse * (isAxe ? 5 : 4);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12 * alpha;
+
+    ctx.fillStyle = this._hexToRGB(color, (isAxe ? 0.12 : 0.1) * alpha);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, ringRadius * 0.78, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = this._hexToRGB(color, 0.48 * alpha);
+    ctx.lineWidth = (isAxe ? 4.2 : 3.4) * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, ringRadius, spin, spin + Math.PI * 1.35);
+    ctx.stroke();
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.46 * alpha);
+    ctx.lineWidth = (isAxe ? 2.8 : 2.2) * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, ringRadius * 0.72, counterSpin, counterSpin + Math.PI * 1.05);
+    ctx.stroke();
+
+    const burstCount = isAxe ? 8 : 7;
+    for (let i = 0; i < burstCount; i++) {
+      const t = i / burstCount;
+      const a = spin * 0.55 + t * Math.PI * 2;
+      const flicker = 0.72 + 0.28 * Math.sin(timeMs / 95 + i * 1.7);
+      const inner = ringRadius * (0.28 + (i % 2) * 0.08);
+      const outer = ringRadius * (0.82 + (i % 3) * 0.08) * flicker;
+      ctx.strokeStyle = this._hexToRGB(i % 3 === 0 ? '#ffffff' : color, (i % 3 === 0 ? 0.56 : 0.42) * alpha);
+      ctx.lineWidth = (isAxe ? 2.6 : 2.1) * alpha * flicker;
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(a) * inner, scr.y + Math.sin(a) * inner);
+      ctx.lineTo(scr.x + Math.cos(a) * outer, scr.y + Math.sin(a) * outer);
+      ctx.stroke();
+    }
+
     ctx.restore();
   }
 
@@ -1383,7 +1438,7 @@ export class Renderer {
       lunge = -2 * draw;
       weaponReach = -11 * draw;
       bodyScale = 1.1 * draw;
-    } else if (effect.type === 'melee_circle') {
+    } else if (effect.type === 'melee_circle' && effect.weapon !== 'axe') {
       const spin = easeOutCubic(Math.min(1, progress / 0.6));
       weaponAngle = angle + spin * Math.PI * (effect.comboFinisher ? 2.8 : 2.1);
       bodyScale = (effect.comboFinisher ? 2.4 : 1.5) * Math.sin(Math.PI * clamp01(progress));
@@ -1457,6 +1512,14 @@ export class Renderer {
       ctx.shadowColor = isLocal ? '#ef4444' : p.color;
       ctx.fillStyle = p.color;
 
+      // Active skill-buff floor burst (axe rage / gauntlet lance).
+      if (p.buffTimeLeft > 0) {
+        const auraColor = p.buffType === 'axe_rage' ? '#f55555'
+          : p.buffType === 'gauntlet_lance' ? '#ff45db'
+          : p.accentColor;
+        this._drawSustainedBuffBurst(ctx, bodyScr, p.buffType, auraColor, 0.72, camera.zoom || 1, Date.now());
+      }
+
       // Draw Main Player Chassis Circle
       ctx.beginPath();
       ctx.arc(bodyScr.x, bodyScr.y, radius + motion.bodyScale, 0, Math.PI * 2);
@@ -1483,23 +1546,6 @@ export class Renderer {
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(bodyScr.x, bodyScr.y, radius + motion.bodyScale + 3 + 5 * (1 - iAlpha), 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // Active skill-buff aura ring (axe rage / gauntlet lance).
-      if (p.buffTimeLeft > 0) {
-        const auraColor = p.buffType === 'axe_rage' ? '#f55555'
-          : p.buffType === 'gauntlet_lance' ? '#ff45db'
-          : p.accentColor;
-        const pulse = 4 + Math.sin(Date.now() / 90) * 2;
-        ctx.save();
-        ctx.strokeStyle = this._hexToRGB(auraColor, 0.9);
-        ctx.shadowColor = auraColor;
-        ctx.shadowBlur = 12;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(bodyScr.x, bodyScr.y, radius + 7 + pulse, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
