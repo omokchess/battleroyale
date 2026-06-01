@@ -1082,7 +1082,9 @@ export class Game {
     const state = {
       players: this.players,
       projectiles: this.projectiles,
-      effects: this.effects
+      effects: this.effects,
+      // Pass mouse in canvas-buffer-space so the renderer can draw the cursor crosshair.
+      cursorPos: this.input ? { x: this.input.mouse.x, y: this.input.mouse.y } : null
     };
 
     this.renderer.render(

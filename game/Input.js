@@ -437,16 +437,17 @@ export class Input {
       return;
     }
     if (!player || !camera) return;
-    this.aimAngle = resolvePointerAimAngle(
-      player,
-      camera,
-      this.mouse,
-      canvasWidth,
-      canvasHeight,
-      mapWidth,
-      mapHeight,
-      this.aimAngle
-    );
+
+    const screenPos = camera.toScreen(player.x, player.y, canvasWidth, canvasHeight);
+    const dx = this.mouse.x - screenPos.x;
+    const dy = this.mouse.y - screenPos.y;
+
+    // Deadzone: hold last angle when cursor is right on top of the player so
+    // tiny hand movement doesn't cause a snap.
+    const deadzone = Math.max(28, (player.radius + 10) * (camera.zoom || 1));
+    if (Math.hypot(dx, dy) < deadzone) return;
+
+    this.aimAngle = Math.atan2(dy, dx);
   }
 
   /**

@@ -68,6 +68,12 @@ export class Renderer {
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
     this._drawParticles(ctx, camera, cw, ch, 'onTop', gameState.players);
 
+    // Cursor crosshair — drawn last so it's always on top. Coordinates are
+    // already in canvas-buffer-space (no camera transform needed).
+    if (gameState.cursorPos) {
+      this._drawCursorCrosshair(ctx, gameState.cursorPos.x, gameState.cursorPos.y);
+    }
+
     ctx.restore();
   }
 
@@ -1461,7 +1467,7 @@ export class Renderer {
       weaponAngle = angle + spin * Math.PI * spinMult;
       bodyScale = (effect.comboFinisher ? 2.6 : 1.8) * Math.sin(Math.PI * clamp01(progress));
 
-    } else if (effect.weapon === 'sword' && effect.comboFinisher && (effect.angle || 0) >= 360) {
+    } else if (effect.weapon === 'sword' && effect.comboFinisher) {
       // Sword finisher: pull blade to lower-left then sweep 360°
       if (progress < 0.28) {
         const t = easeOutCubic(progress / 0.28);
@@ -1840,10 +1846,13 @@ export class Renderer {
     }
     
     else if (weaponType === 'spear') {
+      // Allow negative reach (pull-back during windup) — just clamp so tip
+      // doesn't clip into the player body.
+      const ext = Math.max(-radius + 4, radius + 18 + reach);
       const baseX = scr.x + Math.cos(player.angle) * (radius - 2);
       const baseY = scr.y + Math.sin(player.angle) * (radius - 2);
-      const tipX = scr.x + Math.cos(player.angle) * (radius + 18 + Math.max(0, reach));
-      const tipY = scr.y + Math.sin(player.angle) * (radius + 18 + Math.max(0, reach));
+      const tipX = scr.x + Math.cos(player.angle) * ext;
+      const tipY = scr.y + Math.sin(player.angle) * ext;
 
       ctx.strokeStyle = '#d1d5db';
       ctx.lineWidth = 2.2;
@@ -2025,24 +2034,87 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * Draw a + crosshair at (sx, sy) — used for weapon endpoint guides.
+   * color is the weapon color; bright=true when the player is actively attacking.
+   */
   _drawCrosshair(ctx, sx, sy, color, bright = false) {
-    const sz = bright ? 8 : 5;
-    const alpha = bright ? 0.9 : 0.6;
+    const sz = bright ? 10 : 7;
+    const gap = bright ? 3 : 2;
     ctx.save();
     ctx.setLineDash([]);
-    ctx.strokeStyle = this._hexToRGB(color, alpha);
-    ctx.lineWidth = bright ? 2.2 : 1.4;
-    ctx.lineCap = 'round';
-    ctx.shadowBlur = bright ? 8 : 0;
-    ctx.shadowColor = color;
+    ctx.lineCap = 'butt';
+
+    // Dark outline for contrast against any background
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = (bright ? 2.2 : 1.4) + 2;
     ctx.beginPath();
-    ctx.moveTo(sx - sz, sy); ctx.lineTo(sx + sz, sy);
-    ctx.moveTo(sx, sy - sz); ctx.lineTo(sx, sy + sz);
+    ctx.moveTo(sx - sz, sy); ctx.lineTo(sx - gap, sy);
+    ctx.moveTo(sx + gap, sy); ctx.lineTo(sx + sz, sy);
+    ctx.moveTo(sx, sy - sz); ctx.lineTo(sx, sy - gap);
+    ctx.moveTo(sx, sy + gap); ctx.lineTo(sx, sy + sz);
     ctx.stroke();
-    ctx.fillStyle = this._hexToRGB('#ffffff', alpha * 0.9);
+
+    // Colored inner lines
+    ctx.shadowBlur = bright ? 10 : 4;
+    ctx.shadowColor = color;
+    ctx.strokeStyle = bright ? color : this._hexToRGB(color, 0.85);
+    ctx.lineWidth = bright ? 2.2 : 1.4;
     ctx.beginPath();
-    ctx.arc(sx, sy, bright ? 2.5 : 1.8, 0, Math.PI * 2);
+    ctx.moveTo(sx - sz, sy); ctx.lineTo(sx - gap, sy);
+    ctx.moveTo(sx + gap, sy); ctx.lineTo(sx + sz, sy);
+    ctx.moveTo(sx, sy - sz); ctx.lineTo(sx, sy - gap);
+    ctx.moveTo(sx, sy + gap); ctx.lineTo(sx, sy + sz);
+    ctx.stroke();
+
+    // Center dot
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(sx, sy, bright ? 2.8 : 2, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
+   * Draw the cursor crosshair at the exact mouse position (screen space, no
+   * camera transform). Always white + black outline so it reads on any background.
+   */
+  _drawCursorCrosshair(ctx, x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const sz = 11;
+    const gap = 4;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.lineCap = 'butt';
+
+    // Shadow / outline
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(x - sz, y); ctx.lineTo(x - gap, y);
+    ctx.moveTo(x + gap, y); ctx.lineTo(x + sz, y);
+    ctx.moveTo(x, y - sz); ctx.lineTo(x, y - gap);
+    ctx.moveTo(x, y + gap); ctx.lineTo(x, y + sz);
+    ctx.stroke();
+
+    // White lines
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(x - sz, y); ctx.lineTo(x - gap, y);
+    ctx.moveTo(x + gap, y); ctx.lineTo(x + sz, y);
+    ctx.moveTo(x, y - sz); ctx.lineTo(x, y - gap);
+    ctx.moveTo(x, y + gap); ctx.lineTo(x, y + sz);
+    ctx.stroke();
+
+    // Center dot
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, y, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.restore();
   }
 
