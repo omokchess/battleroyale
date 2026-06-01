@@ -971,6 +971,7 @@ export class Game {
     player.greatswordChargeStart = 0;
     player.greatswordChargeAngle = 0;
     player.skillCdLeft = sk.cooldownMs / 1000;
+    player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, now + (sk.attackLockMs || 0));
 
     const attackConfig = {
       ...Weapons.greatsword,

@@ -214,6 +214,7 @@ test('greatsword skill charges quickly into a max-damage heavy line', () => {
   game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs);
   assert.equal(game.pendingMeleeHits.length, 1);
   assert.equal(game.effects.some(e => e.type === 'melee_heavy_line' && e.width === SkillConfig.greatsword.width), true);
+  assert.equal(owner.comboDelayUntil, 1000 + SkillConfig.greatsword.chargeMaxMs + SkillConfig.greatsword.attackLockMs);
   assert.equal(target.hp, target.maxHp);
 
   game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs + SkillConfig.greatsword.delayDamageMs - 1);
@@ -245,7 +246,7 @@ test('greatsword third combo fires a short sword wave', () => {
   assert.equal(game.projectiles.length, 1);
   assert.equal(game.projectiles[0].kind, 'greatswordwave');
   assert.equal(game.projectiles[0].damage, 25);
-  assert.equal(game.projectiles[0].radius, 18);
+  assert.equal(game.projectiles[0].radius, 28);
 });
 
 test('rapier hit tempo refunds cooldown on contact', () => {

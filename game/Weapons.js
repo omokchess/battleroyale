@@ -77,7 +77,7 @@ export const Weapons = {
     cooldown: 640,
     moveSpeed: 0.82,
     range: 88,
-    angle: 100,
+    angle: 210,
     fixedSwingDirection: 1,
     type: 'melee_arc',
     description: '전방 100도를 같은 방향으로 두 번 베고, 3타에 짧은 검기를 발사하는 중량 무기입니다.',
@@ -224,6 +224,7 @@ export const SkillConfig = {
     range: 128,
     width: 34,
     delayDamageMs: 70,
+    attackLockMs: 800,
     knockback: 82
   },
   scythe: {
@@ -328,7 +329,7 @@ export const ComboConfig = {
       damage: 25,
       range: 185,
       speed: 760,
-      radius: 18,
+      radius: 28,
       projectileKind: 'greatswordwave',
       projectileWeapon: 'greatsword',
       cooldown: 760

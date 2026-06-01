@@ -664,7 +664,11 @@ export class Renderer {
       } else if (e.type === 'dagger_qte_fail') {
         this._drawDaggerQteFail(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_precise_line') {
-        this._drawRapierPierce(ctx, scr, anchoredEffect, weapon, alpha);
+        if (e.weapon === 'dagger') {
+          this._drawDaggerPierce(ctx, scr, anchoredEffect, weapon, alpha);
+        } else {
+          this._drawRapierPierce(ctx, scr, anchoredEffect, weapon, alpha);
+        }
       } else if (e.type === 'melee_heavy_line') {
         this._drawHeavyLine(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_slam') {
@@ -896,7 +900,7 @@ export class Renderer {
   }
 
   _drawGreatswordWave(ctx, scr, angle, zoom) {
-    const radius = Math.max(28, Weapons.greatsword.range * 0.46) * Math.max(0.7, zoom);
+    const radius = Math.max(34, Weapons.greatsword.range * 0.62) * Math.max(0.7, zoom);
     const halfAngle = ((Weapons.greatsword.angle || 100) * Math.PI) / 360;
     const apexX = -radius;
 
@@ -1202,6 +1206,50 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(tipX, tipY, 5 + 9 * thrust, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawDaggerPierce(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const thrust = progress < 0.14
+      ? easeOutBack(progress / 0.14)
+      : Math.max(0, 1 - (progress - 0.14) / 0.86);
+    const reach = weapon.range * (0.12 + 0.88 * thrust);
+    const tipX = scr.x + Math.cos(e.angle) * reach;
+    const tipY = scr.y + Math.sin(e.angle) * reach;
+    const baseX = scr.x + Math.cos(e.angle) * Math.max(6, reach - 18);
+    const baseY = scr.y + Math.sin(e.angle) * Math.max(6, reach - 18);
+    const pX = -Math.sin(e.angle);
+    const pY = Math.cos(e.angle);
+    const flare = 8 * thrust;
+
+    ctx.save();
+    if (progress < 0.36) {
+      this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, 10, this._hexToRGB(weapon.color, 0.08 * alpha));
+    }
+
+    ctx.shadowBlur = 12 * alpha;
+    ctx.shadowColor = weapon.color;
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.32 * alpha);
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
+    ctx.lineWidth = 1.8 * alpha;
+    ctx.beginPath();
+    ctx.moveTo(tipX + Math.cos(e.angle) * 9, tipY + Math.sin(e.angle) * 9);
+    ctx.lineTo(baseX + pX * flare, baseY + pY * flare);
+    ctx.lineTo(baseX - pX * flare, baseY - pY * flare);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 1.5 * alpha, this._hexToRGB('#ffffff', 0.92 * alpha), 'butt');
+    [-1, 1].forEach(side => {
+      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.36 * alpha);
+      ctx.lineWidth = 1.1 * alpha;
+      ctx.beginPath();
+      ctx.moveTo(scr.x + pX * side * 4, scr.y + pY * side * 4);
+      ctx.lineTo(baseX + pX * side * flare * 0.7, baseY + pY * side * flare * 0.7);
+      ctx.stroke();
+    });
     ctx.restore();
   }
 
@@ -2441,19 +2489,39 @@ export class Renderer {
     }
 
     else if (weaponType === 'scythe') {
-      const handleLen = 25 + Math.max(0, reach * 0.24);
+      const handleLen = 31 + Math.max(0, reach * 0.28);
       ctx.translate(wX, wY);
-      ctx.rotate(weaponAngle);
+      ctx.rotate(weaponAngle - 0.18);
       ctx.strokeStyle = '#d1d5db';
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.1;
       ctx.beginPath();
-      ctx.moveTo(-10, 0);
+      ctx.moveTo(-12, 0);
       ctx.lineTo(handleLen, 0);
       ctx.stroke();
-      ctx.strokeStyle = player.accentColor;
-      ctx.lineWidth = 2.4;
+
+      ctx.fillStyle = '#111216';
+      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.95);
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.arc(handleLen - 2, 2, 12, -Math.PI * 0.95, -Math.PI * 0.1);
+      ctx.moveTo(handleLen - 1, -2);
+      ctx.bezierCurveTo(handleLen + 9, -21, handleLen + 30, -17, handleLen + 34, -2);
+      ctx.bezierCurveTo(handleLen + 20, -10, handleLen + 10, -6, handleLen + 3, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(handleLen + 4, -4);
+      ctx.bezierCurveTo(handleLen + 14, -15, handleLen + 25, -13, handleLen + 31, -3);
+      ctx.stroke();
+
+      ctx.strokeStyle = player.accentColor;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(handleLen - 4, -5);
+      ctx.lineTo(handleLen + 2, 5);
       ctx.stroke();
     }
 
