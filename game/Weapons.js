@@ -154,6 +154,11 @@ Object.assign(Weapons.greatsword, {
   skill: 'F 홀드: 최대 1초 예열 후 창처럼 뻗는 상단베기로 최대 85 피해를 줍니다.'
 });
 
+Object.assign(Weapons.greatsword, {
+  description: '전방 210도를 같은 방향으로 두 번 베고, 3타에 넓은 검기를 발사하는 중량 무기입니다.',
+  skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 최대 85 피해를 줍니다.'
+});
+
 Object.assign(Weapons.dagger, {
   description: '레이피어처럼 얇은 직선 판정으로 빠르게 찌르는 암살 무기입니다.',
   skill: 'F 스킬: 가장 가까운 적과 0.7초간 사슬을 잇고, 원 타이밍에 F를 누르면 배후 공격으로 70 피해를 줍니다.'
@@ -220,9 +225,9 @@ export const SkillConfig = {
     chargeMaxMs: 1000,
     minDamage: 45,
     damage: 85,
-    type: 'melee_heavy_line',
+    type: 'melee_heavy_arc',
     range: 128,
-    width: 34,
+    angle: 210,
     delayDamageMs: 70,
     attackLockMs: 800,
     knockback: 82

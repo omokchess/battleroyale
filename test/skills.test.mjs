@@ -192,7 +192,7 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   assert.equal(hit.knockback, Weapons.hammer.knockback);
 });
 
-test('greatsword skill charges quickly into a max-damage heavy line', () => {
+test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -213,7 +213,7 @@ test('greatsword skill charges quickly into a max-damage heavy line', () => {
 
   game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs);
   assert.equal(game.pendingMeleeHits.length, 1);
-  assert.equal(game.effects.some(e => e.type === 'melee_heavy_line' && e.width === SkillConfig.greatsword.width), true);
+  assert.equal(game.effects.some(e => e.type === 'melee_heavy_arc' && e.angleDeg === SkillConfig.greatsword.angle), true);
   assert.equal(owner.comboDelayUntil, 1000 + SkillConfig.greatsword.chargeMaxMs + SkillConfig.greatsword.attackLockMs);
   assert.equal(target.hp, target.maxHp);
 

@@ -971,33 +971,30 @@ export class Renderer {
 
   _drawGreatswordCharge(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
-    const length = weapon.range * (0.35 + 0.65 * progress);
-    const width = weapon.width || 34;
+    const radius = weapon.range * (0.38 + 0.62 * progress);
+    const halfAngle = ((weapon.angle || 210) * Math.PI) / 360;
     const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 80);
 
     ctx.save();
-    this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, width, this._hexToRGB(weapon.color, (0.08 + 0.13 * progress) * alpha));
+    ctx.fillStyle = this._hexToRGB(weapon.color, (0.05 + 0.1 * progress) * alpha);
+    ctx.strokeStyle = this._hexToRGB(weapon.color, (0.35 + 0.3 * pulse) * alpha);
+    ctx.lineWidth = (2 + 3 * progress) * alpha;
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.arc(scr.x, scr.y, radius, e.angle - halfAngle, e.angle + halfAngle);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
 
-    this._drawCapsuleLine(
-      ctx,
-      scr.x,
-      scr.y,
-      scr.x + Math.cos(e.angle) * length,
-      scr.y + Math.sin(e.angle) * length,
-      width * (0.35 + 0.25 * pulse) * alpha,
-      this._hexToRGB(weapon.color, 0.42 * alpha),
-      'butt'
-    );
-    this._drawCapsuleLine(
-      ctx,
-      scr.x,
-      scr.y,
-      scr.x + Math.cos(e.angle) * length,
-      scr.y + Math.sin(e.angle) * length,
-      (3 + 2 * progress) * alpha,
-      this._hexToRGB('#ffffff', 0.78 * alpha),
-      'butt'
-    );
+    [-0.72, 0, 0.72].forEach(t => {
+      const a = e.angle + halfAngle * t;
+      ctx.strokeStyle = this._hexToRGB('#ffffff', (0.22 + 0.28 * progress) * alpha);
+      ctx.lineWidth = 1.7 * alpha;
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(a) * 16, scr.y + Math.sin(a) * 16);
+      ctx.lineTo(scr.x + Math.cos(a) * radius, scr.y + Math.sin(a) * radius);
+      ctx.stroke();
+    });
     ctx.restore();
   }
 
@@ -1174,37 +1171,40 @@ export class Renderer {
       ? easeOutBack(progress / 0.16)
       : Math.max(0, 1 - (progress - 0.16) / 0.84);
     const reach = weapon.range * (0.2 + 0.8 * thrust);
-    const width = Math.max(4, weapon.width || 8);
+    const width = Math.max(1.2, weapon.width || 1);
     const tipX = scr.x + Math.cos(e.angle) * reach;
     const tipY = scr.y + Math.sin(e.angle) * reach;
+    const baseX = scr.x + Math.cos(e.angle) * Math.max(8, reach - 18);
+    const baseY = scr.y + Math.sin(e.angle) * Math.max(8, reach - 18);
+    const pX = -Math.sin(e.angle);
+    const pY = Math.cos(e.angle);
+    const flare = 5.5 * thrust;
 
     ctx.save();
     if (progress < 0.42) {
-      this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, width, this._hexToRGB(weapon.color, 0.12 * alpha));
+      this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, 6, this._hexToRGB(weapon.color, 0.08 * alpha));
     }
-    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, width * 1.55 * alpha, this._hexToRGB(weapon.color, 0.42 * alpha), 'butt');
-    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 2.4 * alpha, this._hexToRGB('#ffffff', 0.92 * alpha), 'butt');
+    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 1.1 * alpha, this._hexToRGB('#ffffff', 0.92 * alpha), 'butt');
+    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 3.6 * alpha, this._hexToRGB(weapon.color, 0.24 * alpha), 'butt');
 
-    ctx.fillStyle = this._hexToRGB('#ffffff', 0.86 * alpha);
+    ctx.fillStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
     ctx.strokeStyle = this._hexToRGB(weapon.color, 0.9 * alpha);
-    ctx.lineWidth = 1.5;
-    ctx.save();
-    ctx.translate(tipX, tipY);
-    ctx.rotate(e.angle);
+    ctx.lineWidth = 1.2 * alpha;
     ctx.beginPath();
-    ctx.moveTo(8, 0);
-    ctx.lineTo(-6, -3.2);
-    ctx.lineTo(-2, 0);
-    ctx.lineTo(-6, 3.2);
+    ctx.moveTo(tipX + Math.cos(e.angle) * 12, tipY + Math.sin(e.angle) * 12);
+    ctx.lineTo(baseX + pX * flare, baseY + pY * flare);
+    ctx.lineTo(baseX - pX * flare, baseY - pY * flare);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    ctx.restore();
 
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.72 * alpha);
-    ctx.lineWidth = 1.4 * alpha;
+    ctx.lineWidth = 0.9 * alpha;
     ctx.beginPath();
-    ctx.arc(tipX, tipY, 5 + 9 * thrust, 0, Math.PI * 2);
+    ctx.moveTo(scr.x + pX * 3, scr.y + pY * 3);
+    ctx.lineTo(baseX + pX * flare * 0.55, baseY + pY * flare * 0.55);
+    ctx.moveTo(scr.x - pX * 3, scr.y - pY * 3);
+    ctx.lineTo(baseX - pX * flare * 0.55, baseY - pY * flare * 0.55);
     ctx.stroke();
     ctx.restore();
   }
@@ -2522,113 +2522,99 @@ export class Renderer {
 
     else if (weaponType === 'greatsword') {
       ctx.translate(wX, wY);
-      ctx.rotate(weaponAngle + Math.PI / 4);
+      ctx.rotate(weaponAngle - Math.PI / 4);
       const len = 23 + Math.max(0, reach * 0.28);
       ctx.fillStyle = this._hexToRGB('#e5e7eb', 0.9);
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(-5, 4);
-      ctx.lineTo(len, -len);
-      ctx.lineTo(len - 5, -len + 1);
-      ctx.lineTo(-1, 7);
+      ctx.moveTo(-5, -4);
+      ctx.lineTo(len, len);
+      ctx.lineTo(len - 5, len - 1);
+      ctx.lineTo(-1, -7);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
       ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.6);
       ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.moveTo(0, 3);
-      ctx.lineTo(len - 6, -len + 6);
+      ctx.moveTo(0, -3);
+      ctx.lineTo(len - 6, len - 6);
       ctx.stroke();
       ctx.strokeStyle = player.accentColor;
       ctx.lineWidth = 3.2;
       ctx.beginPath();
-      ctx.moveTo(-10, 8);
-      ctx.lineTo(2, -4);
+      ctx.moveTo(-10, -8);
+      ctx.lineTo(2, 4);
       ctx.stroke();
       ctx.fillStyle = '#111216';
       ctx.beginPath();
-      ctx.arc(-8, 6, 2.4, 0, Math.PI * 2);
+      ctx.arc(-8, -6, 2.4, 0, Math.PI * 2);
       ctx.fill();
     }
 
     else if (weaponType === 'scythe') {
-      const scytheAngle = weaponAngle + (active ? 0.1 : -0.08);
-      const gripX = scr.x + Math.cos(player.angle) * 4;
-      const gripY = scr.y + Math.sin(player.angle) * 4;
-      const handleTop = -36 - Math.max(0, reach * 0.12);
-      const handleBottom = 64;
+      const scytheAngle = weaponAngle - 0.38 + (active ? 0.08 : 0);
+      const gripX = scr.x + Math.cos(player.angle) * 8;
+      const gripY = scr.y + Math.sin(player.angle) * 8;
+      const handleTop = -27 - Math.max(0, reach * 0.08);
+      const handleBottom = 42;
       ctx.translate(gripX, gripY);
       ctx.rotate(scytheAngle);
 
-      ctx.shadowBlur = active ? 11 : 5;
+      ctx.shadowBlur = active ? 8 : 3;
       ctx.shadowColor = player.accentColor;
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-      ctx.lineWidth = 4.4;
+      ctx.lineWidth = 3.6;
       ctx.beginPath();
       ctx.moveTo(-8, handleBottom + 8);
       ctx.lineTo(9, handleTop);
       ctx.stroke();
 
       ctx.strokeStyle = '#d1d5db';
-      ctx.lineWidth = 2.1;
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(-8, handleBottom + 8);
       ctx.lineTo(9, handleTop);
       ctx.stroke();
 
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.48);
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.36);
       ctx.lineWidth = 0.9;
       ctx.beginPath();
       ctx.moveTo(-6, handleBottom + 4);
       ctx.lineTo(11, handleTop + 2);
       ctx.stroke();
 
-      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.42);
-      ctx.lineWidth = 1.1;
-      ctx.beginPath();
-      ctx.moveTo(-10, handleBottom + 6);
-      ctx.lineTo(7, handleTop + 1);
-      ctx.stroke();
-
       const jointX = 9;
       const jointY = handleTop;
       ctx.fillStyle = '#111216';
-      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.95);
-      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.78);
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(jointX - 4, jointY + 1);
-      ctx.bezierCurveTo(jointX + 18, jointY - 17, jointX + 50, jointY - 20, jointX + 74, jointY - 12);
-      ctx.bezierCurveTo(jointX + 51, jointY - 9, jointX + 24, jointY - 4, jointX + 1, jointY + 8);
+      ctx.bezierCurveTo(jointX + 12, jointY - 12, jointX + 34, jointY - 14, jointX + 50, jointY - 8);
+      ctx.bezierCurveTo(jointX + 35, jointY - 6, jointX + 17, jointY - 3, jointX + 1, jointY + 6);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 0.9;
       ctx.beginPath();
       ctx.moveTo(jointX + 2, jointY - 1);
-      ctx.bezierCurveTo(jointX + 23, jointY - 14, jointX + 52, jointY - 16, jointX + 70, jointY - 11);
+      ctx.bezierCurveTo(jointX + 15, jointY - 9, jointX + 34, jointY - 11, jointX + 47, jointY - 7);
       ctx.stroke();
 
       ctx.strokeStyle = player.accentColor;
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(jointX - 4, jointY - 5);
       ctx.lineTo(jointX + 7, jointY + 6);
       ctx.stroke();
 
-      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.75);
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.moveTo(jointX + 2, jointY + 3);
-      ctx.quadraticCurveTo(jointX + 10, jointY + 10, jointX + 18, jointY + 7);
-      ctx.stroke();
-
       ctx.fillStyle = this._hexToRGB('#ffffff', 0.92);
       ctx.beginPath();
-      ctx.arc(jointX + 1, jointY + 1, 2.4, 0, Math.PI * 2);
+      ctx.arc(jointX + 1, jointY + 1, 1.8, 0, Math.PI * 2);
       ctx.fill();
     }
 
