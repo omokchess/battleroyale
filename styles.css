@@ -205,15 +205,161 @@ canvas {
 
 @media (pointer: coarse), (max-width: 640px) {
   #gameHudOverlay {
-    width: min(300px, calc(100vw - 1.5rem));
-    left: 0.75rem;
-    top: 0.75rem;
+    left: max(0.5rem, env(safe-area-inset-left));
+    right: max(0.5rem, env(safe-area-inset-right));
+    top: max(0.5rem, env(safe-area-inset-top));
+    width: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.45rem;
+  }
+
+  #hudPlayerPanel {
+    width: min(52vw, 13rem);
+    padding: 0.45rem 0.55rem;
+    border-width: 1px;
+    background: rgba(31, 40, 51, 0.66);
+    box-shadow: 0 0 10px rgba(69, 243, 255, 0.14);
+  }
+
+  #hudPlayerPanel > .flex:first-child {
+    margin-bottom: 0.25rem;
+  }
+
+  #hudName {
+    max-width: 7rem;
+    font-size: 0.74rem;
+    line-height: 1;
+  }
+
+  #hudWeapon {
+    font-size: 0.62rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  #hudPlayerPanel .w-48 {
+    width: 100%;
+    height: 0.55rem;
+    margin-bottom: 0.3rem;
+  }
+
+  #hudHpText {
+    font-size: 0.55rem;
+    line-height: 1;
+  }
+
+  #hudPlayerPanel > .flex:last-child {
+    font-size: 0.62rem;
+    gap: 0.5rem;
+  }
+
+  #hudRightCluster {
+    width: auto;
+    align-items: flex-end;
+    gap: 0.35rem;
+  }
+
+  #hudRoomPanel {
+    display: none;
+  }
+
+  #hudSettingsPanel {
+    width: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  #hudSettingsPanel > .uppercase,
+  #hudSettingsPanel label {
+    display: none;
+  }
+
+  #hudActionRow {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0;
+  }
+
+  #hudActionRow button {
+    width: 5.55rem;
+    min-height: 1.95rem;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.58rem;
+    border-width: 1px;
+    background: rgba(31, 40, 51, 0.7);
+    white-space: normal;
+  }
+
+  #hudActionRow svg {
+    width: 0.7rem;
+    height: 0.7rem;
   }
 
   #abilityHud {
-    width: min(300px, calc(100vw - 1.5rem));
-    left: 0.75rem;
-    top: auto;
-    bottom: 0.75rem;
+    left: max(0.5rem, env(safe-area-inset-left));
+    top: calc(max(0.5rem, env(safe-area-inset-top)) + 4.65rem);
+    bottom: auto;
+    width: min(52vw, 13rem);
+    padding: 0.4rem 0.5rem;
+    border-width: 1px;
+    background: rgba(31, 40, 51, 0.62);
+    box-shadow: 0 0 10px rgba(69, 243, 255, 0.12);
+  }
+
+  #abilityHud .text-\[10px\] {
+    font-size: 0.58rem;
+    line-height: 1.05;
+  }
+
+  #abilityHud .h-2 {
+    height: 0.24rem;
+  }
+
+  #abilityHud .mb-2 {
+    margin-bottom: 0.25rem;
+  }
+
+  #mobileJoystickOverlay {
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  #leftJoystickContainer,
+  #rightJoystickContainer {
+    width: 5.35rem;
+    height: 5.35rem;
+    border-width: 2px;
+  }
+
+  #leftJoystickKnob,
+  #rightJoystickKnob {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  #skillBtn,
+  #dashBtn {
+    width: 3.55rem;
+    height: 3.55rem;
+    border-width: 2px;
+    font-size: 0.62rem;
+  }
+
+  #skillBtn .text-lg {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  #skillBtn .text-\[9px\],
+  #dashBtn .text-\[9px\] {
+    font-size: 0.55rem;
+  }
+
+  #dashBtn svg {
+    width: 1rem;
+    height: 1rem;
   }
 }
