@@ -556,8 +556,12 @@ export class Game {
     player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, recoveryUntil);
 
     // Push a visual "charging" effect during the pause before the finisher.
-    // Renderer uses this to hold the weapon in pull-back position.
+    // Renderer uses this to hold the weapon in pull-back position AND to preview
+    // the upcoming finisher's hit range.
     if (combo.delayAfterMs > 0 && !combo.isFinisher && this.effects) {
+      const comboConfig = ComboConfig[player.weapon];
+      const baseWeapon = getEffectiveWeapon(player.weapon, player.buffType);
+      const finisherShape = { ...baseWeapon, ...((comboConfig && comboConfig.finisher) || {}) };
       this.effects.push({
         attackerId: player.id,
         x: player.x,
@@ -565,6 +569,11 @@ export class Game {
         angle: player.angle,
         weapon: player.weapon,
         type: 'finisher_ready',
+        // Shape of the upcoming finisher, used by the renderer to draw a range preview.
+        previewType: finisherShape.type,
+        previewRange: finisherShape.range,
+        previewWidth: finisherShape.width,
+        previewAngleDeg: finisherShape.angle,
         progress: 0,
         timestamp: now,
         lifetime: combo.delayAfterMs

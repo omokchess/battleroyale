@@ -1918,27 +1918,52 @@ export class Renderer {
     if (!isLocal && !isAttacking) return;
     // Local player always shows the dashed range guide; attacking overlays it with the solid shape.
 
+    // Charging up the combo finisher? Preview its (bigger) hit range instead.
+    const isFinisherPreview = activeAttack?.type === 'finisher_ready' && Boolean(activeAttack.previewType);
+
     // Scale the world-space reach to screen pixels so the guide matches the
     // real hitbox at any zoom (and reflects active skill buffs).
     const zoom = camera.zoom || 1;
+    const shapeType = isFinisherPreview ? activeAttack.previewType : (activeAttack?.type || baseWeapon.type);
+    const shapeRange = isFinisherPreview ? activeAttack.previewRange
+      : (Number.isFinite(activeAttack?.range) ? activeAttack.range : baseWeapon.range);
+    const shapeWidth = isFinisherPreview ? activeAttack.previewWidth
+      : (Number.isFinite(activeAttack?.width) ? activeAttack.width : baseWeapon.width);
+    const shapeAngleDeg = isFinisherPreview ? activeAttack.previewAngleDeg
+      : (Number.isFinite(activeAttack?.angleDeg) ? activeAttack.angleDeg : baseWeapon.angle);
+
     const weapon = {
       ...baseWeapon,
-      type: activeAttack?.type || baseWeapon.type,
-      range: (Number.isFinite(activeAttack?.range) ? activeAttack.range : (baseWeapon.range || 0)) * zoom,
-      width: (Number.isFinite(activeAttack?.width) ? activeAttack.width : (baseWeapon.width || 0)) * zoom,
-      angle: Number.isFinite(activeAttack?.angleDeg) ? activeAttack.angleDeg : baseWeapon.angle
+      type: shapeType,
+      range: (shapeRange || 0) * zoom,
+      width: (shapeWidth || 0) * zoom,
+      angle: shapeAngleDeg
     };
 
     ctx.save();
 
-    const guideColor = isAttacking ? weapon.color : '#d1d5db';
-    const fillAlpha = isAttacking ? 0.035 : 0.018;
-    const strokeAlpha = isAttacking ? 0.36 : 0.18;
+    // Finisher preview pulses in the weapon color so the player can pre-aim the
+    // big strike. Active attacks use a solid bright overlay; idle uses a faint
+    // dashed guide.
+    const showStrong = isAttacking && !isFinisherPreview;
+    let guideColor;
+    let fillAlpha;
+    let strokeAlpha;
+    if (isFinisherPreview) {
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 110);
+      guideColor = weapon.color;
+      fillAlpha = 0.06 + 0.06 * pulse;
+      strokeAlpha = 0.45 + 0.35 * pulse;
+    } else {
+      guideColor = showStrong ? weapon.color : '#d1d5db';
+      fillAlpha = showStrong ? 0.035 : 0.018;
+      strokeAlpha = showStrong ? 0.36 : 0.18;
+    }
 
     ctx.fillStyle = this._hexToRGB(guideColor, fillAlpha);
     ctx.strokeStyle = this._hexToRGB(guideColor, strokeAlpha);
-    ctx.lineWidth = isAttacking ? 1.6 : 1.1;
-    ctx.setLineDash(isAttacking ? [] : [6, 7]);
+    ctx.lineWidth = isFinisherPreview ? 2.2 : (showStrong ? 1.6 : 1.1);
+    ctx.setLineDash(isFinisherPreview ? [9, 5] : (showStrong ? [] : [6, 7]));
 
     const range = weapon.range;
     const angle = player.angle;

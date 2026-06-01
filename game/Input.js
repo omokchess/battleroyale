@@ -23,6 +23,9 @@ export class Input {
 
     this.aimAngle = 0;
     this.isRightJoystickActive = false;
+    // True once any real mouse movement is seen → treat as a desktop/mouse user
+    // even if the device also reports touch support (touchscreen laptops etc.).
+    this.hasMouseInput = false;
 
     // Edge-triggered one-shot actions consumed once per frame by the game loop.
     this.dashRequested = false;
@@ -116,6 +119,7 @@ export class Input {
       const scaleY = rect.height ? canvas.height / rect.height : 1;
       this.mouse.x = (e.clientX - rect.left) * scaleX;
       this.mouse.y = (e.clientY - rect.top) * scaleY;
+      this.hasMouseInput = true;
       // Angle is computed in updateAimAngle() each frame — do NOT compute it
       // here. Computing from canvas center here would fight with the correct
       // player→mouse calculation and cause visible aim jitter.
@@ -425,12 +429,13 @@ export class Input {
    * Dynamically calibrate aim angle taking clamping boundaries & active camera offsets into consideration
    */
   updateAimAngle(player, camera, canvasWidth, canvasHeight, mapWidth = 0, mapHeight = 0) {
-    if (this.joystickEnabled) {
-      // With virtual controls enabled, the right joystick owns aim. Keeping the
-      // last angle after release prevents touch devices from snapping aim to
-      // the stale mouse/canvas position.
-      return;
-    }
+    // While actively dragging the right joystick, it owns the aim.
+    if (this.isRightJoystickActive) return;
+    // Pure touch mode (joystick enabled AND no mouse ever used): hold the last
+    // angle so releasing the joystick doesn't snap aim to a stale mouse pos.
+    // As soon as a real mouse move is seen we always aim at the cursor, even on
+    // touch-capable PCs where joystickEnabled may have been auto-set.
+    if (this.joystickEnabled && !this.hasMouseInput) return;
     if (!player || !camera) return;
 
     const screenPos = camera.toScreen(player.x, player.y, canvasWidth, canvasHeight);
