@@ -30,6 +30,7 @@ export class Game {
     this.projectiles = [];
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
+    this.pendingSpearThrows = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
@@ -73,6 +74,7 @@ export class Game {
     this.projectiles = [];
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
+    this.pendingSpearThrows = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.effects = [];
@@ -320,6 +322,7 @@ export class Game {
 
     this._releaseDueSwordWaves(now);
     this._releaseDueBowRailguns(now);
+    this._processSpearThrowQueue(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -551,6 +554,22 @@ export class Game {
     player.comboStep = combo.isFinisher ? 0 : combo.step;
     const recoveryUntil = now + Math.max(combo.recoveryMs || 0, combo.delayAfterMs || 0);
     player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, recoveryUntil);
+
+    // Push a visual "charging" effect during the pause before the finisher.
+    // Renderer uses this to hold the weapon in pull-back position.
+    if (combo.delayAfterMs > 0 && !combo.isFinisher && this.effects) {
+      this.effects.push({
+        attackerId: player.id,
+        x: player.x,
+        y: player.y,
+        angle: player.angle,
+        weapon: player.weapon,
+        type: 'finisher_ready',
+        progress: 0,
+        timestamp: now,
+        lifetime: combo.delayAfterMs
+      });
+    }
   }
 
   /**
@@ -870,36 +889,11 @@ export class Game {
    * Cooldown only starts once it is retrieved.
    */
   _throwSpear(player, now) {
-    const sk = SkillConfig.spear;
+    // Mark the skill as in-use immediately to prevent re-activation.
     player.spearThrown = true;
-    const dirX = Math.cos(player.angle);
-    const dirY = Math.sin(player.angle);
-    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
-    const travelDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
-    const endX = Math.max(5, Math.min(this.mapWidth - 5, player.x + dirX * travelDist));
-    const endY = Math.max(5, Math.min(this.mapHeight - 5, player.y + dirY * travelDist));
-    const proj = new Projectile(
-      `${player.id}-javelin-${now}`,
-      player.id,
-      endX,
-      endY,
-      player.angle + Math.PI,
-      sk.returnSpeed || 760,
-      Infinity,
-      sk.returnDamage || sk.damage,
-      'thrownspear'
-    );
-    proj.bornAt = now;
-    proj.returnStartedAt = now;
-    proj.phase = 'return';
-    proj.stuck = false;
-    proj.hitSet = new Set();
-    proj.vx = -dirX * (sk.returnSpeed || 760);
-    proj.vy = -dirY * (sk.returnSpeed || 760);
-    proj.angle = player.angle + Math.PI;
-    this.projectiles.push(proj);
 
-    // Brief pull-back windup effect (visual only — damage is already applied above)
+    // Play the windup (pull-back) animation. Actual throw executes after it completes.
+    const WINDUP_MS = 240;
     this.effects.push({
       attackerId: player.id,
       x: player.x,
@@ -909,17 +903,81 @@ export class Game {
       type: 'spear_windup',
       progress: 0,
       timestamp: now,
-      lifetime: 240
+      lifetime: WINDUP_MS
     });
 
+    // Lock the throw direction at the moment F is pressed; player may move freely
+    // during the windup but the spear flies in the aimed direction.
+    if (!this.pendingSpearThrows) this.pendingSpearThrows = [];
+    this.pendingSpearThrows.push({
+      playerId: player.id,
+      angle: player.angle,
+      releaseAt: now + WINDUP_MS
+    });
+  }
+
+  _processSpearThrowQueue(now) {
+    if (!this.pendingSpearThrows?.length) return;
+
+    this.pendingSpearThrows = this.pendingSpearThrows.filter(pending => {
+      if (now < pending.releaseAt) return true; // still winding up
+
+      const player = this.players[pending.playerId];
+      if (!player || player.isDead) {
+        // Player left or died during windup — free the skill state.
+        if (player) {
+          player.spearThrown = false;
+          player.skillCdLeft = 0;
+        }
+        return false;
+      }
+
+      this._executeSpearThrow(player, pending, now);
+      return false;
+    });
+  }
+
+  _executeSpearThrow(player, pending, now) {
+    const sk = SkillConfig.spear;
+    const angle = pending.angle;  // locked aim direction from when F was pressed
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+
+    // Hitscan from player's CURRENT position in the locked direction.
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+    const travelDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    const endX = Math.max(5, Math.min(this.mapWidth - 5, player.x + dirX * travelDist));
+    const endY = Math.max(5, Math.min(this.mapHeight - 5, player.y + dirY * travelDist));
+
+    // Spawn the returning javelin at the wall endpoint.
+    const returnSpeed = sk.returnSpeed || 760;
+    const proj = new Projectile(
+      `${player.id}-javelin-${now}`,
+      player.id,
+      endX, endY,
+      angle + Math.PI,
+      returnSpeed,
+      Infinity,
+      sk.returnDamage || sk.damage,
+      'thrownspear'
+    );
+    proj.bornAt = now;
+    proj.returnStartedAt = now;
+    proj.phase = 'return';
+    proj.stuck = false;
+    proj.hitSet = new Set();
+    proj.vx = -dirX * returnSpeed;
+    proj.vy = -dirY * returnSpeed;
+    proj.angle = angle + Math.PI;
+    this.projectiles.push(proj);
+
+    // Railbeam and vibration feedback.
     const throwEffect = {
       id: `${player.id}-spear-rail-${now}`,
       attackerId: player.id,
-      x: player.x,
-      y: player.y,
-      x2: endX,
-      y2: endY,
-      angle: player.angle,
+      x: player.x, y: player.y,
+      x2: endX, y2: endY,
+      angle,
       weapon: 'spear',
       type: 'railbeam',
       progress: 0,
@@ -1363,6 +1421,7 @@ export class Game {
 
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
+    this.pendingSpearThrows = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.canvas.style.cursor = '';

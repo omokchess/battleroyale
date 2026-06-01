@@ -1365,7 +1365,8 @@ export class Renderer {
       effect.type === 'melee_arc' ||
       effect.type === 'melee_circle' ||
       effect.type === 'melee_line' ||
-      effect.type === 'spear_windup'
+      effect.type === 'spear_windup' ||
+      effect.type === 'finisher_ready'
     );
   }
 
@@ -1447,13 +1448,22 @@ export class Renderer {
       bodyScale = 1.1 * draw;
 
     } else if (effect.type === 'spear_windup') {
-      // Brief pull-back when spear skill is thrown
+      // Pull spear back (0%→50% progress), hold at peak, release (50%→100%)
       const pullT = progress < 0.5
         ? easeOutCubic(progress / 0.5)
         : 1 - easeOutCubic((progress - 0.5) / 0.5);
-      lunge = -5 * pullT;
-      weaponReach = -14 * pullT;  // negative = tip retreats toward body
-      bodyScale = 1.1 * pullT;
+      lunge = -6 * pullT;
+      weaponReach = -16 * pullT;  // negative = tip retreats toward body
+      bodyScale = 1.3 * pullT;
+
+    } else if (effect.type === 'finisher_ready') {
+      // Sword held in pull-back pose while waiting for finisher window.
+      // Quickly ramps to full pull-back and stays there until the finisher fires.
+      const chargeT = Math.min(1, progress / 0.25); // reach full charge in 25% of the delay
+      lunge = -5 * chargeT;
+      weaponReach = -12 * chargeT;
+      weaponAngle = angle + Math.PI * 0.82 * chargeT; // weapon rotates toward lower-left
+      bodyScale = 1.4 * chargeT;
 
     } else if (effect.type === 'melee_circle' && effect.weapon !== 'axe') {
       const spin = easeOutCubic(Math.min(1, progress / 0.6));

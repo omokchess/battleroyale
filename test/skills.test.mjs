@@ -270,6 +270,13 @@ test('spear skill pierces outbound path and damages enemies again on return', ()
 
   game._throwSpear(owner, 1000);
   assert.equal(owner.spearThrown, true);
+  // Windup queued — projectile and damage deferred until windup completes.
+  assert.equal(game.projectiles.length, 0);
+  assert.equal(game.effects.some(e => e.type === 'spear_windup'), true);
+  assert.equal(firstTarget.hp, firstTarget.maxHp); // no outbound damage yet
+
+  // Release the throw after the windup window.
+  game._processSpearThrowQueue(1241);
   assert.equal(game.projectiles.length, 1);
   assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'spear'), true);
 
