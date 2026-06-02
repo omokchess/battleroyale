@@ -279,7 +279,8 @@ export const SkillConfig = {
   hammer: {
     cooldownMs: 8500,
     type: 'melee_slam',
-    intervalMs: 400,        // one shockwave every 0.4s
+    previewMs: 600,         // telegraph all 3 ranges + windup before any hit
+    subIntervalMs: 150,     // then fire the 3 shockwaves 0.15s apart
     knockback: 90,
     // Three expanding shockwaves centered on the cast spot.
     waves: [

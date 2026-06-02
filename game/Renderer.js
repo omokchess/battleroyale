@@ -1352,27 +1352,33 @@ export class Renderer {
 
   _drawHammerWindup(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
-    const radius = weapon.range * (0.35 + 0.65 * progress);
     const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 70);
+    // e.ranges are raw world radii; weapon.range is already zoom-scaled, so
+    // recover the zoom factor to scale each telegraphed ring.
+    const zoom = e.range ? weapon.range / e.range : 1;
+    const ranges = (Array.isArray(e.ranges) && e.ranges.length ? e.ranges : [e.range || weapon.range]).map(r => r * zoom);
+    const maxR = Math.max(...ranges);
 
     ctx.save();
-    ctx.setLineDash([9, 7]);
-    ctx.strokeStyle = this._hexToRGB(weapon.color, (0.35 + 0.35 * pulse) * alpha);
-    ctx.lineWidth = 2.2 + 2.4 * progress;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
 
-    for (let i = 0; i < 6; i++) {
-      const a = i * Math.PI / 3 + progress * 0.6;
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.28 * alpha * progress);
-      ctx.lineWidth = 1.6;
+    // A filling disc that grows over the windup → reads as a countdown to the hit.
+    ctx.fillStyle = this._hexToRGB(weapon.color, 0.07 * alpha);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, maxR * progress, 0, Math.PI * 2);
+    ctx.fill();
+
+    // The three shockwave radii as dashed rings (outermost = weapon color).
+    ctx.setLineDash([8, 7]);
+    ctx.lineCap = 'round';
+    ranges.forEach((r, i) => {
+      const outer = i === ranges.length - 1;
+      ctx.strokeStyle = this._hexToRGB(outer ? weapon.color : '#ffffff', (0.32 + 0.28 * pulse) * alpha);
+      ctx.lineWidth = (1.6 + 0.7 * i) * Math.max(0.6, alpha);
       ctx.beginPath();
-      ctx.moveTo(scr.x + Math.cos(a) * 18, scr.y + Math.sin(a) * 18);
-      ctx.lineTo(scr.x + Math.cos(a) * radius, scr.y + Math.sin(a) * radius);
+      ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
       ctx.stroke();
-    }
+    });
+    ctx.setLineDash([]);
     ctx.restore();
   }
 

@@ -1232,10 +1232,12 @@ export class Game {
     if (!this._canUseSkill(player)) return;
     const sk = SkillConfig.hammer;
     const waves = sk.waves || [];
-    const interval = sk.intervalMs || 400;
+    const previewMs = sk.previewMs ?? 600;
+    const sub = sk.subIntervalMs ?? 150;
     if (!this.pendingHammerSlams) this.pendingHammerSlams = [];
 
-    // Lock the three shockwaves to the spot where the skill was cast.
+    // Lock the three shockwaves to the spot where the skill was cast. They fire
+    // after a 0.6s preview/windup, then 0.15s apart.
     const originX = player.x;
     const originY = player.y;
     waves.forEach((wave, i) => {
@@ -1245,13 +1247,14 @@ export class Game {
         originY,
         wave,
         waveIndex: i,
-        releaseAt: now + interval * (i + 1)
+        releaseAt: now + previewMs + i * sub
       });
     });
 
     player.skillCdLeft = sk.cooldownMs / 1000;
 
     const maxRange = waves.length ? waves[waves.length - 1].range : (sk.range || 150);
+    // Telegraph all three shockwave radii during the windup so timing is clear.
     this.effects.push({
       attackerId: player.id,
       x: originX,
@@ -1259,10 +1262,11 @@ export class Game {
       weapon: 'hammer',
       type: 'hammer_windup',
       range: maxRange,
+      ranges: waves.map(w => w.range),
       worldAnchored: true,
       progress: 0,
       timestamp: now,
-      lifetime: interval * Math.max(1, waves.length)
+      lifetime: previewMs
     });
   }
 

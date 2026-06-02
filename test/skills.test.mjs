@@ -492,17 +492,17 @@ test('hammer skill fires three expanding shockwaves with scaling damage and stun
   owner.x = 500;
   owner.y = 500;
 
-  game._processHammerSlams(1000 + sk.intervalMs - 1);
-  assert.equal(target.hp, target.maxHp); // nothing fired yet
+  game._processHammerSlams(1000 + sk.previewMs - 1);
+  assert.equal(target.hp, target.maxHp); // still in the 0.6s preview
 
-  game._processHammerSlams(1000 + sk.intervalMs);          // wave 1 (0.4s)
+  game._processHammerSlams(1000 + sk.previewMs);                       // wave 1
   assert.equal(target.hp, target.maxHp - w1.damage);
   assert.equal(target.stunTimeLeft, w1.stunMs / 1000);
 
-  game._processHammerSlams(1000 + sk.intervalMs * 2);      // wave 2 (0.8s)
+  game._processHammerSlams(1000 + sk.previewMs + sk.subIntervalMs);     // wave 2
   assert.equal(target.hp, target.maxHp - w1.damage - w2.damage);
 
-  game._processHammerSlams(1000 + sk.intervalMs * 3);      // wave 3 (1.2s)
+  game._processHammerSlams(1000 + sk.previewMs + sk.subIntervalMs * 2); // wave 3
   assert.equal(target.hp, target.maxHp - w1.damage - w2.damage - w3.damage);
   assert.equal(target.stunTimeLeft, w3.stunMs / 1000);
   assert.equal(game.pendingHammerSlams.length, 0);
@@ -527,10 +527,10 @@ test('hammer outer shockwave misses targets beyond the first wave radius', () =>
   game.players[target.id] = target;
 
   game._castHammerSkill(owner, 1000);
-  game._processHammerSlams(1000 + sk.intervalMs);      // wave 1 — too far, no hit
+  game._processHammerSlams(1000 + sk.previewMs);                   // wave 1 — too far, no hit
   assert.equal(target.hp, target.maxHp);
 
-  game._processHammerSlams(1000 + sk.intervalMs * 2);  // wave 2 — now in range
+  game._processHammerSlams(1000 + sk.previewMs + sk.subIntervalMs); // wave 2 — now in range
   assert.equal(target.hp, target.maxHp - w2.damage);
 });
 
