@@ -434,7 +434,7 @@ test('rapier skill queues seven rapid needle strikes', () => {
   assert.equal(rapierEffects[0].angle, firstStrikeAngle);
 });
 
-test('hammer skill lands after one second and stuns enemies', () => {
+test('hammer skill fires three expanding shockwaves with scaling damage and stun', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -443,20 +443,64 @@ test('hammer skill lands after one second and stuns enemies', () => {
   game.mapHeight = 700;
   game._creditKill = () => {};
 
+  const sk = SkillConfig.hammer;
+  const [w1, w2, w3] = sk.waves;
+
   const owner = new Player('hammer-owner', 'Bell', 'hammer', 100, 100);
-  const target = new Player('hammer-target', 'Dummy', 'sword', 210, 100);
+  // 40px away: inside every wave radius. Owner moving later must NOT shift the
+  // shockwave centers (they are locked to the cast spot).
+  const target = new Player('hammer-target', 'Dummy', 'sword', 140, 100);
   game.players[owner.id] = owner;
   game.players[target.id] = target;
 
   game._castHammerSkill(owner, 1000);
-  assert.equal(game.pendingHammerSlams.length, 1);
+  assert.equal(game.pendingHammerSlams.length, 3);
   assert.equal(game.effects.some(e => e.type === 'hammer_windup'), true);
-  game._processHammerSlams(1000 + SkillConfig.hammer.delayMs - 1);
+
+  // Move the owner away to prove the shockwaves stay at the cast spot.
+  owner.x = 500;
+  owner.y = 500;
+
+  game._processHammerSlams(1000 + sk.intervalMs - 1);
+  assert.equal(target.hp, target.maxHp); // nothing fired yet
+
+  game._processHammerSlams(1000 + sk.intervalMs);          // wave 1 (0.4s)
+  assert.equal(target.hp, target.maxHp - w1.damage);
+  assert.equal(target.stunTimeLeft, w1.stunMs / 1000);
+
+  game._processHammerSlams(1000 + sk.intervalMs * 2);      // wave 2 (0.8s)
+  assert.equal(target.hp, target.maxHp - w1.damage - w2.damage);
+
+  game._processHammerSlams(1000 + sk.intervalMs * 3);      // wave 3 (1.2s)
+  assert.equal(target.hp, target.maxHp - w1.damage - w2.damage - w3.damage);
+  assert.equal(target.stunTimeLeft, w3.stunMs / 1000);
+  assert.equal(game.pendingHammerSlams.length, 0);
+});
+
+test('hammer outer shockwave misses targets beyond the first wave radius', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingHammerSlams = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const sk = SkillConfig.hammer;
+  const [w1, w2] = sk.waves;
+
+  const owner = new Player('hammer-owner', 'Bell', 'hammer', 100, 100);
+  // 100px away: outside wave 1 (60px) but inside wave 2 (123px).
+  const target = new Player('hammer-target', 'Far', 'sword', 200, 100);
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._castHammerSkill(owner, 1000);
+  game._processHammerSlams(1000 + sk.intervalMs);      // wave 1 — too far, no hit
   assert.equal(target.hp, target.maxHp);
 
-  game._processHammerSlams(1000 + SkillConfig.hammer.delayMs);
-  assert.equal(target.hp, target.maxHp - SkillConfig.hammer.damage);
-  assert.equal(target.stunTimeLeft, SkillConfig.hammer.stunMs / 1000);
+  game._processHammerSlams(1000 + sk.intervalMs * 2);  // wave 2 — now in range
+  assert.equal(target.hp, target.maxHp - w2.damage);
 });
 
 test('bow railgun vibration only fires for the local caster once', () => {

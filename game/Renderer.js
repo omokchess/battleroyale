@@ -971,7 +971,12 @@ export class Renderer {
     }
     ctx.restore();
 
-    this._drawArcSlash(ctx, scr, { ...e, progress: Math.max(progress, release * 0.9), comboFinisher: true }, weapon, alpha);
+    // The blade-arc slash used to render ~100ms ahead of the character's swing
+    // motion. Delay the slash by 100ms (converted to progress units) so the arc
+    // lands together with the motion instead of leading it.
+    const slashDelay = 100 / (e.lifetime || 720);
+    const slashProgress = clamp01(Math.max(progress, release * 0.9) - slashDelay);
+    this._drawArcSlash(ctx, scr, { ...e, progress: slashProgress, comboFinisher: true }, weapon, alpha);
   }
 
   _drawGreatswordCharge(ctx, scr, e, weapon, alpha) {
@@ -1891,6 +1896,7 @@ export class Renderer {
 
   _isPlayerBoundEffect(effect) {
     return Boolean(effect && effect.attackerId) &&
+      !effect.worldAnchored &&
       effect.type !== 'projectile_shot' &&
       effect.type !== 'projectile_burst' &&
       effect.type !== 'explosion' &&

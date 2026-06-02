@@ -1297,22 +1297,38 @@ export class Game {
   _castHammerSkill(player, now) {
     if (!this._canUseSkill(player)) return;
     const sk = SkillConfig.hammer;
+    const waves = sk.waves || [];
+    const interval = sk.intervalMs || 400;
     if (!this.pendingHammerSlams) this.pendingHammerSlams = [];
-    this.pendingHammerSlams.push({
-      playerId: player.id,
-      releaseAt: now + (sk.delayMs || 1000)
+
+    // Lock the three shockwaves to the spot where the skill was cast.
+    const originX = player.x;
+    const originY = player.y;
+    waves.forEach((wave, i) => {
+      this.pendingHammerSlams.push({
+        playerId: player.id,
+        originX,
+        originY,
+        wave,
+        waveIndex: i,
+        releaseAt: now + interval * (i + 1)
+      });
     });
+
     player.skillCdLeft = sk.cooldownMs / 1000;
+
+    const maxRange = waves.length ? waves[waves.length - 1].range : (sk.range || 150);
     this.effects.push({
       attackerId: player.id,
-      x: player.x,
-      y: player.y,
+      x: originX,
+      y: originY,
       weapon: 'hammer',
       type: 'hammer_windup',
-      range: sk.range,
+      range: maxRange,
+      worldAnchored: true,
       progress: 0,
       timestamp: now,
-      lifetime: sk.delayMs || 1000
+      lifetime: interval * Math.max(1, waves.length)
     });
   }
 
@@ -1326,36 +1342,56 @@ export class Game {
       }
       const player = this.players[slam.playerId];
       if (!player || player.isDead || player.weapon !== 'hammer') continue;
-      this._executeHammerSkillSlam(player, now);
+      this._executeHammerWave(player, slam, now);
     }
     this.pendingHammerSlams = waiting;
   }
 
-  _executeHammerSkillSlam(player, now) {
+  _executeHammerWave(player, slam, now) {
     const sk = SkillConfig.hammer;
+    const wave = slam.wave || {};
+    const originX = Number.isFinite(slam.originX) ? slam.originX : player.x;
+    const originY = Number.isFinite(slam.originY) ? slam.originY : player.y;
+
     const attackConfig = {
-      ...Weapons.hammer,
-      ...sk,
-      shockwaveDamage: sk.damage,
-      cooldown: Weapons.hammer.cooldown,
-      type: 'melee_slam'
+      type: 'melee_slam',
+      range: wave.range,
+      innerRange: wave.range,          // uniform damage across the whole radius
+      damage: wave.damage,
+      shockwaveDamage: wave.damage,
+      stunMs: wave.stunMs || 0,
+      knockback: wave.knockback ?? sk.knockback ?? 0
     };
+
+    // Strike from the fixed cast spot (not the player's live position).
+    const attacker = {
+      id: player.id,
+      nickname: player.nickname,
+      x: originX,
+      y: originY,
+      angle: player.angle,
+      radius: player.radius || 14
+    };
+
     this.effects.push({
       attackerId: player.id,
-      x: player.x,
-      y: player.y,
+      x: originX,
+      y: originY,
       angle: player.angle,
       weapon: 'hammer',
       type: 'melee_slam',
-      range: attackConfig.range,
-      innerRange: attackConfig.innerRange,
-      comboFinisher: true,
+      range: wave.range,
+      innerRange: Math.round((wave.range || 0) * 0.5),
+      waveIndex: slam.waveIndex,
+      comboFinisher: slam.waveIndex === 2,
       isSkill: true,
+      worldAnchored: true,
       progress: 0,
       timestamp: now,
-      lifetime: 680
+      lifetime: 520
     });
-    this._applyMeleeHits(this._snapshotMeleeAttacker(player), attackConfig, now);
+
+    this._applyMeleeHits(attacker, attackConfig, now);
   }
 
   _clearPendingHammerSlamsFor(playerId) {

@@ -145,7 +145,7 @@ export const Weapons = {
     knockback: 68,
     type: 'melee_slam',
     description: '묵직한 원형 내려찍기 무기입니다. 맞은 적을 크게 밀어냅니다.',
-    skill: 'F 스킬: 1초 뒤 150px 이내 모든 적에게 40 피해와 0.5초 스턴.',
+    skill: 'F 스킬: 0.4초마다 점점 커지는 충격파 3연발 (60·123·156px / 20·40·52 피해 / 0.3·0.35·1초 스턴) · 쿨타임 8.5초',
     color: '#fb923c'
   }
 };
@@ -276,11 +276,14 @@ export const SkillConfig = {
   hammer: {
     cooldownMs: 8500,
     type: 'melee_slam',
-    damage: 40,
-    range: 150,
-    delayMs: 1000,
-    stunMs: 500,
-    knockback: 90
+    intervalMs: 400,        // one shockwave every 0.4s
+    knockback: 90,
+    // Three expanding shockwaves centered on the cast spot.
+    waves: [
+      { range: 60,  damage: 20, stunMs: 300,  knockback: 40 },
+      { range: 123, damage: 40, stunMs: 350,  knockback: 70 },
+      { range: 156, damage: 52, stunMs: 1000, knockback: 100 }
+    ]
   }
 };
 
