@@ -686,6 +686,18 @@ test('railgun hitscan reports the closest contact distance and misses cleanly', 
   assert.equal(miss, null);
 });
 
+test('arc weapons (sword/scythe) use the blade-sweep hit test via hitMode', () => {
+  assert.equal(Weapons.sword.hitMode, 'melee_blade_sweep');
+  assert.equal(Weapons.scythe.hitMode, 'melee_blade_sweep');
+
+  const sword = { id: 'sw', x: 100, y: 100, angle: 0, radius: 14 };
+  const front = { id: 'f', x: 160, y: 100, isDead: false, radius: 14 };  // in the swing
+  const behind = { id: 'b', x: 40, y: 100, isDead: false, radius: 14 };  // behind the sweep
+
+  assert.equal(Collision.checkMeleeHit(sword, front, Weapons.sword), true);
+  assert.equal(Collision.checkMeleeHit(sword, behind, Weapons.sword), false);
+});
+
 test('weapon swap is queued (host) and ignores unknown weapons', () => {
   const game = Object.create(Game.prototype);
   game.players = {};

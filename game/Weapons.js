@@ -14,6 +14,8 @@ export const Weapons = {
     range: 70,     // pixels
     angle: 110,    // degrees
     type: 'melee_arc',
+    hitMode: 'melee_blade_sweep',  // hit along the swept blade, like the greatsword
+    bladeHalfWidth: 12,
     description: '공수 밸런스가 뛰어난 무기입니다. 준수한 사거리와 공격 속도를 자랑합니다.',
     skill: 'F 스킬: 0.25초 간격으로 검기 3회 발사 (벽·적 명중 시 폭발) · 쿨타임 4초',
     color: '#45f3ff'
@@ -98,6 +100,8 @@ export const Weapons = {
     pull: 24,
     fixedSwingDirection: 1,
     type: 'melee_sweet_arc',
+    hitMode: 'melee_blade_sweep',  // hit along the swept blade, like the greatsword
+    bladeHalfWidth: 16,
     description: '안쪽보다 바깥날이 강한 초승달 공격입니다. 바깥쪽에 맞은 적은 끌려옵니다.',
     skill: 'F 스킬: 더 넓은 수확 베기로 바깥날 피해와 끌어당김을 강화합니다.',
     color: '#d946ef'

@@ -83,7 +83,11 @@ export const Collision = {
     const arcTypes = new Set(['melee_arc', 'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab']);
     const lineTypes = new Set(['melee_line', 'melee_heavy_line', 'melee_precise_line']);
 
-    if (weapon.type === 'melee_blade_sweep') {
+    // hitMode lets an arc weapon (sword, scythe…) use the greatsword's blade
+    // sweep hit test while keeping its own damage type (sweet, crit, etc.).
+    const hitType = weapon.hitMode || weapon.type;
+
+    if (hitType === 'melee_blade_sweep') {
       // Greatsword: only the sweeping blade connects, not the whole fan. The
       // blade is a length-`range` bar sweeping ±halfSweep around the aim; a
       // target inside that band (and within range, already checked) is cut.
