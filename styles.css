@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* In-game weapon switch panel states */
+.weapon-switch.weapon-current {
+  border-color: #45f3ff;
+  box-shadow: 0 0 8px rgba(69, 243, 255, 0.55);
+}
+.weapon-switch.weapon-pending {
+  border-color: #fbbf24;
+  border-style: dashed;
+}
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;

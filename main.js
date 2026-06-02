@@ -381,6 +381,23 @@ function escapeHtml(value) {
   ));
 }
 
+/**
+ * In-game weapon switch panel (applied on next respawn).
+ */
+function buildWeaponSwitchPanel() {
+  const panel = document.getElementById('weaponSwitchPanel');
+  if (!panel) return;
+  panel.innerHTML = Object.keys(Weapons).map(key => {
+    const cfg = Weapons[key];
+    return `<button type="button" data-weapon="${key}" class="weapon-switch font-mono text-[10px] leading-none px-2 py-1 border-2 border-gray-600 bg-[#0b0c10] bg-opacity-80 cursor-pointer active:scale-95 transition-all" style="color:${cfg.color}">${cfg.name}</button>`;
+  }).join('');
+  panel.addEventListener('click', (e) => {
+    const btn = e.target.closest('.weapon-switch');
+    if (btn && activeGame) activeGame.requestWeaponChange(btn.dataset.weapon);
+  });
+}
+
 // Run Setup on page launch
 setupWeaponSelector();
+buildWeaponSwitchPanel();
 startLobbyBrowsing();

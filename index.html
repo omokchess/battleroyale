@@ -372,6 +372,12 @@
         </div>
       </div>
 
+      <!-- IN-GAME WEAPON SWITCH PANEL (applied on next respawn) -->
+      <div class="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none select-none">
+        <div class="font-mono text-[9px] text-gray-400 mb-1 bg-[#0b0c10] bg-opacity-70 px-2 py-0.5 rounded">무기 교체 (다음 부활 적용)</div>
+        <div id="weaponSwitchPanel" class="flex flex-wrap justify-center gap-1 max-w-[92vw] pointer-events-auto"></div>
+      </div>
+
       <!-- MOBILE VIRTUAL JOYSTICKS -->
       <div id="mobileJoystickOverlay" class="absolute inset-x-0 bottom-0 top-0 pointer-events-none select-none z-30 flex justify-between items-end p-8 md:p-14 touch-none hidden">
         <!-- Left Joystick (Movement) -->

@@ -62,6 +62,11 @@ export const Protocol = {
     return msg;
   },
 
+  // Request a weapon swap (applied on the next respawn).
+  selectWeapon(weapon) {
+    return { type: MsgType.WEAPON_SELECT, weapon };
+  },
+
   // System snapshot state
   gameState(players, projectiles, effects, remainingPlayersCount) {
     return { 

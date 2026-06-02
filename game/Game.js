@@ -449,6 +449,13 @@ export class Game {
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
+          // Apply a queued weapon swap on respawn (resets max HP to the new weapon).
+          if (p.pendingWeapon && Weapons[p.pendingWeapon] && p.pendingWeapon !== p.weapon) {
+            p.weapon = p.pendingWeapon;
+            p.maxHp = Weapons[p.weapon].maxHp || 100;
+          }
+          p.pendingWeapon = null;
+
           const spawnP = this._getRandomSpawnPoint();
           p.isDead = false;
           p.hp = p.maxHp;
@@ -829,6 +836,21 @@ export class Game {
       this._announce(`${killer.nickname}님이 ${via}${target.nickname}님을 처치했습니다!`);
     } else {
       this._announce(`${target.nickname}님이 전사했습니다.`);
+    }
+  }
+
+  /**
+   * Queue a weapon swap for the local player — applied on the next respawn.
+   * Host applies directly; guests notify the host.
+   */
+  requestWeaponChange(weapon) {
+    if (!Weapons[weapon]) return;
+    this.pendingWeaponChoice = weapon; // local UI hint (shown until respawn)
+    if (this.networkManager.isHost) {
+      const local = this.players[this.localPlayerId];
+      if (local) local.pendingWeapon = weapon;
+    } else {
+      this.networkManager.sendToHost(Protocol.selectWeapon(weapon));
     }
   }
 
@@ -1871,6 +1893,18 @@ export class Game {
     const local = this.players[this.localPlayerId];
     if (!local) return;
 
+    // Weapon switch panel: mark the equipped weapon and the queued (pending) one.
+    const wsp = document.getElementById('weaponSwitchPanel');
+    if (wsp) {
+      const cur = local.weapon;
+      const pend = this.pendingWeaponChoice;
+      wsp.querySelectorAll('.weapon-switch').forEach(btn => {
+        const w = btn.dataset.weapon;
+        btn.classList.toggle('weapon-current', w === cur);
+        btn.classList.toggle('weapon-pending', Boolean(pend) && w === pend && pend !== cur);
+      });
+    }
+
     // HP Bar
     const hpBar = document.getElementById('hudHpBar');
     const hpText = document.getElementById('hudHpText');
@@ -2196,7 +2230,15 @@ export class Game {
       if (this.networkManager.isHost) {
         // --- HOST HANDLERS ---
         const player = this.players[fromId];
-        if (!player || player.isDead) return;
+        if (!player) return;
+
+        // Weapon swaps are accepted even while dead (applied on next respawn).
+        if (data.type === MsgType.WEAPON_SELECT) {
+          if (Weapons[data.weapon]) player.pendingWeapon = data.weapon;
+          return;
+        }
+
+        if (player.isDead) return;
 
         if (data.type === MsgType.PLAYER_INPUT) {
           player.keys = sanitizeInputKeys(data.keys);

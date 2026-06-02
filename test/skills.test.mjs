@@ -686,6 +686,24 @@ test('railgun hitscan reports the closest contact distance and misses cleanly', 
   assert.equal(miss, null);
 });
 
+test('weapon swap is queued (host) and ignores unknown weapons', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.localPlayerId = 'p';
+  game.networkManager = { isHost: true };
+
+  const p = new Player('p', 'Switcher', 'sword', 0, 0);
+  game.players['p'] = p;
+
+  game.requestWeaponChange('hammer');
+  assert.equal(p.pendingWeapon, 'hammer');
+  assert.equal(p.weapon, 'sword'); // not applied until respawn
+  assert.equal(game.pendingWeaponChoice, 'hammer');
+
+  game.requestWeaponChange('not-a-weapon');
+  assert.equal(p.pendingWeapon, 'hammer'); // invalid weapon ignored
+});
+
 test('effect rebase preserves extra skill fields (railbeam endpoints, blast radius)', () => {
   const rebased = rebaseEffectSnapshot({
     x: 0, y: 0, x2: 300, y2: 120, radius: 70,

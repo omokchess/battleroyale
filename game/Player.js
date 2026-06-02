@@ -43,6 +43,7 @@ export class Player {
     this.buffType = null;     // 'axe_rage' | 'gauntlet_lance' | null
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
+    this.pendingWeapon = null; // queued weapon swap, applied on next respawn
     this.arrowStacks = 0;     // bow skill charges earned by landing arrows
     this.greatswordChargeStart = 0;
     this.greatswordChargeAngle = 0;
