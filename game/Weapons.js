@@ -227,7 +227,7 @@ export const SkillConfig = {
     type: 'melee_line'
   },
   greatsword: {
-    cooldownMs: 7000,
+    cooldownMs: 800,
     chargeMaxMs: 1300,
     minDamage: 25,
     damage: 70,

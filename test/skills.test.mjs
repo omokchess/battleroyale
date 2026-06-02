@@ -207,6 +207,7 @@ test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
   const owner = new Player('greatsword-owner', 'Heavy', 'greatsword', 100, 100);
   owner.angle = 0;
   assert.equal(Weapons.greatsword.cooldown, 900);
+  assert.equal(SkillConfig.greatsword.cooldownMs, 800);
   assert.equal(SkillConfig.greatsword.chargeMaxMs, 1300);
   assert.equal(SkillConfig.greatsword.damage, 70);
   const target = new Player('greatsword-target', 'Dummy', 'sword', 190, 100);

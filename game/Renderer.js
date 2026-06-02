@@ -1965,13 +1965,15 @@ export class Renderer {
 
     } else if (effect.type === 'finisher_ready') {
       // Sword held in pull-back pose while waiting for finisher window.
-      // Quickly ramps to full pull-back and stays there until the finisher fires.
-      const chargeT = Math.min(1, progress / 0.25); // reach full charge in 25% of the delay
+      // Keep the whole delay alive so the prep does not snap into a frozen pose.
+      const chargeT = progress * progress * (3 - 2 * progress);
+      const pullPulse = Math.sin(Math.PI * progress);
       const readyOffset = effect.weapon === 'sword' ? -Math.PI * 0.75 : Math.PI * 0.82;
-      lunge = -5 * chargeT;
-      weaponReach = -12 * chargeT;
-      weaponAngle = angle + readyOffset * chargeT; // weapon rotates toward lower-left for sword
-      bodyScale = 1.4 * chargeT;
+      const pullDirection = effect.weapon === 'sword' ? -1 : 1;
+      lunge = -5.5 * chargeT - 1.2 * pullPulse;
+      weaponReach = -13 * chargeT - 2.5 * pullPulse;
+      weaponAngle = angle + readyOffset * chargeT + pullDirection * 0.12 * pullPulse;
+      bodyScale = 1.35 * chargeT + 0.25 * pullPulse;
 
     } else if (effect.type === 'greatsword_charge') {
       const chargeT = easeOutCubic(progress);
@@ -2043,21 +2045,21 @@ export class Renderer {
 
     } else if (effect.weapon === 'sword' && effect.comboFinisher) {
       // Sword finisher: keep the charged lower-left pose, then sweep a full 360.
-      const motionProgress = clamp01(progress + 0.05);
+      const motionProgress = clamp01(progress + 0.08);
       const readyOffset = -Math.PI * 0.75;
-      if (motionProgress < 0.22) {
-        const t = easeOutCubic(motionProgress / 0.22);
+      if (motionProgress < 0.08) {
+        const t = easeOutCubic(motionProgress / 0.08);
         lunge = -6 + 2 * t;
         weaponReach = -14 + 2 * t;
         weaponAngle = angle + readyOffset;
         bodyScale = 1.55 + 0.35 * t;
       } else {
-        const t = easeOutCubic((motionProgress - 0.22) / 0.78);
-        const fadeOut = Math.max(0, 1 - (motionProgress - 0.22) / 0.55);
+        const t = easeOutCubic((motionProgress - 0.08) / 0.92);
+        const fadeOut = Math.max(0, 1 - (motionProgress - 0.08) / 0.55);
         lunge = -4 * fadeOut;
         weaponReach = -12 + 24 * t;
         weaponAngle = angle + readyOffset + t * Math.PI * 2;
-        bodyScale = 1.9 * (1 - easeOutCubic(Math.min(1, (motionProgress - 0.22) / 0.78)));
+        bodyScale = 1.9 * (1 - easeOutCubic(Math.min(1, (motionProgress - 0.08) / 0.92)));
       }
 
     } else if (effect.weapon === 'axe') {
@@ -2086,8 +2088,9 @@ export class Renderer {
 
     } else {
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
-      const motionProgress = effect.weapon === 'sword' ? clamp01(progress + 0.08) : progress;
-      const slash = Math.sin(Math.PI * clamp01(motionProgress * 0.95));
+      const motionProgress = effect.weapon === 'sword' ? clamp01((progress + 0.1) / 0.62) : progress;
+      const slashProgress = effect.weapon === 'sword' ? clamp01((progress + 0.06) / 0.72) : clamp01(motionProgress * 0.95);
+      const slash = Math.sin(Math.PI * slashProgress);
       const finisherBoost = effect.comboFinisher ? 1.7 : 1;
       lunge = 4 * slash * finisherBoost;
       weaponReach = 10 * slash * finisherBoost;
