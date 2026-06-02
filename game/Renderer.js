@@ -719,9 +719,14 @@ export class Renderer {
     const isFullCircleSlash = weapon.angle >= 359;
     const radius = weapon.range * ((finisher ? 0.74 : 0.82) + (finisher ? 0.26 : 0.18) * sweep);
     const halfAngleRad = (weapon.angle * Math.PI) / 360;
-    const startAngle = e.angle - halfAngleRad;
-    const endAngle = e.angle + halfAngleRad;
-    const swingDirection = e.swingDirection === -1 ? -1 : 1;
+    const fullCircleStart = e.weapon === 'sword'
+      ? e.angle - Math.PI * 0.75
+      : e.angle - halfAngleRad;
+    const startAngle = isFullCircleSlash ? fullCircleStart : e.angle - halfAngleRad;
+    const endAngle = isFullCircleSlash ? fullCircleStart + Math.PI * 2 : e.angle + halfAngleRad;
+    const swingDirection = isFullCircleSlash && e.weapon === 'sword'
+      ? 1
+      : (e.swingDirection === -1 ? -1 : 1);
     const arcSize = endAngle - startAngle;
     const angleAt = t => swingDirection > 0
       ? startAngle + arcSize * t
@@ -1962,9 +1967,10 @@ export class Renderer {
       // Sword held in pull-back pose while waiting for finisher window.
       // Quickly ramps to full pull-back and stays there until the finisher fires.
       const chargeT = Math.min(1, progress / 0.25); // reach full charge in 25% of the delay
+      const readyOffset = effect.weapon === 'sword' ? -Math.PI * 0.75 : Math.PI * 0.82;
       lunge = -5 * chargeT;
       weaponReach = -12 * chargeT;
-      weaponAngle = angle + Math.PI * 0.82 * chargeT; // weapon rotates toward lower-left
+      weaponAngle = angle + readyOffset * chargeT; // weapon rotates toward lower-left for sword
       bodyScale = 1.4 * chargeT;
 
     } else if (effect.type === 'greatsword_charge') {
@@ -1999,10 +2005,10 @@ export class Renderer {
 
     } else if (effect.type === 'melee_sweet_arc') {
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
-      const sweep = easeOutCubic(progress);
+      const sweep = easeOutCubic(clamp01(progress / 0.92));
       lunge = 5 * Math.sin(Math.PI * progress);
-      weaponReach = 15 * Math.sin(Math.PI * progress);
-      weaponAngle = angle + swingDirection * (-1.25 + sweep * 2.5);
+      weaponReach = 20 * Math.sin(Math.PI * progress);
+      weaponAngle = angle + swingDirection * (-1.55 + sweep * 3.1);
       bodyScale = 1.25 * Math.sin(Math.PI * progress);
 
     } else if (effect.type === 'melee_backstab') {
@@ -2035,29 +2041,30 @@ export class Renderer {
       weaponAngle = angle + spin * Math.PI * (effect.comboFinisher ? 2.8 : 2.1);
       bodyScale = (effect.comboFinisher ? 2.4 : 1.5) * Math.sin(Math.PI * clamp01(progress));
 
+    } else if (effect.weapon === 'sword' && effect.comboFinisher) {
+      // Sword finisher: keep the charged lower-left pose, then sweep a full 360.
+      const readyOffset = -Math.PI * 0.75;
+      if (progress < 0.22) {
+        const t = easeOutCubic(progress / 0.22);
+        lunge = -6 + 2 * t;
+        weaponReach = -14 + 2 * t;
+        weaponAngle = angle + readyOffset;
+        bodyScale = 1.55 + 0.35 * t;
+      } else {
+        const t = easeOutCubic((progress - 0.22) / 0.78);
+        const fadeOut = Math.max(0, 1 - (progress - 0.22) / 0.55);
+        lunge = -4 * fadeOut;
+        weaponReach = -12 + 24 * t;
+        weaponAngle = angle + readyOffset + t * Math.PI * 2;
+        bodyScale = 1.9 * (1 - easeOutCubic(Math.min(1, (progress - 0.22) / 0.78)));
+      }
+
     } else if (effect.weapon === 'axe') {
       // Axe: spin the weapon around the body on every attack (regular + finisher)
       const spinMult = effect.comboFinisher ? 3.0 : 2.2;
       const spin = easeOutCubic(Math.min(1, progress / 0.65));
       weaponAngle = angle + spin * Math.PI * spinMult;
       bodyScale = (effect.comboFinisher ? 2.6 : 1.8) * Math.sin(Math.PI * clamp01(progress));
-
-    } else if (effect.weapon === 'sword' && effect.comboFinisher) {
-      // Sword finisher: pull blade to lower-left then sweep 360°
-      if (progress < 0.28) {
-        const t = easeOutCubic(progress / 0.28);
-        lunge = -7 * t;
-        weaponReach = -16 * t;
-        weaponAngle = angle + Math.PI * 0.85 * t;   // rotate toward lower-left
-        bodyScale = 2.0 * t;
-      } else {
-        const t = easeOutCubic((progress - 0.28) / 0.72);
-        const fadeOut = Math.max(0, 1 - (progress - 0.28) / 0.35);
-        lunge = -7 * fadeOut;
-        weaponReach = Math.max(0, 10 * t);
-        weaponAngle = angle + Math.PI * 0.85 + t * Math.PI * 2; // full 360° sweep
-        bodyScale = 2.0 * (1 - easeOutCubic(Math.min(1, (progress - 0.28) / 0.72)));
-      }
 
     } else if (effect.type === 'melee_line') {
       const thrust = progress < 0.18
@@ -2550,46 +2557,46 @@ export class Renderer {
     }
 
     else if (weaponType === 'scythe') {
-      const scytheAngle = weaponAngle - 0.38 + (active ? 0.08 : 0);
-      const gripX = scr.x + Math.cos(player.angle) * 8;
-      const gripY = scr.y + Math.sin(player.angle) * 8;
-      const handleTop = -27 - Math.max(0, reach * 0.08);
-      const handleBottom = 42;
+      const scytheAngle = active ? weaponAngle + 0.35 : player.angle + 0.12;
+      const gripX = scr.x + Math.cos(player.angle) * (active ? 5 : 7);
+      const gripY = scr.y + Math.sin(player.angle) * (active ? 5 : 7);
+      const handleTop = -31 - Math.max(0, reach * 0.12);
+      const handleBottom = 38;
       ctx.translate(gripX, gripY);
       ctx.rotate(scytheAngle);
 
       ctx.shadowBlur = active ? 8 : 3;
       ctx.shadowColor = player.accentColor;
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-      ctx.lineWidth = 3.6;
+      ctx.lineWidth = 3.4;
       ctx.beginPath();
-      ctx.moveTo(-8, handleBottom + 8);
-      ctx.lineTo(9, handleTop);
+      ctx.moveTo(-6, handleBottom + 6);
+      ctx.lineTo(7, handleTop);
       ctx.stroke();
 
       ctx.strokeStyle = '#d1d5db';
       ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.moveTo(-8, handleBottom + 8);
-      ctx.lineTo(9, handleTop);
+      ctx.moveTo(-6, handleBottom + 6);
+      ctx.lineTo(7, handleTop);
       ctx.stroke();
 
       ctx.strokeStyle = this._hexToRGB('#ffffff', 0.36);
       ctx.lineWidth = 0.9;
       ctx.beginPath();
-      ctx.moveTo(-6, handleBottom + 4);
-      ctx.lineTo(11, handleTop + 2);
+      ctx.moveTo(-4, handleBottom + 2);
+      ctx.lineTo(9, handleTop + 2);
       ctx.stroke();
 
-      const jointX = 9;
+      const jointX = 7;
       const jointY = handleTop;
       ctx.fillStyle = '#111216';
       ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.78);
       ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(jointX - 4, jointY + 1);
-      ctx.bezierCurveTo(jointX + 12, jointY - 12, jointX + 34, jointY - 14, jointX + 50, jointY - 8);
-      ctx.bezierCurveTo(jointX + 35, jointY - 6, jointX + 17, jointY - 3, jointX + 1, jointY + 6);
+      ctx.bezierCurveTo(jointX + 15, jointY - 13, jointX + 38, jointY - 13, jointX + 54, jointY - 5);
+      ctx.bezierCurveTo(jointX + 36, jointY - 5, jointX + 16, jointY - 2, jointX + 1, jointY + 6);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
@@ -2598,7 +2605,7 @@ export class Renderer {
       ctx.lineWidth = 0.9;
       ctx.beginPath();
       ctx.moveTo(jointX + 2, jointY - 1);
-      ctx.bezierCurveTo(jointX + 15, jointY - 9, jointX + 34, jointY - 11, jointX + 47, jointY - 7);
+      ctx.bezierCurveTo(jointX + 17, jointY - 9, jointX + 39, jointY - 9, jointX + 51, jointY - 5);
       ctx.stroke();
 
       ctx.strokeStyle = player.accentColor;

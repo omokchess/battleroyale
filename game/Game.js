@@ -481,6 +481,10 @@ export class Game {
         this._lungePlayer(player, attackConfig.lungeDistance);
       }
 
+      const baseLifetime = Math.min(
+        Math.max((attackConfig.cooldown || weaponConfig.cooldown) * 0.78 + (attackConfig.delayDamageMs || 0) * 0.5, 150),
+        combo.isFinisher ? 900 : 620
+      );
       const localFx = {
         attackerId: player.id,
         x: player.x,
@@ -499,10 +503,7 @@ export class Game {
         swingDirection,
         progress: 0,
         timestamp: now,
-        lifetime: Math.min(
-          Math.max((attackConfig.cooldown || weaponConfig.cooldown) * 0.78 + (attackConfig.delayDamageMs || 0) * 0.5, 150),
-          combo.isFinisher ? 900 : 620
-        )
+        lifetime: player.weapon === 'sword' && combo.isFinisher ? Math.max(920, baseLifetime) : baseLifetime
       };
       this.effects.push(localFx);
 
@@ -517,18 +518,39 @@ export class Game {
     const projectileKind = attackConfig.projectileKind || 'arrow';
     const projectileWeapon = attackConfig.projectileWeapon || player.weapon;
     const arrowId = `${player.id}-${projectileKind}-${now}`;
-    this.effects.push({
-      attackerId: player.id,
-      x: player.x,
-      y: player.y,
-      angle: player.angle,
-      weapon: player.weapon,
-      type: 'projectile_shot',
-      projectileKind,
-      progress: 0,
-      timestamp: now,
-      lifetime: Math.min(attackConfig.cooldown * 0.45, 260)
-    });
+    const shotEffect = projectileKind === 'greatswordwave'
+      ? {
+          attackerId: player.id,
+          x: player.x,
+          y: player.y,
+          angle: player.angle,
+          weapon: player.weapon,
+          type: 'melee_arc',
+          range: weaponConfig.range,
+          width: weaponConfig.width,
+          innerRange: weaponConfig.innerRange,
+          angleDeg: weaponConfig.angle,
+          comboStep: combo.step,
+          comboCycle: combo.cycle,
+          comboFinisher: false,
+          swingDirection,
+          progress: 0,
+          timestamp: now,
+          lifetime: Math.min(Math.max(weaponConfig.cooldown * 0.78, 240), 620)
+        }
+      : {
+          attackerId: player.id,
+          x: player.x,
+          y: player.y,
+          angle: player.angle,
+          weapon: player.weapon,
+          type: 'projectile_shot',
+          projectileKind,
+          progress: 0,
+          timestamp: now,
+          lifetime: Math.min(attackConfig.cooldown * 0.45, 260)
+        };
+    this.effects.push(shotEffect);
 
     const proj = new Projectile(
       arrowId,
@@ -762,22 +784,26 @@ export class Game {
       const comboConfig = ComboConfig[player.weapon];
       const baseWeapon = getEffectiveWeapon(player.weapon, player.buffType);
       const finisherShape = { ...baseWeapon, ...((comboConfig && comboConfig.finisher) || {}) };
-      this.effects.push({
+      const readyEffect = {
         attackerId: player.id,
         x: player.x,
         y: player.y,
         angle: player.angle,
         weapon: player.weapon,
         type: 'finisher_ready',
-        // Shape of the upcoming finisher, used by the renderer to draw a range preview.
-        previewType: finisherShape.type,
-        previewRange: finisherShape.range,
-        previewWidth: finisherShape.width,
-        previewAngleDeg: finisherShape.angle,
+        comboFinisher: player.weapon === 'sword',
         progress: 0,
         timestamp: now,
         lifetime: combo.delayAfterMs
-      });
+      };
+      if (player.weapon !== 'greatsword') {
+        // Shape of the upcoming finisher, used by the renderer to draw a range preview.
+        readyEffect.previewType = finisherShape.type;
+        readyEffect.previewRange = finisherShape.range;
+        readyEffect.previewWidth = finisherShape.width;
+        readyEffect.previewAngleDeg = finisherShape.angle;
+      }
+      this.effects.push(readyEffect);
     }
   }
 

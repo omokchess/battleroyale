@@ -163,6 +163,7 @@ test('new melee weapon families expose distinct hit mechanics', () => {
 
   const scythe = new Player('scythe-owner', 'Reaper', 'scythe', 100, 100);
   scythe.angle = 0;
+  assert.equal(Weapons.scythe.angle, 190);
   const scytheTarget = new Player('scythe-target', 'Target', 'sword', 184, 100);
   let hit = game._resolveMeleeHitResult(scythe, scytheTarget, Weapons.scythe);
   assert.equal(hit.damage, Weapons.scythe.sweetDamage);
@@ -203,6 +204,7 @@ test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
 
   const owner = new Player('greatsword-owner', 'Heavy', 'greatsword', 100, 100);
   owner.angle = 0;
+  assert.equal(Weapons.greatsword.cooldown, 900);
   const target = new Player('greatsword-target', 'Dummy', 'sword', 190, 100);
   game.players[owner.id] = owner;
   game.players[target.id] = target;
@@ -247,6 +249,26 @@ test('greatsword third combo fires a short sword wave', () => {
   assert.equal(game.projectiles[0].kind, 'greatswordwave');
   assert.equal(game.projectiles[0].damage, 25);
   assert.equal(game.projectiles[0].radius, 28);
+  assert.equal(game.effects.some(e => e.type === 'projectile_shot' && e.projectileKind === 'greatswordwave'), false);
+  assert.equal(game.effects.some(e => e.type === 'melee_arc' && e.weapon === 'greatsword'), true);
+});
+
+test('greatsword finisher windup does not preview the sword-wave path', () => {
+  const game = Object.create(Game.prototype);
+  game.effects = [];
+
+  const owner = new Player('greatsword-ready', 'Heavy', 'greatsword', 100, 100);
+  owner.comboStep = 1;
+  owner.lastAttackTime = 1000;
+
+  const secondSwing = game._resolveComboAttack(owner, Weapons.greatsword, 1200);
+  assert.equal(secondSwing.step, 2);
+  assert.equal(secondSwing.delayAfterMs, ComboConfig.greatsword.delayBeforeFinisherMs);
+  game._applyComboRecovery(owner, secondSwing, 1200);
+
+  const readyEffect = game.effects.find(e => e.type === 'finisher_ready' && e.weapon === 'greatsword');
+  assert.ok(readyEffect);
+  assert.equal('previewType' in readyEffect, false);
 });
 
 test('rapier hit tempo refunds cooldown on contact', () => {
