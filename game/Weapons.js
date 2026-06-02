@@ -221,7 +221,7 @@ export const SkillConfig = {
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends
     buffMs: 7000,
-    damage: 30,
+    damage: 20,
     range: 115,            // matches spear
     width: 22,
     type: 'melee_line'
@@ -229,7 +229,9 @@ export const SkillConfig = {
   greatsword: {
     cooldownMs: 800,
     chargeMaxMs: 1000,
+    chargeThreshold: 0.5,
     minDamage: 1,
+    thresholdDamage: 35,
     damage: 70,
     type: 'melee_heavy_arc',
     range: 128,

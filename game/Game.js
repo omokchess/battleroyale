@@ -1007,9 +1007,13 @@ export class Game {
     const sk = SkillConfig.greatsword;
     const heldMs = Math.max(0, now - player.greatswordChargeStart);
     const chargeRatio = clamp01(heldMs / (sk.chargeMaxMs || 3000));
+    const threshold = clamp01(sk.chargeThreshold ?? 0.5);
     const minDamage = sk.minDamage ?? sk.damage ?? 85;
+    const thresholdDamage = sk.thresholdDamage ?? minDamage;
     const maxDamage = sk.damage ?? minDamage;
-    const damage = Math.round(minDamage + (maxDamage - minDamage) * chargeRatio);
+    const damage = chargeRatio < threshold
+      ? minDamage
+      : Math.round(thresholdDamage + (maxDamage - thresholdDamage) * ((chargeRatio - threshold) / Math.max(0.001, 1 - threshold)));
     player.greatswordChargeStart = 0;
     player.greatswordChargeAngle = 0;
     player.skillCdLeft = sk.cooldownMs / 1000;

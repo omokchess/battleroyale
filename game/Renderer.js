@@ -978,6 +978,8 @@ export class Renderer {
     const progress = clamp01(e.progress);
     const radius = weapon.range * (0.38 + 0.62 * progress);
     const halfAngle = ((weapon.angle || 210) * Math.PI) / 360;
+    const threshold = clamp01(SkillConfig.greatsword.chargeThreshold ?? 0.5);
+    const thresholdRadius = weapon.range * threshold;
     const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 80);
 
     ctx.save();
@@ -990,6 +992,16 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+
+    ctx.save();
+    ctx.setLineDash([5, 6]);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = this._hexToRGB('#ffffff', (0.36 + 0.22 * pulse) * alpha);
+    ctx.lineWidth = 1.8 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, thresholdRadius, e.angle - halfAngle, e.angle + halfAngle);
+    ctx.stroke();
+    ctx.restore();
 
     [-0.72, 0, 0.72].forEach(t => {
       const a = e.angle + halfAngle * t;
@@ -1976,11 +1988,11 @@ export class Renderer {
       bodyScale = 1.35 * chargeT + 0.25 * pullPulse;
 
     } else if (effect.type === 'greatsword_charge') {
-      const chargeT = easeOutCubic(clamp01(progress / 0.72));
-      lunge = -6 * chargeT;
-      weaponReach = -20 * chargeT;
-      weaponAngle = angle - 1.72 * chargeT;
-      bodyScale = 1.95 * chargeT;
+      const chargeT = easeOutCubic(clamp01((progress + 0.12) / 0.58));
+      lunge = -7 * chargeT;
+      weaponReach = -24 * chargeT;
+      weaponAngle = angle - 1.95 * chargeT;
+      bodyScale = 2.1 * chargeT;
 
     } else if (effect.type === 'hammer_windup') {
       const chargeT = easeOutCubic(progress);
@@ -1998,13 +2010,14 @@ export class Renderer {
 
     } else if (effect.type === 'melee_heavy_arc' || effect.type === 'melee_heavy_line') {
       const isGreatsword = effect.weapon === 'greatsword';
-      const windupPortion = isGreatsword ? 0.28 : 0.45;
-      const chargeT = progress < windupPortion ? easeOutCubic(progress / windupPortion) : 1;
+      const motionProgress = isGreatsword ? clamp01(progress + 0.1) : progress;
+      const windupPortion = isGreatsword ? 0.16 : 0.45;
+      const chargeT = motionProgress < windupPortion ? easeOutCubic(motionProgress / windupPortion) : 1;
       const releaseT = progress < windupPortion ? 0 : easeOutBack((progress - windupPortion) / (1 - windupPortion));
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
-      lunge = (isGreatsword ? -9 : -8) * chargeT + (isGreatsword ? 16 : 13) * releaseT;
-      weaponReach = (isGreatsword ? -18 : -12) * chargeT + (isGreatsword ? 25 : 20) * releaseT;
-      weaponAngle = angle + swingDirection * ((isGreatsword ? -1.85 : -1.15) * chargeT + (isGreatsword ? 3.05 : 2.25) * releaseT);
+      lunge = (isGreatsword ? -7 : -8) * chargeT + (isGreatsword ? 18 : 13) * releaseT;
+      weaponReach = (isGreatsword ? -14 : -12) * chargeT + (isGreatsword ? 28 : 20) * releaseT;
+      weaponAngle = angle + swingDirection * ((isGreatsword ? -2.05 : -1.15) * chargeT + (isGreatsword ? 3.25 : 2.25) * releaseT);
       bodyScale = 2.1 * Math.sin(Math.PI * clamp01(progress));
 
     } else if (effect.type === 'melee_sweet_arc') {
@@ -2827,6 +2840,18 @@ export class Renderer {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+
+      if (isGreatswordChargePreview) {
+        const thresholdRadius = range * clamp01(SkillConfig.greatsword.chargeThreshold ?? 0.5);
+        ctx.save();
+        ctx.setLineDash([5, 6]);
+        ctx.strokeStyle = this._hexToRGB('#ffffff', 0.44);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, thresholdRadius, startAngle, endAngle);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       if (weapon.type === 'melee_sweet_arc' && weapon.innerRange > 0) {
         ctx.save();

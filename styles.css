@@ -391,15 +391,15 @@ canvas {
 
   #leftJoystickContainer,
   #rightJoystickContainer {
-    width: clamp(6.1rem, 28vw, 7.4rem);
-    height: clamp(6.1rem, 28vw, 7.4rem);
+    width: clamp(10.2rem, 47vw, 11.8rem);
+    height: clamp(10.2rem, 47vw, 11.8rem);
     border-width: 2px;
   }
 
   #leftJoystickKnob,
   #rightJoystickKnob {
-    width: clamp(2.6rem, 11.5vw, 3.05rem);
-    height: clamp(2.6rem, 11.5vw, 3.05rem);
+    width: clamp(4.35rem, 19.5vw, 5.05rem);
+    height: clamp(4.35rem, 19.5vw, 5.05rem);
   }
 
   #mobileJoystickOverlay .flex.flex-col.items-end.gap-3 {
@@ -437,14 +437,14 @@ canvas {
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
   #leftJoystickContainer,
   #rightJoystickContainer {
-    width: clamp(5.1rem, 18dvh, 5.9rem);
-    height: clamp(5.1rem, 18dvh, 5.9rem);
+    width: clamp(7.8rem, 34dvh, 9.7rem);
+    height: clamp(7.8rem, 34dvh, 9.7rem);
   }
 
   #leftJoystickKnob,
   #rightJoystickKnob {
-    width: clamp(2.15rem, 8dvh, 2.55rem);
-    height: clamp(2.15rem, 8dvh, 2.55rem);
+    width: clamp(3.35rem, 14dvh, 4.25rem);
+    height: clamp(3.35rem, 14dvh, 4.25rem);
   }
 
   #skillBtn,

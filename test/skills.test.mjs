@@ -52,7 +52,7 @@ test('axe rage buff turns the axe into a fast arc burst', () => {
 test('gauntlet lance buff turns the punch into a straight spear-like thrust', () => {
   const buffed = getEffectiveWeapon('gauntlet', 'gauntlet_lance');
   assert.equal(buffed.type, 'melee_line');
-  assert.equal(buffed.damage, 30);
+  assert.equal(buffed.damage, 20);
   assert.equal(buffed.range, 115);
   assert.equal(buffed.width, 22);
 });
@@ -209,7 +209,9 @@ test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
   assert.equal(Weapons.greatsword.cooldown, 900);
   assert.equal(SkillConfig.greatsword.cooldownMs, 800);
   assert.equal(SkillConfig.greatsword.chargeMaxMs, 1000);
+  assert.equal(SkillConfig.greatsword.chargeThreshold, 0.5);
   assert.equal(SkillConfig.greatsword.minDamage, 1);
+  assert.equal(SkillConfig.greatsword.thresholdDamage, 35);
   assert.equal(SkillConfig.greatsword.damage, 70);
   const target = new Player('greatsword-target', 'Dummy', 'sword', 190, 100);
   game.players[owner.id] = owner;
@@ -253,7 +255,7 @@ test('greatsword cannot use automatic basic attacks', () => {
   assert.equal(owner.canAttack(5000), false);
 });
 
-test('greatsword charge damage scales with hold time', () => {
+test('greatsword charge damage starts scaling only after the midpoint', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -269,16 +271,38 @@ test('greatsword charge damage scales with hold time', () => {
   game.players[target.id] = target;
 
   game._startGreatswordCharge(owner, 1000);
-  game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs / 2);
+  game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs * 0.75);
 
   const expectedDamage = Math.round(
-    SkillConfig.greatsword.minDamage +
-    (SkillConfig.greatsword.damage - SkillConfig.greatsword.minDamage) * 0.5
+    SkillConfig.greatsword.thresholdDamage +
+    (SkillConfig.greatsword.damage - SkillConfig.greatsword.thresholdDamage) * 0.5
   );
   assert.equal(game.pendingMeleeHits[0].attackConfig.damage, expectedDamage);
 
-  game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs / 2 + SkillConfig.greatsword.delayDamageMs);
+  game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs * 0.75 + SkillConfig.greatsword.delayDamageMs);
   assert.equal(target.hp, target.maxHp - expectedDamage);
+});
+
+test('greatsword release before midpoint still deals one damage', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingMeleeHits = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('greatsword-before-mid', 'Heavy', 'greatsword', 100, 100);
+  owner.angle = 0;
+  const target = new Player('greatsword-target-before-mid', 'Dummy', 'sword', 190, 100);
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._startGreatswordCharge(owner, 1000);
+  game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs * 0.49);
+  game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs * 0.49 + SkillConfig.greatsword.delayDamageMs);
+
+  assert.equal(target.hp, target.maxHp - 1);
 });
 
 test('greatsword instant release only deals one damage', () => {
