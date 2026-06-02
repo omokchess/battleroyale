@@ -1183,12 +1183,14 @@ export class Game {
     const sk = SkillConfig.rapier;
     const count = Math.max(1, Math.floor(sk.strikeCount || 7));
     const interval = Math.max(0, sk.strikeIntervalMs || 120);
+    const jitter = Math.max(0, sk.angleJitterDeg || 0) * Math.PI / 180;
     if (!this.pendingRapierStrikes) this.pendingRapierStrikes = [];
     for (let i = 0; i < count; i++) {
       this.pendingRapierStrikes.push({
         playerId: player.id,
         releaseAt: now + i * interval,
-        sequence: i
+        sequence: i,
+        angleOffset: (Math.random() * 2 - 1) * jitter
       });
     }
     player.skillCdLeft = sk.cooldownMs / 1000;
@@ -1204,23 +1206,24 @@ export class Game {
       }
       const player = this.players[strike.playerId];
       if (!player || player.isDead || player.weapon !== 'rapier') continue;
-      this._executeRapierStrike(player, now, strike.sequence);
+      this._executeRapierStrike(player, now, strike.sequence, strike.angleOffset);
     }
     this.pendingRapierStrikes = waiting;
   }
 
-  _executeRapierStrike(player, now, sequence = 0) {
+  _executeRapierStrike(player, now, sequence = 0, angleOffset = 0) {
     const sk = SkillConfig.rapier;
     const attackConfig = {
       ...Weapons.rapier,
       ...sk,
       cooldown: Weapons.rapier.cooldown
     };
+    const strikeAngle = player.angle + (Number.isFinite(angleOffset) ? angleOffset : 0);
     this.effects.push({
       attackerId: player.id,
       x: player.x,
       y: player.y,
-      angle: player.angle,
+      angle: strikeAngle,
       weapon: 'rapier',
       type: attackConfig.type,
       range: attackConfig.range,
@@ -1232,7 +1235,11 @@ export class Game {
       timestamp: now,
       lifetime: 210
     });
-    const hitCount = this._applyMeleeHits(this._snapshotMeleeAttacker(player), attackConfig, now);
+    const attacker = {
+      ...this._snapshotMeleeAttacker(player),
+      angle: strikeAngle
+    };
+    const hitCount = this._applyMeleeHits(attacker, attackConfig, now);
     this._applyAttackTempoResult(player, attackConfig, hitCount, now);
   }
 

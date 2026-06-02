@@ -262,6 +262,7 @@ export const SkillConfig = {
     width: 1,
     strikeCount: 7,
     strikeIntervalMs: 120,
+    angleJitterDeg: 15,
     hitCooldownRefundMs: 120
   },
   hammer: {

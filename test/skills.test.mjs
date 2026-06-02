@@ -345,8 +345,15 @@ test('rapier skill queues seven rapid needle strikes', () => {
 
   game._castRapierFlurry(owner, 1000);
   assert.equal(game.pendingRapierStrikes.length, SkillConfig.rapier.strikeCount);
+  const maxJitter = SkillConfig.rapier.angleJitterDeg * Math.PI / 180;
+  assert.ok(game.pendingRapierStrikes.every(strike =>
+    Math.abs(strike.angleOffset) <= maxJitter + 1e-9
+  ));
+  const firstStrikeAngle = owner.angle + game.pendingRapierStrikes[0].angleOffset;
   game._processRapierStrikes(1000);
-  assert.equal(game.effects.filter(e => e.type === 'melee_precise_line' && e.weapon === 'rapier').length, 1);
+  const rapierEffects = game.effects.filter(e => e.type === 'melee_precise_line' && e.weapon === 'rapier');
+  assert.equal(rapierEffects.length, 1);
+  assert.equal(rapierEffects[0].angle, firstStrikeAngle);
 });
 
 test('hammer skill lands after one second and stuns enemies', () => {

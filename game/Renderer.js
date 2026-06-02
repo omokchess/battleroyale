@@ -2330,22 +2330,18 @@ export class Renderer {
       ctx.fill();
       ctx.stroke();
 
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.58);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(bladeRoot + 2, -6);
-      ctx.quadraticCurveTo(shaftEnd + 5, 0, bladeRoot + 2, 6);
-      ctx.stroke();
-      ctx.fillStyle = player.accentColor;
-      ctx.beginPath();
-      ctx.arc(shaftEnd - 2, 0, 1.7, 0, Math.PI * 2);
-      ctx.fill();
-
       ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.55);
       ctx.lineWidth = 1.1;
       ctx.beginPath();
       ctx.moveTo(3, -1);
       ctx.lineTo(ext - 5, -ext + 5);
+      ctx.stroke();
+
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.58);
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(1.5, 0.5);
+      ctx.lineTo(ext - 8, -ext + 7);
       ctx.stroke();
 
       ctx.strokeStyle = player.accentColor;
