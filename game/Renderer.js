@@ -1976,11 +1976,11 @@ export class Renderer {
       bodyScale = 1.35 * chargeT + 0.25 * pullPulse;
 
     } else if (effect.type === 'greatsword_charge') {
-      const chargeT = easeOutCubic(progress);
-      lunge = -5 * chargeT;
-      weaponReach = -16 * chargeT;
-      weaponAngle = angle - 1.25 * chargeT;
-      bodyScale = 1.8 * chargeT;
+      const chargeT = easeOutCubic(clamp01(progress / 0.72));
+      lunge = -6 * chargeT;
+      weaponReach = -20 * chargeT;
+      weaponAngle = angle - 1.72 * chargeT;
+      bodyScale = 1.95 * chargeT;
 
     } else if (effect.type === 'hammer_windup') {
       const chargeT = easeOutCubic(progress);
@@ -1997,12 +1997,14 @@ export class Renderer {
       bodyScale = 1.4 * stab;
 
     } else if (effect.type === 'melee_heavy_arc' || effect.type === 'melee_heavy_line') {
-      const chargeT = progress < 0.45 ? easeOutCubic(progress / 0.45) : 1;
-      const releaseT = progress < 0.45 ? 0 : easeOutBack((progress - 0.45) / 0.55);
+      const isGreatsword = effect.weapon === 'greatsword';
+      const windupPortion = isGreatsword ? 0.28 : 0.45;
+      const chargeT = progress < windupPortion ? easeOutCubic(progress / windupPortion) : 1;
+      const releaseT = progress < windupPortion ? 0 : easeOutBack((progress - windupPortion) / (1 - windupPortion));
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
-      lunge = -8 * chargeT + 13 * releaseT;
-      weaponReach = -12 * chargeT + 20 * releaseT;
-      weaponAngle = angle + swingDirection * (-1.15 * chargeT + 2.25 * releaseT);
+      lunge = (isGreatsword ? -9 : -8) * chargeT + (isGreatsword ? 16 : 13) * releaseT;
+      weaponReach = (isGreatsword ? -18 : -12) * chargeT + (isGreatsword ? 25 : 20) * releaseT;
+      weaponAngle = angle + swingDirection * ((isGreatsword ? -1.85 : -1.15) * chargeT + (isGreatsword ? 3.05 : 2.25) * releaseT);
       bodyScale = 2.1 * Math.sin(Math.PI * clamp01(progress));
 
     } else if (effect.type === 'melee_sweet_arc') {
@@ -2726,6 +2728,8 @@ export class Renderer {
 
     // Charging up the combo finisher? Preview its (bigger) hit range instead.
     const isFinisherPreview = activeAttack?.type === 'finisher_ready' && Boolean(activeAttack.previewType);
+    const isGreatswordChargePreview = activeAttack?.type === 'greatsword_charge' && player.weapon === 'greatsword';
+    const skillPreview = isGreatswordChargePreview ? SkillConfig.greatsword : null;
 
     // Only these are real hit-shapes. Motion-only effects (projectile_shot,
     // spear_windup, finisher_ready) must NOT override the drawn shape, or the
@@ -2741,14 +2745,23 @@ export class Renderer {
     // Scale the world-space reach to screen pixels so the guide matches the
     // real hitbox at any zoom (and reflects active skill buffs).
     const zoom = camera.zoom || 1;
-    const shapeType = isFinisherPreview ? activeAttack.previewType : (activeShapeType || baseWeapon.type);
-    const shapeRange = isFinisherPreview ? activeAttack.previewRange
-      : (Number.isFinite(activeAttack?.range) ? activeAttack.range : baseWeapon.range);
-    const shapeWidth = isFinisherPreview ? activeAttack.previewWidth
-      : (Number.isFinite(activeAttack?.width) ? activeAttack.width : baseWeapon.width);
-    const shapeInnerRange = Number.isFinite(activeAttack?.innerRange) ? activeAttack.innerRange : baseWeapon.innerRange;
-    const shapeAngleDeg = isFinisherPreview ? activeAttack.previewAngleDeg
-      : (Number.isFinite(activeAttack?.angleDeg) ? activeAttack.angleDeg : baseWeapon.angle);
+    let shapeType = activeShapeType || baseWeapon.type;
+    let shapeRange = Number.isFinite(activeAttack?.range) ? activeAttack.range : baseWeapon.range;
+    let shapeWidth = Number.isFinite(activeAttack?.width) ? activeAttack.width : baseWeapon.width;
+    let shapeInnerRange = Number.isFinite(activeAttack?.innerRange) ? activeAttack.innerRange : baseWeapon.innerRange;
+    let shapeAngleDeg = Number.isFinite(activeAttack?.angleDeg) ? activeAttack.angleDeg : baseWeapon.angle;
+    if (isFinisherPreview) {
+      shapeType = activeAttack.previewType;
+      shapeRange = activeAttack.previewRange;
+      shapeWidth = activeAttack.previewWidth;
+      shapeAngleDeg = activeAttack.previewAngleDeg;
+    } else if (skillPreview) {
+      shapeType = skillPreview.type;
+      shapeRange = skillPreview.range;
+      shapeWidth = skillPreview.width;
+      shapeInnerRange = skillPreview.innerRange;
+      shapeAngleDeg = skillPreview.angle;
+    }
 
     const weapon = {
       ...baseWeapon,

@@ -162,7 +162,7 @@ Object.assign(Weapons.greatsword, {
 
 Object.assign(Weapons.greatsword, {
   description: '평타 없이 F 스킬 차징으로만 공격하는 중량 무기입니다. 차징 시간에 따라 피해량이 달라집니다.',
-  skill: 'F 홀드: 최대 1.3초 예열 후 넓은 강베기로 최대 70 피해를 줍니다.'
+  skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 1~70 피해를 줍니다.'
 });
 
 Object.assign(Weapons.dagger, {
@@ -228,8 +228,8 @@ export const SkillConfig = {
   },
   greatsword: {
     cooldownMs: 800,
-    chargeMaxMs: 1300,
-    minDamage: 25,
+    chargeMaxMs: 1000,
+    minDamage: 1,
     damage: 70,
     type: 'melee_heavy_arc',
     range: 128,

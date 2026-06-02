@@ -386,50 +386,70 @@ canvas {
   }
 
   #mobileJoystickOverlay {
-    padding: 0.65rem 0.85rem calc(0.65rem + env(safe-area-inset-bottom));
+    padding: 0.45rem 0.7rem calc(0.45rem + env(safe-area-inset-bottom));
   }
 
   #leftJoystickContainer,
   #rightJoystickContainer {
-    width: 4.85rem;
-    height: 4.85rem;
+    width: clamp(6.1rem, 28vw, 7.4rem);
+    height: clamp(6.1rem, 28vw, 7.4rem);
     border-width: 2px;
   }
 
   #leftJoystickKnob,
   #rightJoystickKnob {
-    width: 2.05rem;
-    height: 2.05rem;
+    width: clamp(2.6rem, 11.5vw, 3.05rem);
+    height: clamp(2.6rem, 11.5vw, 3.05rem);
   }
 
   #mobileJoystickOverlay .flex.flex-col.items-end.gap-3 {
-    gap: 0.45rem;
+    gap: 0.65rem;
   }
 
   #mobileJoystickOverlay .flex.gap-3 {
-    gap: 0.45rem;
+    gap: 0.65rem;
   }
 
   #skillBtn,
   #dashBtn {
-    width: 3rem;
-    height: 3rem;
+    width: clamp(3.75rem, 17vw, 4.25rem);
+    height: clamp(3.75rem, 17vw, 4.25rem);
     border-width: 2px;
-    font-size: 0.56rem;
+    font-size: 0.66rem;
   }
 
   #skillBtn .text-lg {
-    font-size: 1rem;
+    font-size: 1.22rem;
     line-height: 1;
   }
 
   #skillBtn .text-\[9px\],
   #dashBtn .text-\[9px\] {
-    font-size: 0.55rem;
+    font-size: 0.66rem;
   }
 
   #dashBtn svg {
-    width: 0.9rem;
-    height: 0.9rem;
+    width: 1.18rem;
+    height: 1.18rem;
+  }
+}
+
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+  #leftJoystickContainer,
+  #rightJoystickContainer {
+    width: clamp(5.1rem, 18dvh, 5.9rem);
+    height: clamp(5.1rem, 18dvh, 5.9rem);
+  }
+
+  #leftJoystickKnob,
+  #rightJoystickKnob {
+    width: clamp(2.15rem, 8dvh, 2.55rem);
+    height: clamp(2.15rem, 8dvh, 2.55rem);
+  }
+
+  #skillBtn,
+  #dashBtn {
+    width: clamp(3.15rem, 12dvh, 3.55rem);
+    height: clamp(3.15rem, 12dvh, 3.55rem);
   }
 }

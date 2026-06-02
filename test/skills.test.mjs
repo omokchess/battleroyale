@@ -208,7 +208,8 @@ test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
   owner.angle = 0;
   assert.equal(Weapons.greatsword.cooldown, 900);
   assert.equal(SkillConfig.greatsword.cooldownMs, 800);
-  assert.equal(SkillConfig.greatsword.chargeMaxMs, 1300);
+  assert.equal(SkillConfig.greatsword.chargeMaxMs, 1000);
+  assert.equal(SkillConfig.greatsword.minDamage, 1);
   assert.equal(SkillConfig.greatsword.damage, 70);
   const target = new Player('greatsword-target', 'Dummy', 'sword', 190, 100);
   game.players[owner.id] = owner;
@@ -278,6 +279,28 @@ test('greatsword charge damage scales with hold time', () => {
 
   game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs / 2 + SkillConfig.greatsword.delayDamageMs);
   assert.equal(target.hp, target.maxHp - expectedDamage);
+});
+
+test('greatsword instant release only deals one damage', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingMeleeHits = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const owner = new Player('greatsword-instant', 'Heavy', 'greatsword', 100, 100);
+  owner.angle = 0;
+  const target = new Player('greatsword-target-instant', 'Dummy', 'sword', 190, 100);
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
+
+  game._startGreatswordCharge(owner, 1000);
+  game._releaseGreatswordCharge(owner, 1000);
+  game._processPendingMeleeHits(1000 + SkillConfig.greatsword.delayDamageMs);
+
+  assert.equal(target.hp, target.maxHp - 1);
 });
 
 test('rapier hit tempo refunds cooldown on contact', () => {
