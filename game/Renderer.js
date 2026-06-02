@@ -987,16 +987,24 @@ export class Renderer {
     const thresholdRadius = weapon.range * threshold;
     const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 80);
 
+    // Below the charge threshold the strike only deals 1 damage — show that as a
+    // dashed gray fan so the player can tell when the hit is still "weak".
+    const underThreshold = progress < threshold;
+
     ctx.save();
-    ctx.fillStyle = this._hexToRGB(weapon.color, (0.05 + 0.1 * progress) * alpha);
-    ctx.strokeStyle = this._hexToRGB(weapon.color, (0.35 + 0.3 * pulse) * alpha);
+    ctx.fillStyle = this._hexToRGB(underThreshold ? '#9ca3af' : weapon.color, (0.05 + 0.1 * progress) * alpha);
+    ctx.strokeStyle = underThreshold
+      ? this._hexToRGB('#9ca3af', (0.42 + 0.3 * pulse) * alpha)
+      : this._hexToRGB(weapon.color, (0.35 + 0.3 * pulse) * alpha);
     ctx.lineWidth = (2 + 3 * progress) * alpha;
+    ctx.setLineDash(underThreshold ? [7, 6] : []);
     ctx.beginPath();
     ctx.moveTo(scr.x, scr.y);
     ctx.arc(scr.x, scr.y, radius, e.angle - halfAngle, e.angle + halfAngle);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.setLineDash([]);
 
     ctx.save();
     ctx.setLineDash([5, 6]);
@@ -2784,7 +2792,7 @@ export class Renderer {
     const SHAPE_TYPES = [
       'melee_arc', 'melee_circle', 'melee_line', 'projectile',
       'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab',
-      'melee_precise_line', 'melee_heavy_line', 'melee_slam'
+      'melee_precise_line', 'melee_heavy_line', 'melee_slam', 'melee_blade_sweep'
     ];
     const activeShapeType = SHAPE_TYPES.includes(activeAttack?.type) ? activeAttack.type : null;
 
@@ -2850,7 +2858,7 @@ export class Renderer {
 
     const range = weapon.range;
     const angle = player.angle;
-    const arcShapeTypes = ['melee_arc', 'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab'];
+    const arcShapeTypes = ['melee_arc', 'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab', 'melee_blade_sweep'];
     const circleShapeTypes = ['melee_circle', 'melee_slam'];
     const lineShapeTypes = ['melee_line', 'melee_precise_line', 'melee_heavy_line'];
 

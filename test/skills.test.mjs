@@ -315,7 +315,8 @@ test('greatsword instant release only deals one damage', () => {
 
   const owner = new Player('greatsword-instant', 'Heavy', 'greatsword', 100, 100);
   owner.angle = 0;
-  const target = new Player('greatsword-target-instant', 'Dummy', 'sword', 190, 100);
+  // Charge 0 → reach is only 0.38*range, so the target must be close to be hit.
+  const target = new Player('greatsword-target-instant', 'Dummy', 'sword', 140, 100);
   game.players[owner.id] = owner;
   game.players[target.id] = target;
 

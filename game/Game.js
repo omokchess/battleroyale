@@ -12,6 +12,9 @@ import { Renderer } from './Renderer.js';
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig } from './Weapons.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 
+// Time a dead player waits before respawning.
+const RESPAWN_MS = 500;
+
 export class Game {
   constructor(canvas, networkManager) {
     this.canvas = canvas;
@@ -437,7 +440,7 @@ export class Game {
       const p = this.players[id];
       if (p.isDead) {
         if (!p.respawnTime) {
-          p.respawnTime = now + 2500; // 2.5 seconds spawn time
+          p.respawnTime = now + RESPAWN_MS;
           p.clearCombatTimers(); // drop buffs/dash/skill state on death
           this._clearPendingSwordWavesFor(p.id);
           this._clearPendingRailgunsFor(p.id);
@@ -1013,9 +1016,14 @@ export class Game {
     player.skillCdLeft = sk.cooldownMs / 1000;
     player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, now + (sk.attackLockMs || 0));
 
+    // Reach scales with charge so a partial charge only cuts as far as its
+    // preview shows (matches _drawGreatswordCharge's 0.38 + 0.62*progress).
+    const effectiveRange = (sk.range || 128) * (0.38 + 0.62 * chargeRatio);
+
     const attackConfig = {
       ...Weapons.greatsword,
       ...sk,
+      range: effectiveRange,
       damage,
       cooldown: Weapons.greatsword.cooldown,
       chargeRatio
@@ -1924,7 +1932,7 @@ export class Game {
           respawnTimerText.textContent = `${remainingSec}s`;
         }
         if (respawnProgressBar) {
-          const pct = Math.min(100, Math.max(0, ((local.respawnRemainingMs || 0) / 2500) * 100));
+          const pct = Math.min(100, Math.max(0, ((local.respawnRemainingMs || 0) / RESPAWN_MS) * 100));
           respawnProgressBar.style.width = `${pct}%`;
         }
       } else {

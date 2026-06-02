@@ -234,10 +234,12 @@ export const SkillConfig = {
     thresholdDamage: 35,
     damage: 70,
     // Hit only along the swept blade (its arc band + blade thickness), not the
-    // whole fan — the visual cleave arc and the hit test now match.
+    // whole fan — the visual cleave arc and the hit test now match. The reach is
+    // scaled by charge (see _releaseGreatswordCharge) so a half charge cuts only
+    // as far as its preview shows.
     type: 'melee_blade_sweep',
     range: 128,
-    angle: 150,
+    angle: 210,
     bladeHalfWidth: 18,
     delayDamageMs: 70,
     attackLockMs: 800,
