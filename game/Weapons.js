@@ -129,8 +129,8 @@ export const Weapons = {
     hitCooldownRefundMs: 180,
     missPenaltyMs: 150,
     type: 'melee_precise_line',
-    description: '1px짜리 바늘 같은 찌르기 무기입니다. 짧고 날카롭지만 명중 시 템포가 빨라집니다.',
-    skill: 'F 스킬: 0.12초 간격으로 7번 연속 찌릅니다.',
+    description: '1px짜리 바늘 같은 찌르기 무기입니다. 평타 5타째에 강하게 내지르고, 명중 시 템포가 빨라집니다.',
+    skill: 'F 스킬: 5초간 연격 태세 — 공속·사거리·명중 환급 강화, 빗나감 패널티 제거 · 쿨타임 버프 종료 후 6초',
     color: '#facc15'
   },
   hammer: {
@@ -262,16 +262,14 @@ export const SkillConfig = {
     failStunMs: 300
   },
   rapier: {
-    cooldownMs: 5500,
+    // F now grants a sustained "riposte" buff instead of a one-off flurry.
+    cooldownMs: 6000,        // starts AFTER the buff ends
+    buffMs: 5000,
     type: 'melee_precise_line',
-    damage: 20,
-    critDamage: 24,
-    range: 87,
-    width: 1,
-    strikeCount: 7,
-    strikeIntervalMs: 120,
-    angleJitterDeg: 15,
-    hitCooldownRefundMs: 120
+    buffCooldown: 250,       // attack cooldown while buffed (was 430)
+    buffRange: 105,          // reach while buffed (was 87)
+    buffWidth: 6,            // wider crit/hit window while buffed
+    buffHitRefundMs: 250     // bigger on-hit tempo refund while buffed
   },
   hammer: {
     cooldownMs: 8500,
@@ -365,6 +363,21 @@ export const ComboConfig = {
       pull: 42,
       cooldown: 780
     }
+  },
+  rapier: {
+    // 5-hit combo: quick precise thrusts, then a stationary heavy finisher
+    // (no dash). Finisher reaches farther, crits harder, and lightly knocks back.
+    cycle: 5,
+    comboResetMs: 1800,
+    finisher: {
+      type: 'melee_precise_line',
+      range: 130,
+      width: 6,
+      damage: 24,
+      critDamage: 36,
+      knockback: 30,
+      cooldown: 430
+    }
   }
 };
 
@@ -397,6 +410,18 @@ export function getEffectiveWeapon(weaponKey, buffType = null) {
       damage: SkillConfig.gauntlet.damage,
       range: SkillConfig.gauntlet.range,
       width: SkillConfig.gauntlet.width
+    };
+  }
+
+  if (buffType === 'rapier_riposte' && weaponKey === 'rapier') {
+    const sk = SkillConfig.rapier;
+    return {
+      ...base,
+      cooldown: sk.buffCooldown,
+      range: sk.buffRange,
+      width: sk.buffWidth,
+      hitCooldownRefundMs: sk.buffHitRefundMs,
+      missPenaltyMs: 0
     };
   }
 

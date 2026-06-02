@@ -183,7 +183,6 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   const rapier = new Player('rapier-owner', 'Needle', 'rapier', 100, 100);
   rapier.angle = 0;
   assert.equal(Weapons.rapier.damage, 20);
-  assert.equal(SkillConfig.rapier.damage, 20);
   const rapierTarget = new Player('rapier-target', 'Line', 'sword', 180, 102);
   hit = game._resolveMeleeHitResult(rapier, rapierTarget, Weapons.rapier);
   assert.equal(hit.damage, Weapons.rapier.critDamage);
@@ -406,32 +405,49 @@ test('dagger QTE mistiming self-damages and stuns instead of attacking', () => {
   assert.equal(owner.daggerQte, null);
 });
 
-test('rapier skill queues seven rapid needle strikes', () => {
+test('rapier skill grants the riposte buff (faster, longer reach, no miss penalty)', () => {
+  const sk = SkillConfig.rapier;
+  const base = Weapons.rapier;
+
+  const buffed = getEffectiveWeapon('rapier', 'rapier_riposte');
+  assert.equal(buffed.cooldown, sk.buffCooldown);
+  assert.ok(buffed.cooldown < base.cooldown);
+  assert.equal(buffed.range, sk.buffRange);
+  assert.ok(buffed.range > base.range);
+  assert.equal(buffed.hitCooldownRefundMs, sk.buffHitRefundMs);
+  assert.equal(buffed.missPenaltyMs, 0);
+  // base config is never mutated
+  assert.equal(Weapons.rapier.cooldown, base.cooldown);
+  assert.equal(Weapons.rapier.missPenaltyMs, base.missPenaltyMs);
+
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
-  game.pendingRapierStrikes = [];
-  game.mapWidth = 700;
-  game.mapHeight = 700;
-  game._creditKill = () => {};
 
-  const owner = new Player('rapier-flurry', 'Needle', 'rapier', 100, 100);
-  owner.angle = 0;
-  const target = new Player('rapier-target', 'Dummy', 'sword', 180, 100);
+  const owner = new Player('rapier-buff', 'Needle', 'rapier', 100, 100);
   game.players[owner.id] = owner;
-  game.players[target.id] = target;
 
-  game._castRapierFlurry(owner, 1000);
-  assert.equal(game.pendingRapierStrikes.length, SkillConfig.rapier.strikeCount);
-  const maxJitter = SkillConfig.rapier.angleJitterDeg * Math.PI / 180;
-  assert.ok(game.pendingRapierStrikes.every(strike =>
-    Math.abs(strike.angleOffset) <= maxJitter + 1e-9
-  ));
-  const firstStrikeAngle = owner.angle + game.pendingRapierStrikes[0].angleOffset;
-  game._processRapierStrikes(1000);
-  const rapierEffects = game.effects.filter(e => e.type === 'melee_precise_line' && e.weapon === 'rapier');
-  assert.equal(rapierEffects.length, 1);
-  assert.equal(rapierEffects[0].angle, firstStrikeAngle);
+  game._activateSkill(owner, 1000);
+  assert.equal(owner.buffType, 'rapier_riposte');
+  assert.equal(owner.buffTimeLeft, sk.buffMs / 1000);
+  assert.equal(game.effects.some(e => e.type === 'buff_activate'), true);
+});
+
+test('rapier 5-hit combo finisher reaches farther and crits harder', () => {
+  const game = Object.create(Game.prototype);
+  const fin = ComboConfig.rapier.finisher;
+
+  const owner = new Player('rapier-combo', 'Needle', 'rapier', 0, 0);
+  owner.comboStep = 4;          // the next swing is the 5th = finisher
+  owner.lastAttackTime = 1900;  // recent enough to keep the combo alive
+
+  const combo = game._resolveComboAttack(owner, Weapons.rapier, 2000);
+  assert.equal(combo.step, 5);
+  assert.equal(combo.isFinisher, true);
+  assert.equal(combo.weaponConfig.range, fin.range);
+  assert.equal(combo.weaponConfig.critDamage, fin.critDamage);
+  assert.equal(combo.weaponConfig.knockback, fin.knockback);
+  assert.ok(combo.weaponConfig.range > Weapons.rapier.range);
 });
 
 test('hammer skill fires three expanding shockwaves with scaling damage and stun', () => {

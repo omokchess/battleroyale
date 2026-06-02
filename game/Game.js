@@ -31,9 +31,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
-    this.pendingMeleeHits = [];
-    this.pendingRapierStrikes = [];
-    this.pendingHammerSlams = [];
+    this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.effects = []; // Visual overlays: { attackerId, x, y, angle, weapon, type, progress, timestamp }
@@ -78,9 +76,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
-    this.pendingMeleeHits = [];
-    this.pendingRapierStrikes = [];
-    this.pendingHammerSlams = [];
+    this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.effects = [];
@@ -352,7 +348,6 @@ export class Game {
     this._processPendingMeleeHits(now);
     this._processGreatswordCharges(now);
     this._processDaggerQtes(now);
-    this._processRapierStrikes(now);
     this._processHammerSlams(now);
 
     // 3. Process Automatic attack queues
@@ -447,7 +442,6 @@ export class Game {
           this._clearPendingSwordWavesFor(p.id);
           this._clearPendingRailgunsFor(p.id);
           this._clearPendingMeleeHitsFor(p.id);
-          this._clearPendingRapierStrikesFor(p.id);
           this._clearPendingHammerSlamsFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
@@ -905,7 +899,7 @@ export class Game {
       case 'greatsword': this._startGreatswordCharge(player, now); break;
       case 'scythe': this._castMeleeSkill(player, now); break;
       case 'dagger': this._startDaggerQte(player, now); break;
-      case 'rapier': this._castRapierFlurry(player, now); break;
+      case 'rapier': this._startBuff(player, 'rapier_riposte', SkillConfig.rapier.buffMs, now); break;
       case 'hammer': this._castHammerSkill(player, now); break;
       default: break;
     }
@@ -1222,76 +1216,6 @@ export class Game {
     player.x = target.x + Math.cos(angle) * distance;
     player.y = target.y + Math.sin(angle) * distance;
     Collision.clampToMap(player, this.mapWidth, this.mapHeight);
-  }
-
-  _castRapierFlurry(player, now) {
-    if (!this._canUseSkill(player)) return;
-    const sk = SkillConfig.rapier;
-    const count = Math.max(1, Math.floor(sk.strikeCount || 7));
-    const interval = Math.max(0, sk.strikeIntervalMs || 120);
-    const jitter = Math.max(0, sk.angleJitterDeg || 0) * Math.PI / 180;
-    if (!this.pendingRapierStrikes) this.pendingRapierStrikes = [];
-    for (let i = 0; i < count; i++) {
-      this.pendingRapierStrikes.push({
-        playerId: player.id,
-        releaseAt: now + i * interval,
-        sequence: i,
-        angleOffset: (Math.random() * 2 - 1) * jitter
-      });
-    }
-    player.skillCdLeft = sk.cooldownMs / 1000;
-  }
-
-  _processRapierStrikes(now) {
-    if (!this.pendingRapierStrikes?.length) return;
-    const waiting = [];
-    for (const strike of this.pendingRapierStrikes) {
-      if (now < strike.releaseAt) {
-        waiting.push(strike);
-        continue;
-      }
-      const player = this.players[strike.playerId];
-      if (!player || player.isDead || player.weapon !== 'rapier') continue;
-      this._executeRapierStrike(player, now, strike.sequence, strike.angleOffset);
-    }
-    this.pendingRapierStrikes = waiting;
-  }
-
-  _executeRapierStrike(player, now, sequence = 0, angleOffset = 0) {
-    const sk = SkillConfig.rapier;
-    const attackConfig = {
-      ...Weapons.rapier,
-      ...sk,
-      cooldown: Weapons.rapier.cooldown
-    };
-    const strikeAngle = player.angle + (Number.isFinite(angleOffset) ? angleOffset : 0);
-    this.effects.push({
-      attackerId: player.id,
-      x: player.x,
-      y: player.y,
-      angle: strikeAngle,
-      weapon: 'rapier',
-      type: attackConfig.type,
-      range: attackConfig.range,
-      width: attackConfig.width,
-      comboFinisher: false,
-      isSkill: true,
-      sequence,
-      progress: 0,
-      timestamp: now,
-      lifetime: 210
-    });
-    const attacker = {
-      ...this._snapshotMeleeAttacker(player),
-      angle: strikeAngle
-    };
-    const hitCount = this._applyMeleeHits(attacker, attackConfig, now);
-    this._applyAttackTempoResult(player, attackConfig, hitCount, now);
-  }
-
-  _clearPendingRapierStrikesFor(playerId) {
-    if (!this.pendingRapierStrikes?.length) return;
-    this.pendingRapierStrikes = this.pendingRapierStrikes.filter(strike => strike.playerId !== playerId);
   }
 
   _castHammerSkill(player, now) {
@@ -2187,9 +2111,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingSpearThrows = [];
-    this.pendingMeleeHits = [];
-    this.pendingRapierStrikes = [];
-    this.pendingHammerSlams = [];
+    this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
     this.canvas.style.cursor = '';
