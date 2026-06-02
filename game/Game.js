@@ -1027,7 +1027,9 @@ export class Game {
       y: player.y,
       angle: player.angle,
       weapon: 'greatsword',
-      type: attackConfig.type,
+      // Visual stays the heavy cleave arc; the hit test uses the blade-sweep
+      // type on attackConfig. Both share the same (narrowed) angle.
+      type: 'melee_heavy_arc',
       range: attackConfig.range,
       width: attackConfig.width,
       angleDeg: attackConfig.angle,

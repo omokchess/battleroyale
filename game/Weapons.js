@@ -233,9 +233,12 @@ export const SkillConfig = {
     minDamage: 1,
     thresholdDamage: 35,
     damage: 70,
-    type: 'melee_heavy_arc',
+    // Hit only along the swept blade (its arc band + blade thickness), not the
+    // whole fan — the visual cleave arc and the hit test now match.
+    type: 'melee_blade_sweep',
     range: 128,
-    angle: 210,
+    angle: 150,
+    bladeHalfWidth: 18,
     delayDamageMs: 70,
     attackLockMs: 800,
     knockback: 82

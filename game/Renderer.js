@@ -2124,6 +2124,7 @@ export class Renderer {
       effectType: effect.type,
       attackProgress: progress,
       isFinisher: Boolean(effect.comboFinisher),
+      swingDirection: effect.swingDirection === -1 ? -1 : 1,
       bodyX: Math.cos(angle) * lunge,
       bodyY: Math.sin(angle) * lunge,
       bodyScale,
@@ -2336,57 +2337,83 @@ export class Renderer {
     const weaponType = player.weapon;
 
     if (weaponType === 'sword') {
-      // Finisher: orbit the sword around the body along weaponAngle (lower-left pull → 360° sweep)
       const isFinisherSpin = motion.isFinisher && active;
-      const orbitAngle = isFinisherSpin ? weaponAngle : (weaponAngle + Math.PI / 4);
-      const orbitDist = isFinisherSpin
-        ? radius + 4 + Math.max(0, reach * 0.4)
-        : radius + Math.max(0, reach * 0.38);
-      const swX = isFinisherSpin
-        ? scr.x + Math.cos(weaponAngle) * orbitDist
-        : wX;
-      const swY = isFinisherSpin
-        ? scr.y + Math.sin(weaponAngle) * orbitDist
-        : wY;
-      ctx.translate(swX, swY);
-      ctx.rotate(orbitAngle);
-      const ext = isFinisherSpin ? 18 : (15 + Math.max(0, reach * 0.32));
-      ctx.fillStyle = this._hexToRGB('#dbeafe', 0.88);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.1;
-      ctx.beginPath();
-      ctx.moveTo(-1, 1);
-      ctx.lineTo(ext, -ext);
-      ctx.lineTo(ext - 4, -ext + 1.2);
-      ctx.lineTo(1, 3);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      const swingDir = motion.swingDirection === -1 ? -1 : 1;
 
-      ctx.strokeStyle = this._hexToRGB(player.accentColor, 0.55);
-      ctx.lineWidth = 1.1;
-      ctx.beginPath();
-      ctx.moveTo(3, -1);
-      ctx.lineTo(ext - 5, -ext + 5);
-      ctx.stroke();
+      if (isFinisherSpin) {
+        // 360° finisher: orbit the blade around the body (kept as the spin sweep).
+        const orbitDist = radius + 4 + Math.max(0, reach * 0.4);
+        ctx.translate(scr.x + Math.cos(weaponAngle) * orbitDist, scr.y + Math.sin(weaponAngle) * orbitDist);
+        ctx.rotate(weaponAngle);
+        const ext = 18;
+        ctx.fillStyle = this._hexToRGB('#dbeafe', 0.88);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(-1, 1);
+        ctx.lineTo(ext, -ext);
+        ctx.lineTo(ext - 4, -ext + 1.2);
+        ctx.lineTo(1, 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = player.accentColor;
+        ctx.lineWidth = 3.1;
+        ctx.beginPath();
+        ctx.moveTo(-6, 4);
+        ctx.lineTo(4, -6);
+        ctx.stroke();
+        ctx.fillStyle = '#111216';
+        ctx.beginPath();
+        ctx.arc(-6, 4, 2.1, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Real slash: the hilt is pinned near the hand and the blade extends along
+        // the swing angle, rotating through the arc as weaponAngle sweeps. The
+        // scale(1, swingDir) flip keeps the SAME cutting edge leading on every
+        // alternating swing (instead of hitting with the back of the blade).
+        const drawAngle = active ? weaponAngle : weaponAngle + 0.5;
+        const hilt = radius - 3;
+        const len = 20 + Math.max(0, reach * 0.5);
 
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.58);
-      ctx.lineWidth = 0.9;
-      ctx.beginPath();
-      ctx.moveTo(1.5, 0.5);
-      ctx.lineTo(ext - 8, -ext + 7);
-      ctx.stroke();
+        ctx.translate(scr.x, scr.y);
+        ctx.rotate(drawAngle);
+        ctx.scale(1, swingDir);
 
-      ctx.strokeStyle = player.accentColor;
-      ctx.lineWidth = 3.1;
-      ctx.beginPath();
-      ctx.moveTo(-6, 4);
-      ctx.lineTo(4, -6);
-      ctx.stroke();
-      ctx.fillStyle = '#111216';
-      ctx.beginPath();
-      ctx.arc(-6, 4, 2.1, 0, Math.PI * 2);
-      ctx.fill();
+        // Blade: hilt → tip along +x, cutting edge on the -y side.
+        ctx.fillStyle = this._hexToRGB('#dbeafe', 0.9);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(hilt, 2.4);
+        ctx.lineTo(hilt + len, -0.6);
+        ctx.lineTo(hilt + len - 3, -2.6);
+        ctx.lineTo(hilt, -2.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Bright cutting edge (-y).
+        ctx.strokeStyle = this._hexToRGB('#ffffff', 0.7);
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(hilt, -2.2);
+        ctx.lineTo(hilt + len - 3, -2.6);
+        ctx.stroke();
+
+        // Crossguard + pommel at the hand.
+        ctx.strokeStyle = player.accentColor;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(hilt - 1, -4.5);
+        ctx.lineTo(hilt - 1, 4.5);
+        ctx.stroke();
+        ctx.fillStyle = '#111216';
+        ctx.beginPath();
+        ctx.arc(hilt - 4, 0, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     else if (weaponType === 'axe') {

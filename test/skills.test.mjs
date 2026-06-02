@@ -326,6 +326,20 @@ test('greatsword instant release only deals one damage', () => {
   assert.equal(target.hp, target.maxHp - 1);
 });
 
+test('greatsword blade sweep cuts inside the swept arc but not behind/outside it', () => {
+  const sk = SkillConfig.greatsword;
+  const weapon = { type: 'melee_blade_sweep', range: sk.range, angle: sk.angle, bladeHalfWidth: sk.bladeHalfWidth };
+  const attacker = { id: 'gs', x: 100, y: 100, angle: 0, radius: 14 };
+
+  const inFront = { id: 't1', x: 100 + 90, y: 100, isDead: false, radius: 14 };
+  const behind = { id: 't2', x: 100 - 90, y: 100, isDead: false, radius: 14 };
+  const beyondReach = { id: 't3', x: 100 + sk.range + 40, y: 100, isDead: false, radius: 14 };
+
+  assert.equal(Collision.checkMeleeHit(attacker, inFront, weapon), true);   // along the blade
+  assert.equal(Collision.checkMeleeHit(attacker, behind, weapon), false);   // not the whole fan
+  assert.equal(Collision.checkMeleeHit(attacker, beyondReach, weapon), false); // past blade length
+});
+
 test('rapier hit tempo refunds cooldown on contact', () => {
   const game = Object.create(Game.prototype);
   game.players = {};

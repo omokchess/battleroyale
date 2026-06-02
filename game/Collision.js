@@ -83,6 +83,25 @@ export const Collision = {
     const arcTypes = new Set(['melee_arc', 'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab']);
     const lineTypes = new Set(['melee_line', 'melee_heavy_line', 'melee_precise_line']);
 
+    if (weapon.type === 'melee_blade_sweep') {
+      // Greatsword: only the sweeping blade connects, not the whole fan. The
+      // blade is a length-`range` bar sweeping ±halfSweep around the aim; a
+      // target inside that band (and within range, already checked) is cut.
+      // Just outside the band, allow the blade's physical thickness.
+      const targetAngle = Math.atan2(dy, dx);
+      let angleDiff = targetAngle - attacker.angle;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+      const halfSweep = ((weapon.angle || 150) * Math.PI) / 360;
+      if (Math.abs(angleDiff) <= halfSweep) return true;
+
+      // Perpendicular distance from the target to the nearest sweep-edge blade.
+      const over = Math.abs(angleDiff) - halfSweep;
+      const halfWidthLimit = (weapon.bladeHalfWidth || 0) + (target.radius || 14);
+      return dist * Math.sin(Math.min(over, Math.PI / 2)) <= halfWidthLimit;
+    }
+
     if (circleTypes.has(weapon.type)) {
       // 360 degree attack
       return true;
