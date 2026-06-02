@@ -2043,20 +2043,21 @@ export class Renderer {
 
     } else if (effect.weapon === 'sword' && effect.comboFinisher) {
       // Sword finisher: keep the charged lower-left pose, then sweep a full 360.
+      const motionProgress = clamp01(progress + 0.05);
       const readyOffset = -Math.PI * 0.75;
-      if (progress < 0.22) {
-        const t = easeOutCubic(progress / 0.22);
+      if (motionProgress < 0.22) {
+        const t = easeOutCubic(motionProgress / 0.22);
         lunge = -6 + 2 * t;
         weaponReach = -14 + 2 * t;
         weaponAngle = angle + readyOffset;
         bodyScale = 1.55 + 0.35 * t;
       } else {
-        const t = easeOutCubic((progress - 0.22) / 0.78);
-        const fadeOut = Math.max(0, 1 - (progress - 0.22) / 0.55);
+        const t = easeOutCubic((motionProgress - 0.22) / 0.78);
+        const fadeOut = Math.max(0, 1 - (motionProgress - 0.22) / 0.55);
         lunge = -4 * fadeOut;
         weaponReach = -12 + 24 * t;
         weaponAngle = angle + readyOffset + t * Math.PI * 2;
-        bodyScale = 1.9 * (1 - easeOutCubic(Math.min(1, (progress - 0.22) / 0.78)));
+        bodyScale = 1.9 * (1 - easeOutCubic(Math.min(1, (motionProgress - 0.22) / 0.78)));
       }
 
     } else if (effect.weapon === 'axe') {
@@ -2085,11 +2086,12 @@ export class Renderer {
 
     } else {
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
-      const slash = Math.sin(Math.PI * clamp01(progress * 0.95));
+      const motionProgress = effect.weapon === 'sword' ? clamp01(progress + 0.08) : progress;
+      const slash = Math.sin(Math.PI * clamp01(motionProgress * 0.95));
       const finisherBoost = effect.comboFinisher ? 1.7 : 1;
       lunge = 4 * slash * finisherBoost;
       weaponReach = 10 * slash * finisherBoost;
-      weaponAngle = angle + swingDirection * (-0.9 + easeOutCubic(progress) * 1.8) * finisherBoost;
+      weaponAngle = angle + swingDirection * (-0.9 + easeOutCubic(motionProgress) * 1.8) * finisherBoost;
       bodyScale = 1.0 * slash * finisherBoost;
     }
 

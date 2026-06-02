@@ -13,6 +13,7 @@ export class Camera {
     this.shakeMagnitude = 0;
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
+    this.screenOffsetY = 0;
 
     // Lerping inertia (0.1 means 10% movement per frame leading to very smooth chase)
     this.lerpSpeed = 0.12;
@@ -26,11 +27,21 @@ export class Camera {
     const focusX = mapWidth / 2;
     const focusY = mapHeight / 2;
 
-    // Calculate dynamic zoom to perfectly fit the entire map (with clean margins/padding) inside the window
+    const isMobilePortrait = (() => {
+      if (typeof window === 'undefined') return false;
+      const cssWidth = window.visualViewport?.width || window.innerWidth || viewportWidth;
+      return cssWidth <= 640 && viewportHeight > viewportWidth * 1.1;
+    })();
+    const topReserve = isMobilePortrait ? Math.min(viewportHeight * 0.12, viewportWidth * 0.3) : 0;
+    const bottomReserve = isMobilePortrait ? Math.min(viewportHeight * 0.24, viewportWidth * 0.46) : 0;
+    const usableHeight = Math.max(1, viewportHeight - topReserve - bottomReserve);
+
+    // Calculate dynamic zoom to fit the entire map into the usable play area.
     const padding = 60;
-    this.zoom = Math.min(viewportWidth / (mapWidth + padding), viewportHeight / (mapHeight + padding));
+    this.zoom = Math.min(viewportWidth / (mapWidth + padding), usableHeight / (mapHeight + padding));
     // Clamp zoom factor between sensible boundaries to prevent extreme rendering dimensions on tiny screens
     this.zoom = Math.max(0.1, Math.min(2.5, this.zoom));
+    this.screenOffsetY = isMobilePortrait ? (topReserve - bottomReserve) / 2 : 0;
 
     // Apply linear interpolation
     this.x += (focusX - this.x) * this.lerpSpeed;
@@ -66,7 +77,7 @@ export class Camera {
   toScreen(worldX, worldY, viewportWidth, viewportHeight) {
     return {
       x: (worldX - this.x) * this.zoom + viewportWidth / 2,
-      y: (worldY - this.y) * this.zoom + viewportHeight / 2
+      y: (worldY - this.y) * this.zoom + viewportHeight / 2 + this.screenOffsetY
     };
   }
 
@@ -76,7 +87,7 @@ export class Camera {
   toWorld(screenX, screenY, viewportWidth, viewportHeight) {
     return {
       x: (screenX - viewportWidth / 2) / this.zoom + this.x,
-      y: (screenY - viewportHeight / 2) / this.zoom + this.y
+      y: (screenY - viewportHeight / 2 - this.screenOffsetY) / this.zoom + this.y
     };
   }
 }

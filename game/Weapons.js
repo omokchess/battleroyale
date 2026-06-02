@@ -75,6 +75,7 @@ export const Weapons = {
     damage: 38,
     maxHp: 140,
     cooldown: 900,
+    automaticAttack: false,
     moveSpeed: 0.82,
     range: 88,
     angle: 210,
@@ -118,7 +119,7 @@ export const Weapons = {
   },
   rapier: {
     name: '레이피어',
-    damage: 16,
+    damage: 20,
     critDamage: 24,
     maxHp: 100,
     cooldown: 430,
@@ -157,6 +158,11 @@ Object.assign(Weapons.greatsword, {
 Object.assign(Weapons.greatsword, {
   description: '전방 210도를 같은 방향으로 두 번 베고, 3타에 넓은 검기를 발사하는 중량 무기입니다.',
   skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 최대 85 피해를 줍니다.'
+});
+
+Object.assign(Weapons.greatsword, {
+  description: '평타 없이 F 스킬 차징으로만 공격하는 중량 무기입니다. 차징 시간에 따라 피해량이 달라집니다.',
+  skill: 'F 홀드: 최대 1.3초 예열 후 넓은 강베기로 최대 70 피해를 줍니다.'
 });
 
 Object.assign(Weapons.dagger, {
@@ -222,9 +228,9 @@ export const SkillConfig = {
   },
   greatsword: {
     cooldownMs: 7000,
-    chargeMaxMs: 1000,
-    minDamage: 45,
-    damage: 85,
+    chargeMaxMs: 1300,
+    minDamage: 25,
+    damage: 70,
     type: 'melee_heavy_arc',
     range: 128,
     angle: 210,
@@ -256,7 +262,7 @@ export const SkillConfig = {
   rapier: {
     cooldownMs: 5500,
     type: 'melee_precise_line',
-    damage: 16,
+    damage: 20,
     critDamage: 24,
     range: 87,
     width: 1,

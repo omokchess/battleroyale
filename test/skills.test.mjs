@@ -182,6 +182,8 @@ test('new melee weapon families expose distinct hit mechanics', () => {
 
   const rapier = new Player('rapier-owner', 'Needle', 'rapier', 100, 100);
   rapier.angle = 0;
+  assert.equal(Weapons.rapier.damage, 20);
+  assert.equal(SkillConfig.rapier.damage, 20);
   const rapierTarget = new Player('rapier-target', 'Line', 'sword', 180, 102);
   hit = game._resolveMeleeHitResult(rapier, rapierTarget, Weapons.rapier);
   assert.equal(hit.damage, Weapons.rapier.critDamage);
@@ -205,6 +207,8 @@ test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
   const owner = new Player('greatsword-owner', 'Heavy', 'greatsword', 100, 100);
   owner.angle = 0;
   assert.equal(Weapons.greatsword.cooldown, 900);
+  assert.equal(SkillConfig.greatsword.chargeMaxMs, 1300);
+  assert.equal(SkillConfig.greatsword.damage, 70);
   const target = new Player('greatsword-target', 'Dummy', 'sword', 190, 100);
   game.players[owner.id] = owner;
   game.players[target.id] = target;
@@ -228,7 +232,7 @@ test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
   assert.equal(owner.skillCdLeft, SkillConfig.greatsword.cooldownMs / 1000);
 });
 
-test('greatsword third combo fires a short sword wave', () => {
+test('greatsword cannot use automatic basic attacks', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.projectiles = [];
@@ -238,37 +242,41 @@ test('greatsword third combo fires a short sword wave', () => {
   game.mapHeight = 700;
   game._creditKill = () => {};
 
-  const owner = new Player('greatsword-combo', 'Heavy', 'greatsword', 100, 100);
+  const owner = new Player('greatsword-no-basic', 'Heavy', 'greatsword', 100, 100);
   owner.angle = 0;
-  owner.comboStep = 2;
-  owner.lastAttackTime = 1000;
+  owner.lastAttackTime = 0;
   game.players[owner.id] = owner;
 
-  game._performAutomaticAttack(owner, Weapons.greatsword, 1400);
-  assert.equal(game.projectiles.length, 1);
-  assert.equal(game.projectiles[0].kind, 'greatswordwave');
-  assert.equal(game.projectiles[0].damage, 25);
-  assert.equal(game.projectiles[0].radius, 28);
-  assert.equal(game.effects.some(e => e.type === 'projectile_shot' && e.projectileKind === 'greatswordwave'), false);
-  assert.equal(game.effects.some(e => e.type === 'melee_arc' && e.weapon === 'greatsword'), true);
+  assert.equal(Weapons.greatsword.automaticAttack, false);
+  assert.equal(owner.canAttack(5000), false);
 });
 
-test('greatsword finisher windup does not preview the sword-wave path', () => {
+test('greatsword charge damage scales with hold time', () => {
   const game = Object.create(Game.prototype);
+  game.players = {};
   game.effects = [];
+  game.pendingMeleeHits = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
 
-  const owner = new Player('greatsword-ready', 'Heavy', 'greatsword', 100, 100);
-  owner.comboStep = 1;
-  owner.lastAttackTime = 1000;
+  const owner = new Player('greatsword-half', 'Heavy', 'greatsword', 100, 100);
+  owner.angle = 0;
+  const target = new Player('greatsword-target-half', 'Dummy', 'sword', 190, 100);
+  game.players[owner.id] = owner;
+  game.players[target.id] = target;
 
-  const secondSwing = game._resolveComboAttack(owner, Weapons.greatsword, 1200);
-  assert.equal(secondSwing.step, 2);
-  assert.equal(secondSwing.delayAfterMs, ComboConfig.greatsword.delayBeforeFinisherMs);
-  game._applyComboRecovery(owner, secondSwing, 1200);
+  game._startGreatswordCharge(owner, 1000);
+  game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs / 2);
 
-  const readyEffect = game.effects.find(e => e.type === 'finisher_ready' && e.weapon === 'greatsword');
-  assert.ok(readyEffect);
-  assert.equal('previewType' in readyEffect, false);
+  const expectedDamage = Math.round(
+    SkillConfig.greatsword.minDamage +
+    (SkillConfig.greatsword.damage - SkillConfig.greatsword.minDamage) * 0.5
+  );
+  assert.equal(game.pendingMeleeHits[0].attackConfig.damage, expectedDamage);
+
+  game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs / 2 + SkillConfig.greatsword.delayDamageMs);
+  assert.equal(target.hp, target.maxHp - expectedDamage);
 });
 
 test('rapier hit tempo refunds cooldown on contact', () => {

@@ -136,8 +136,10 @@ export class Game {
     this._resizeCanvas();
     this._setupVisualSettingsPanel();
     this.animationFrameId = requestAnimationFrame((t) => this._gameLoop(t));
-    
+
     window.addEventListener('resize', this._resizeBound);
+    window.visualViewport?.addEventListener('resize', this._resizeBound);
+    window.visualViewport?.addEventListener('scroll', this._resizeBound);
   }
 
   // Bind resize context
@@ -148,10 +150,22 @@ export class Game {
     // crisp. The drawing buffer is dpr× the CSS size; Input scales pointer
     // coordinates by the same ratio so aim stays accurate everywhere.
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    this.canvas.width = Math.round(window.innerWidth * dpr);
-    this.canvas.height = Math.round(window.innerHeight * dpr);
-    this.canvas.style.width = `${window.innerWidth}px`;
-    this.canvas.style.height = `${window.innerHeight}px`;
+    const viewport = window.visualViewport;
+    const fallbackWidth = document.documentElement.clientWidth || window.innerWidth || 1;
+    const fallbackHeight = document.documentElement.clientHeight || window.innerHeight || 1;
+    const cssWidth = Math.max(1, Math.round(viewport?.width || fallbackWidth));
+    const cssHeight = Math.max(1, Math.round(viewport?.height || fallbackHeight));
+    const screen = document.getElementById('gameScreen') || this.canvas.parentElement;
+
+    if (screen) {
+      screen.style.width = `${cssWidth}px`;
+      screen.style.height = `${cssHeight}px`;
+    }
+
+    this.canvas.style.width = `${cssWidth}px`;
+    this.canvas.style.height = `${cssHeight}px`;
+    this.canvas.width = Math.max(1, Math.round(cssWidth * dpr));
+    this.canvas.height = Math.max(1, Math.round(cssHeight * dpr));
   }
 
   _setupVisualSettingsPanel() {
@@ -2114,6 +2128,8 @@ export class Game {
       this.animationFrameId = null;
     }
     window.removeEventListener('resize', this._resizeBound);
+    window.visualViewport?.removeEventListener('resize', this._resizeBound);
+    window.visualViewport?.removeEventListener('scroll', this._resizeBound);
     this._cleanupVisualSettingsPanel();
     
     // Clear background tab active preservation loops
