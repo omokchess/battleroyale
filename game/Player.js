@@ -103,6 +103,11 @@ export class Player {
       this._tickTimers(deltaTime);
       return;
     }
+    // Axe rage roots the wielder: no movement (or dash) until the buff expires.
+    if (this.buffType === 'axe_rage' && this.buffTimeLeft > 0) {
+      this._tickTimers(deltaTime);
+      return;
+    }
 
     // A dash overrides normal locomotion with a fixed-direction burst. Consume
     // (up to) the remaining dash window *before* advancing the timers so even a
@@ -142,6 +147,7 @@ export class Player {
    */
   startDash(dirX = 0, dirY = 0) {
     if (this.isDead || this.stunTimeLeft > 0 || this.dashCdLeft > 0 || this.dashTimeLeft > 0) return false;
+    if (this.buffType === 'axe_rage' && this.buffTimeLeft > 0) return false; // rooted during axe rage
 
     let len = Math.hypot(dirX, dirY);
     if (len < 1e-4) {

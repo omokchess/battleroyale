@@ -543,6 +543,24 @@ test('hammer skill forbids basic attacks until the final shockwave fires', () =>
   assert.equal(owner.canAttack(6000), true);
 });
 
+test('axe rage roots the wielder (no move, no dash) until the buff ends', () => {
+  const p = new Player('axe-rager', 'Rage', 'axe', 100, 100);
+  p.buffType = 'axe_rage';
+  p.buffTimeLeft = 5;
+  const x0 = p.x, y0 = p.y;
+
+  p.updatePosition(0.1, { d: true, s: true }, 700, 700); // try to move while raging
+  assert.equal(p.x, x0);
+  assert.equal(p.y, y0);
+  assert.equal(p.startDash(1, 0), false); // dash is blocked too
+
+  // Buff over → locomotion resumes.
+  p.buffType = null;
+  p.buffTimeLeft = 0;
+  p.updatePosition(0.1, { d: true }, 700, 700);
+  assert.ok(p.x > x0);
+});
+
 test('hammer outer shockwave misses targets beyond the first wave radius', () => {
   const game = Object.create(Game.prototype);
   game.players = {};

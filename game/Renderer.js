@@ -2844,6 +2844,11 @@ export class Renderer {
       shapeWidth = skillPreview.width;
       shapeInnerRange = skillPreview.innerRange;
       shapeAngleDeg = skillPreview.angle;
+    } else if (player.weapon === 'greatsword' && !activeShapeType) {
+      // Idle (not charging) greatsword guide is drawn at the full charged reach
+      // so its resting footprint matches the charge preview's size.
+      shapeRange = SkillConfig.greatsword.range;
+      shapeAngleDeg = SkillConfig.greatsword.angle;
     }
 
     const weapon = {

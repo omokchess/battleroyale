@@ -11,10 +11,12 @@
 @media (min-width: 1024px) {
   #weaponSwitchPanel {
     display: flex;
-    width: 13rem;        /* a touch wider than before */
-    top: 7rem;           /* raised toward the top (was vertical-center) */
+    width: 16rem;        /* clearly wider */
+    top: 13rem;          /* lowered so it clears the top-right room/settings HUD */
     bottom: auto;
-    transform: none;     /* cancel the -translate-y-1/2 centering */
+    transform: none;
+    translate: none;     /* cancel Tailwind v4's -translate-y-1/2 (it shoved the bar off the top) */
+    /* no left/right here: the element keeps Tailwind's right-2 sm:right-4 (arena's right gutter) */
   }
 }
 
