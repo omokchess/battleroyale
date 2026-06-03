@@ -283,14 +283,16 @@ export const SkillConfig = {
   hammer: {
     cooldownMs: 8500,
     type: 'melee_slam',
-    previewMs: 600,         // telegraph all 3 ranges + windup before any hit
-    subIntervalMs: 150,     // then fire the 3 shockwaves 0.15s apart
+    previewMs: 1000,        // telegraph all 3 ranges + windup before any hit
+    // Each shockwave fires this long after the previous event (1st after the windup):
+    // → at cast+1.8s, +2.6s, +3.8s.
+    waveDelaysMs: [800, 800, 1200],
     knockback: 90,
     // Three expanding shockwaves centered on the cast spot.
     waves: [
-      { range: 60,  damage: 20, stunMs: 300,  knockback: 40 },
-      { range: 123, damage: 40, stunMs: 350,  knockback: 70 },
-      { range: 156, damage: 52, stunMs: 1000, knockback: 100 }
+      { range: 60,  damage: 20, stunMs: 700,  knockback: 40 },
+      { range: 123, damage: 40, stunMs: 750,  knockback: 70 },
+      { range: 156, damage: 52, stunMs: 1100, knockback: 100 }
     ]
   }
 };
