@@ -384,17 +384,38 @@ function escapeHtml(value) {
 /**
  * In-game weapon switch panel (applied on next respawn).
  */
-function buildWeaponSwitchPanel() {
+function setWeaponPanelOpen(open) {
   const panel = document.getElementById('weaponSwitchPanel');
-  if (!panel) return;
-  panel.innerHTML = Object.keys(Weapons).map(key => {
+  const backdrop = document.getElementById('weaponPanelBackdrop');
+  if (panel) panel.classList.toggle('open', open);
+  if (backdrop) backdrop.classList.toggle('open', open);
+}
+
+function buildWeaponSwitchPanel() {
+  const list = document.getElementById('weaponSwitchList');
+  if (!list) return;
+  list.innerHTML = Object.keys(Weapons).map(key => {
     const cfg = Weapons[key];
-    return `<button type="button" data-weapon="${key}" class="weapon-switch font-mono text-[10px] leading-none px-2 py-1 border-2 border-gray-600 bg-[#0b0c10] bg-opacity-80 cursor-pointer active:scale-95 transition-all" style="color:${cfg.color}">${cfg.name}</button>`;
+    return `<button type="button" data-weapon="${key}" class="weapon-switch" style="color:${cfg.color}">`
+      + `<span class="ws-accent" aria-hidden="true"></span>`
+      + `<span class="ws-name">${cfg.name}</span>`
+      + `</button>`;
   }).join('');
-  panel.addEventListener('click', (e) => {
+
+  list.addEventListener('click', (e) => {
     const btn = e.target.closest('.weapon-switch');
-    if (btn && activeGame) activeGame.requestWeaponChange(btn.dataset.weapon);
+    if (!btn || !activeGame) return;
+    activeGame.requestWeaponChange(btn.dataset.weapon);
+    setWeaponPanelOpen(false); // mobile: dismiss after picking (desktop bar stays open via CSS)
   });
+
+  const toggle = document.getElementById('weaponPanelToggle');
+  if (toggle) toggle.addEventListener('click', () => {
+    const panel = document.getElementById('weaponSwitchPanel');
+    setWeaponPanelOpen(!(panel && panel.classList.contains('open')));
+  });
+  const backdrop = document.getElementById('weaponPanelBackdrop');
+  if (backdrop) backdrop.addEventListener('click', () => setWeaponPanelOpen(false));
 }
 
 // Run Setup on page launch

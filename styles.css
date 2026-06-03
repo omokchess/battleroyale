@@ -1,14 +1,78 @@
 @import "tailwindcss";
 
-/* In-game weapon switch panel states */
+/* In-game weapon switch: a vertical bar in the arena's right gutter.
+   Desktop (>=1024px): always visible. Mobile: hidden until the toggle opens it. */
+#weaponSwitchPanel {
+  display: none;            /* mobile default: closed */
+  flex-direction: column;
+  width: 9.5rem;
+}
+#weaponSwitchPanel.open { display: flex; }              /* mobile: opened via the toggle */
+@media (min-width: 1024px) {
+  #weaponSwitchPanel { display: flex; width: 11rem; }   /* desktop: always shown */
+}
+
+#weaponPanelBackdrop { display: none; background: rgba(0, 0, 0, 0.55); }
+#weaponPanelBackdrop.open { display: block; }
+@media (min-width: 1024px) {
+  #weaponPanelBackdrop.open { display: none; }          /* desktop never needs the dimmer */
+}
+
+.weapon-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 2px solid #4b5563;
+  border-radius: 0.375rem;
+  background: rgba(11, 12, 16, 0.85);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .08s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease;
+}
+.weapon-switch:hover { background: rgba(31, 40, 51, 0.95); }
+.weapon-switch:active { transform: scale(0.96); }
+.weapon-switch .ws-accent {
+  flex: 0 0 auto;
+  width: 5px;
+  align-self: stretch;
+  min-height: 1.1rem;
+  border-radius: 3px;
+  background: currentColor;   /* weapon color (button color set inline) */
+}
+.weapon-switch .ws-name { flex: 1 1 auto; }
+@media (min-width: 1024px) {
+  .weapon-switch { font-size: 0.95rem; padding: 0.7rem 0.85rem; }
+}
+
+/* Equipped / queued markers */
 .weapon-switch.weapon-current {
   border-color: #45f3ff;
-  box-shadow: 0 0 8px rgba(69, 243, 255, 0.55);
+  box-shadow: 0 0 10px rgba(69, 243, 255, 0.6);
+  background: rgba(31, 40, 51, 0.95);
 }
 .weapon-switch.weapon-pending {
   border-color: #fbbf24;
   border-style: dashed;
 }
+.weapon-switch.weapon-current::after,
+.weapon-switch.weapon-pending::after {
+  margin-left: auto;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.14rem 0.34rem;
+  border-radius: 3px;
+  color: #0b0c10;
+}
+.weapon-switch.weapon-current::after { content: "착용"; background: #45f3ff; }
+.weapon-switch.weapon-pending::after { content: "대기"; background: #fbbf24; }
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;

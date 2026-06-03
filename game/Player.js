@@ -43,6 +43,7 @@ export class Player {
     this.buffType = null;     // 'axe_rage' | 'gauntlet_lance' | null
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
+    this.hammerSkillUntil = 0; // host-ms timestamp: no basic attacks until the hammer skill fully ends
     this.pendingWeapon = null; // queued weapon swap, applied on next respawn
     this.arrowStacks = 0;     // bow skill charges earned by landing arrows
     this.greatswordChargeStart = 0;
@@ -176,6 +177,7 @@ export class Player {
     this.buffType = null;
     this.buffTimeLeft = 0;
     this.spearThrown = false;
+    this.hammerSkillUntil = 0;
     this.arrowStacks = 0;
     this.greatswordChargeStart = 0;
     this.greatswordChargeAngle = 0;
@@ -189,6 +191,8 @@ export class Player {
    */
   canAttack(now) {
     if (this.isDead || this.stunTimeLeft > 0 || this.spearThrown || this.greatswordChargeStart > 0 || this.daggerQte) return false;
+    // Hammer skill: absolutely no basic attacks from cast until the last shockwave fires.
+    if (now < (this.hammerSkillUntil || 0)) return false;
     const ignoresComboDelay = this.weapon === 'axe' && this.buffType === 'axe_rage';
     if (!ignoresComboDelay && now < (this.comboDelayUntil || 0)) return false;
     const weaponConfig = getEffectiveWeapon(this.weapon, this.buffType);

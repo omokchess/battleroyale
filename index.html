@@ -372,10 +372,34 @@
         </div>
       </div>
 
-      <!-- IN-GAME WEAPON SWITCH PANEL (applied on next respawn) -->
-      <div class="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none select-none">
-        <div class="font-mono text-[9px] text-gray-400 mb-1 bg-[#0b0c10] bg-opacity-70 px-2 py-0.5 rounded">무기 교체 (다음 부활 적용)</div>
-        <div id="weaponSwitchPanel" class="flex flex-wrap justify-center gap-1 max-w-[92vw] pointer-events-auto"></div>
+      <!-- IN-GAME WEAPON SWITCH (desktop: always-on right-side bar; mobile: toggle opens the same bar) -->
+      <!-- Mobile-only toggle button (hidden on desktop, where the bar is always shown) -->
+      <button id="weaponPanelToggle" type="button"
+        class="absolute right-3 top-1/2 -translate-y-1/2 z-[36] lg:hidden pointer-events-auto select-none
+               flex flex-col items-center gap-0.5 font-mono font-bold
+               bg-[#1f2833] bg-opacity-90 border-2 border-[#45f3ff] text-[#45f3ff]
+               px-2.5 py-3 rounded-lg active:scale-95 transition-transform shadow-[0_0_12px_rgba(69,243,255,0.4)]">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3 4 7l4 4" /><path d="M4 7h12" /><path d="M16 21l4-4-4-4" /><path d="M20 17H8" />
+        </svg>
+        <span class="text-[9px] leading-none">무기</span>
+        <span id="weaponToggleCurrent" class="text-[9px] leading-none text-white"></span>
+      </button>
+
+      <!-- Dimmer behind the mobile panel; tap to close (never shown on desktop) -->
+      <div id="weaponPanelBackdrop" class="absolute inset-0 z-[35]"></div>
+
+      <!-- The bar: a tall vertical strip of weapon buttons in the arena's right gutter -->
+      <div id="weaponSwitchPanel"
+        class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-[36] gap-2
+               max-h-[94vh] overflow-y-auto p-2 sm:p-3
+               bg-[#1f2833] bg-opacity-95 border-2 border-[#45f3ff] rounded-lg
+               shadow-[0_0_20px_rgba(69,243,255,0.3)] pointer-events-auto select-none">
+        <div class="wsp-header font-mono text-center text-[10px] sm:text-[11px] text-gray-300 font-bold pb-1.5 mb-1 border-b border-gray-600">
+          무기 교체
+          <div class="text-[8px] sm:text-[9px] text-gray-500 font-normal mt-0.5">다음 부활 시 적용</div>
+        </div>
+        <div id="weaponSwitchList" class="flex flex-col gap-1.5"></div>
       </div>
 
       <!-- MOBILE VIRTUAL JOYSTICKS -->

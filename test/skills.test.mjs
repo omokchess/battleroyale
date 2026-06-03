@@ -509,6 +509,40 @@ test('hammer skill fires three expanding shockwaves with scaling damage and stun
   assert.equal(game.pendingHammerSlams.length, 0);
 });
 
+test('hammer skill forbids basic attacks until the final shockwave fires', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingHammerSlams = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const sk = SkillConfig.hammer;
+  const d = sk.waveDelaysMs;
+  const cast = 2000; // past the 1150ms basic cooldown so only the lockout matters
+  const lastFire = cast + sk.previewMs + d[0] + d[1] + d[2]; // cast + windup + all three waves
+
+  const owner = new Player('hammer-owner', 'Bell', 'hammer', 100, 100);
+  game.players[owner.id] = owner;
+
+  assert.equal(owner.canAttack(cast), true);                 // free to swing before casting
+  game._castHammerSkill(owner, cast);
+
+  // Locked out for the whole skill, including the gaps between shockwaves.
+  assert.equal(owner.canAttack(cast), false);                // right after cast
+  assert.equal(owner.canAttack(cast + sk.previewMs), false); // during the windup
+  assert.equal(owner.canAttack(lastFire - 1), false);        // an instant before the last wave
+  assert.equal(owner.canAttack(lastFire), true);             // skill over → free again
+
+  // A respawn (clearCombatTimers) must also lift the lockout immediately.
+  owner.skillCdLeft = 0;
+  game._castHammerSkill(owner, 6000);
+  assert.equal(owner.canAttack(6000), false);
+  owner.clearCombatTimers();
+  assert.equal(owner.canAttack(6000), true);
+});
+
 test('hammer outer shockwave misses targets beyond the first wave radius', () => {
   const game = Object.create(Game.prototype);
   game.players = {};

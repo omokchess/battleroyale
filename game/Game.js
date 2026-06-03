@@ -1280,6 +1280,8 @@ export class Game {
     });
 
     player.skillCdLeft = sk.cooldownMs / 1000;
+    // Block ALL basic attacks from cast until the final shockwave fires.
+    player.hammerSkillUntil = now + (offsets[offsets.length - 1] || previewMs);
 
     const maxRange = waves.length ? waves[waves.length - 1].range : (sk.range || 150);
     // The preview's filling disc reaches each ring exactly when that wave fires
@@ -1912,6 +1914,13 @@ export class Game {
         btn.classList.toggle('weapon-current', w === cur);
         btn.classList.toggle('weapon-pending', Boolean(pend) && w === pend && pend !== cur);
       });
+      // Mobile toggle button reflects the equipped (or queued) weapon at a glance.
+      const toggleLabel = document.getElementById('weaponToggleCurrent');
+      if (toggleLabel) {
+        toggleLabel.textContent = (pend && pend !== cur)
+          ? '→' + (Weapons[pend]?.name || '')
+          : (Weapons[cur]?.name || '');
+      }
     }
 
     // HP Bar
