@@ -1262,23 +1262,28 @@ export class Game {
     // wave fires waveDelaysMs[i] after the previous event → cast+1.8/2.6/3.8s.
     const originX = player.x;
     const originY = player.y;
+    // Fire offsets from cast: windup, then each wave waveDelaysMs[i] later.
     let t = previewMs;
-    waves.forEach((wave, i) => {
+    const offsets = waves.map((wave, i) => {
       t += (delays[i] ?? delays[delays.length - 1] ?? 0);
+      return t;
+    });
+    waves.forEach((wave, i) => {
       this.pendingHammerSlams.push({
         playerId: player.id,
         originX,
         originY,
         wave,
         waveIndex: i,
-        releaseAt: now + t
+        releaseAt: now + offsets[i]
       });
     });
 
     player.skillCdLeft = sk.cooldownMs / 1000;
 
     const maxRange = waves.length ? waves[waves.length - 1].range : (sk.range || 150);
-    // Telegraph all three shockwave radii through the windup, up to the first hit.
+    // The preview's filling disc reaches each ring exactly when that wave fires
+    // (hitOffsets), starting to grow after the windup (fillStartMs).
     this.effects.push({
       attackerId: player.id,
       x: originX,
@@ -1287,10 +1292,12 @@ export class Game {
       type: 'hammer_windup',
       range: maxRange,
       ranges: waves.map(w => w.range),
+      hitOffsets: offsets,
+      fillStartMs: previewMs,
       worldAnchored: true,
       progress: 0,
       timestamp: now,
-      lifetime: previewMs + (delays[0] || 0)
+      lifetime: offsets[offsets.length - 1] || previewMs
     });
   }
 

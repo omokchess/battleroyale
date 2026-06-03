@@ -1351,29 +1351,52 @@ export class Renderer {
   }
 
   _drawHammerWindup(ctx, scr, e, weapon, alpha) {
-    const progress = clamp01(e.progress);
     const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 70);
+    const lifetime = e.lifetime || 1;
+    const elapsed = clamp01(e.progress) * lifetime; // ms since cast
     // e.ranges are raw world radii; weapon.range is already zoom-scaled, so
     // recover the zoom factor to scale each telegraphed ring.
     const zoom = e.range ? weapon.range / e.range : 1;
     const ranges = (Array.isArray(e.ranges) && e.ranges.length ? e.ranges : [e.range || weapon.range]).map(r => r * zoom);
-    const maxR = Math.max(...ranges);
+    const hits = Array.isArray(e.hitOffsets) ? e.hitOffsets : [];
+    const fillStart = e.fillStartMs ?? 0;
+
+    // The filling disc reaches ranges[i] exactly at hitOffsets[i], so it visibly
+    // touches each dashed ring the instant that shockwave fires.
+    let fillR = 0;
+    let prevT = fillStart;
+    let prevR = 0;
+    for (let i = 0; i < ranges.length; i++) {
+      const at = Number.isFinite(hits[i]) ? hits[i] : lifetime;
+      if (elapsed >= at) { prevT = at; prevR = ranges[i]; fillR = ranges[i]; continue; }
+      const span = at - prevT;
+      const seg = span > 0 ? clamp01((elapsed - prevT) / span) : 1;
+      fillR = prevR + (ranges[i] - prevR) * seg;
+      break;
+    }
 
     ctx.save();
 
-    // A filling disc that grows over the windup → reads as a countdown to the hit.
-    ctx.fillStyle = this._hexToRGB(weapon.color, 0.07 * alpha);
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, maxR * progress, 0, Math.PI * 2);
-    ctx.fill();
+    // Filling disc (the "countdown" that touches each ring on its hit).
+    if (fillR > 0) {
+      ctx.fillStyle = this._hexToRGB(weapon.color, 0.1 * alpha);
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, fillR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.6 * alpha);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, fillR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
-    // The three shockwave radii as dashed rings (outermost = weapon color).
+    // The shockwave radii as dashed rings; already-fired ones glow in weapon color.
     ctx.setLineDash([8, 7]);
     ctx.lineCap = 'round';
     ranges.forEach((r, i) => {
-      const outer = i === ranges.length - 1;
-      ctx.strokeStyle = this._hexToRGB(outer ? weapon.color : '#ffffff', (0.32 + 0.28 * pulse) * alpha);
-      ctx.lineWidth = (1.6 + 0.7 * i) * Math.max(0.6, alpha);
+      const fired = elapsed >= (Number.isFinite(hits[i]) ? hits[i] : Infinity);
+      ctx.strokeStyle = this._hexToRGB(fired ? weapon.color : '#ffffff', (fired ? 0.7 : 0.3 + 0.25 * pulse) * alpha);
+      ctx.lineWidth = ((fired ? 2.6 : 1.6) + 0.5 * i) * Math.max(0.6, alpha);
       ctx.beginPath();
       ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
       ctx.stroke();
