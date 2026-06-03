@@ -9,7 +9,13 @@
 }
 #weaponSwitchPanel.open { display: flex; }              /* mobile: opened via the toggle */
 @media (min-width: 1024px) {
-  #weaponSwitchPanel { display: flex; width: 11rem; }   /* desktop: always shown */
+  #weaponSwitchPanel {
+    display: flex;
+    width: 13rem;        /* a touch wider than before */
+    top: 7rem;           /* raised toward the top (was vertical-center) */
+    bottom: auto;
+    transform: none;     /* cancel the -translate-y-1/2 centering */
+  }
 }
 
 #weaponPanelBackdrop { display: none; background: rgba(0, 0, 0, 0.55); }
