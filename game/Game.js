@@ -1833,12 +1833,15 @@ export class Game {
       const p = this.players[id];
       if (p.isDead || id === this.localPlayerId) return; // Wait, allow server correction directly, except local player has prediction
 
-      // Linear correction step (interpolate ~30% of the distance each frame)
-      // This bridges the 20Hz network update to 60Hz screen rates beautifully!
+      // Frame-rate-INDEPENDENT smoothing: the fraction is derived from the real
+      // elapsed time, so remote players converge in the same wall-clock time at
+      // 144fps or 25fps. (The old fixed 0.3/frame made low FPS rubber-band.)
       if (p.targetX !== undefined) {
-        p.x += (p.targetX - p.x) * 0.3;
-        p.y += (p.targetY - p.y) * 0.3;
-        p.angle = lerpAngle(p.angle, p.targetAngle, 0.35);
+        const posT = 1 - Math.exp(-22 * deltaTime); // ≈0.30 per frame at 60fps
+        const angT = 1 - Math.exp(-26 * deltaTime);
+        p.x += (p.targetX - p.x) * posT;
+        p.y += (p.targetY - p.y) * posT;
+        p.angle = lerpAngle(p.angle, p.targetAngle, angT);
       }
     });
 
@@ -2353,11 +2356,17 @@ export class Game {
               p.targetY = snap.y;
               p.targetAngle = snap.angle;
             } else {
-              // Absolute correction on local coordinates if too far from host state to solve client desyncs
+              // Reconcile local prediction toward the host WITHOUT teleporting:
+              // moderate drift is corrected a fraction at a time (spread across
+              // ticks, invisible), and only a big desync — knockback, respawn or
+              // a lag spike — hard-snaps.
               const correctionDistance = localCorrectDist(p.x, p.y, snap.x, snap.y);
-              if (p.isDead || correctionDistance > 45) {
+              if (p.isDead || correctionDistance > 120) {
                 p.x = snap.x;
                 p.y = snap.y;
+              } else if (correctionDistance > 6) {
+                p.x += (snap.x - p.x) * 0.25;
+                p.y += (snap.y - p.y) * 0.25;
               }
               if (p.isDead && Number.isFinite(snap.angle)) {
                 p.angle = snap.angle;
