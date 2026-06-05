@@ -588,6 +588,62 @@ test('hammer outer shockwave misses targets beyond the first wave radius', () =>
   assert.equal(target.hp, target.maxHp - w2.damage);
 });
 
+test('matchlock instakills the first enemy on the aim line and goes on a long cooldown', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.projectiles = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const gunner = new Player('gun', 'Gun', 'matchlock', 100, 100);
+  gunner.angle = 0; // facing +x
+  const victim = new Player('vic', 'Vic', 'sword', 300, 100); // directly on the aim line
+  game.players[gunner.id] = gunner;
+  game.players[victim.id] = victim;
+
+  game._fireMatchlock(gunner, 1000);
+  assert.ok(victim.hp <= 0);                       // instakill regardless of max HP
+  assert.ok(gunner.skillCdLeft > 14);              // ~15s cooldown
+  assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'matchlock'), true);
+
+  // A perpendicular target is NOT on the line and survives.
+  const safe = new Player('safe', 'Safe', 'sword', 100, 300);
+  game.players[safe.id] = safe;
+  gunner.skillCdLeft = 0;
+  game._fireMatchlock(gunner, 2000);
+  assert.equal(safe.hp, safe.maxHp);
+});
+
+test('katana skill queues two slashes and launches a blade wave per slash', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.projectiles = [];
+  game.pendingKatanaSlashes = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const ninja = new Player('kat', 'Kat', 'katana', 100, 100);
+  ninja.angle = 0;
+  game.players[ninja.id] = ninja;
+
+  const d = SkillConfig.katana;
+  game._castKatanaSkill(ninja, 1000);
+  assert.equal(game.pendingKatanaSlashes.length, d.slashCount);
+  assert.ok(ninja.skillCdLeft > 6);
+
+  game._releaseDueKatanaSlashes(1000);                       // first slash fires now
+  assert.equal(game.projectiles.filter(p => p.weapon === 'katana').length, 1);
+  assert.equal(game.pendingKatanaSlashes.length, d.slashCount - 1);
+
+  game._releaseDueKatanaSlashes(1000 + d.slashIntervalMs);   // second slash
+  assert.equal(game.pendingKatanaSlashes.length, 0);
+  assert.equal(game.projectiles.filter(p => p.weapon === 'katana').length, 2);
+});
+
 test('bow railgun vibration only fires for the local caster once', () => {
   const game = Object.create(Game.prototype);
   const calls = [];

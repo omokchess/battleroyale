@@ -151,6 +151,35 @@ export const Weapons = {
     description: '묵직한 원형 내려찍기 무기입니다. 맞은 적을 크게 밀어냅니다.',
     skill: 'F 스킬: 1초 예열 후 0.8·0.8·1.2초 간격으로 점점 커지는 충격파 3연발 (60·123·156px / 20·40·52 피해 / 0.7·0.75·1.1초 스턴), 시전~종료까지 평타 불가 · 쿨타임 8.5초',
     color: '#fb923c'
+  },
+  matchlock: {
+    name: '화승총',
+    damage: 999,            // 확정킬(즉사) — actual hit resolves via SkillConfig.matchlock
+    maxHp: 80,
+    cooldown: 15000,        // F-triggered only (automaticAttack false)
+    automaticAttack: false,
+    moveSpeed: 0.9,
+    range: Infinity,
+    speed: 50000,           // label only — fires as an instant hitscan
+    type: 'projectile',     // draws an aim line to the wall as the preview
+    description: 'F 키로 직선상의 첫 적을 즉사시키는 화기입니다. 조준선이 닿으면 즉시 처치하지만 쿨타임이 매우 깁니다.',
+    skill: 'F 키: 조준 직선상의 첫 적을 즉사(확정킬) · 쿨타임 15초',
+    color: '#ef4444'
+  },
+  katana: {
+    name: '카타나',
+    damage: 24,
+    maxHp: 110,
+    cooldown: 430,          // 검(550)보다 빠른 평타
+    moveSpeed: 1.2,
+    range: 70,
+    angle: 110,
+    type: 'melee_arc',
+    hitMode: 'melee_blade_sweep',
+    bladeHalfWidth: 12,
+    description: '검과 같은 베기지만 더 빠르게 휘두르는 쾌속 도검입니다.',
+    skill: 'F 스킬: 앞으로 돌진하며 2회 베고, 벨 때마다 벽까지 닿는 검기 발사 (직접 40·검기 30) · 쿨타임 7초',
+    color: '#f43f5e'
   }
 };
 
@@ -294,6 +323,23 @@ export const SkillConfig = {
       { range: 123, damage: 40, stunMs: 750,  knockback: 70 },
       { range: 156, damage: 52, stunMs: 1100, knockback: 100 }
     ]
+  },
+  matchlock: {
+    cooldownMs: 15000,
+    damage: 9999,           // instakill
+    speed: 50000            // label only — instant hitscan
+  },
+  katana: {
+    cooldownMs: 7000,
+    dashDistance: 150,      // total forward lunge across the two slashes
+    slashCount: 2,
+    slashIntervalMs: 150,
+    directDamage: 40,
+    directRange: 82,
+    directAngle: 130,
+    waveDamage: 30,
+    waveSpeed: 832,         // 화살(640)의 1.3배
+    attackLockMs: 250
   }
 };
 
@@ -389,6 +435,20 @@ export const ComboConfig = {
       critDamage: 36,
       knockback: 30,
       cooldown: 430
+    }
+  },
+  katana: {
+    // Same shape as the sword combo — katana just swings faster (lower cooldown).
+    cycle: 4,
+    delayAfterStep: 3,
+    delayBeforeFinisherMs: 760,
+    comboResetMs: 2600,
+    finisher: {
+      type: 'melee_arc',
+      damage: 28,
+      range: 78,
+      angle: 360,
+      cooldown: 600
     }
   }
 };

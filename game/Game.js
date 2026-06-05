@@ -33,6 +33,7 @@ export class Game {
     this.projectiles = [];
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
+    this.pendingKatanaSlashes = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
@@ -78,6 +79,7 @@ export class Game {
     this.projectiles = [];
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
+    this.pendingKatanaSlashes = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
@@ -354,6 +356,7 @@ export class Game {
 
     this._releaseDueSwordWaves(now);
     this._releaseDueBowRailguns(now);
+    this._releaseDueKatanaSlashes(now);
     this._processSpearThrowQueue(now);
     this._processPendingMeleeHits(now);
     this._processGreatswordCharges(now);
@@ -933,6 +936,8 @@ export class Game {
       case 'dagger': this._startDaggerQte(player, now); break;
       case 'rapier': this._startBuff(player, 'rapier_riposte', SkillConfig.rapier.buffMs, now); break;
       case 'hammer': this._castHammerSkill(player, now); break;
+      case 'matchlock': this._fireMatchlock(player, now); break;
+      case 'katana': this._castKatanaSkill(player, now); break;
       default: break;
     }
   }
@@ -1475,6 +1480,123 @@ export class Game {
         if (died) this._creditKill(proj.ownerId, target, '검기 폭발로');
       }
     });
+  }
+
+  // --- 화승총 (matchlock): instant hitscan that executes the first enemy on the
+  // aim line. Same ray solve as the bow railgun, but a single confirmed-kill shot.
+  _fireMatchlock(player, now) {
+    const sk = SkillConfig.matchlock;
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+
+    let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    let hitTarget = null;
+    Object.keys(this.players).forEach(tid => {
+      const target = this.players[tid];
+      if (target.id === player.id || target.isDead || target.isInvincible()) return;
+      const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, target.x, target.y, target.radius);
+      if (d !== null && d <= hitDist) { hitDist = d; hitTarget = target; }
+    });
+
+    if (hitTarget) {
+      const died = hitTarget.takeDamage(sk.damage, player.nickname); // instakill
+      if (died) this._creditKill(player.id, hitTarget, '화승총으로');
+    }
+
+    player.skillCdLeft = sk.cooldownMs / 1000;
+    this.effects.push({
+      id: `${player.id}-matchbeam-${now}`,
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      x2: player.x + dirX * hitDist,
+      y2: player.y + dirY * hitDist,
+      angle: player.angle,
+      weapon: 'matchlock',
+      type: 'railbeam',
+      progress: 0,
+      timestamp: now,
+      lifetime: 360
+    });
+  }
+
+  // --- 카타나 (katana): dash forward and cut twice; each cut deals a direct arc
+  // hit AND launches a wall-reaching blade wave.
+  _castKatanaSkill(player, now) {
+    const sk = SkillConfig.katana;
+    if (!this.pendingKatanaSlashes) this.pendingKatanaSlashes = [];
+    const count = Math.max(1, Math.floor(sk.slashCount || 2));
+    const interval = Math.max(0, sk.slashIntervalMs || 150);
+    for (let i = 0; i < count; i++) {
+      this.pendingKatanaSlashes.push({ playerId: player.id, releaseAt: now + interval * i, sequence: i });
+    }
+    player.skillCdLeft = sk.cooldownMs / 1000;
+    player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, now + (sk.attackLockMs || 0));
+  }
+
+  _releaseDueKatanaSlashes(now) {
+    if (!this.pendingKatanaSlashes?.length) return;
+    const sk = SkillConfig.katana;
+    const waiting = [];
+    for (const slash of this.pendingKatanaSlashes) {
+      if (slash.releaseAt > now) { waiting.push(slash); continue; }
+      const player = this.players[slash.playerId];
+      if (!player || player.isDead || player.weapon !== 'katana') continue;
+      this._performKatanaSlash(player, sk, now, slash.sequence);
+    }
+    this.pendingKatanaSlashes = waiting;
+  }
+
+  _performKatanaSlash(player, sk, now, sequence) {
+    // Lunge a step forward with each cut.
+    this._lungePlayer(player, (sk.dashDistance || 150) / Math.max(1, sk.slashCount || 2));
+
+    // Direct arc cut.
+    const attackConfig = {
+      ...Weapons.katana,
+      type: 'melee_arc',
+      hitMode: 'melee_blade_sweep',
+      damage: sk.directDamage,
+      range: sk.directRange,
+      angle: sk.directAngle
+    };
+    this._applyMeleeHits(this._snapshotMeleeAttacker(player), attackConfig, now);
+
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'katana',
+      type: 'melee_heavy_arc',
+      range: sk.directRange,
+      angleDeg: sk.directAngle,
+      swingDirection: sequence % 2 === 0 ? 1 : -1,
+      isSkill: true,
+      progress: 0,
+      timestamp: now,
+      lifetime: 340
+    });
+
+    // Wall-reaching blade wave (direct contact only — no AoE).
+    const angle = player.angle;
+    const spawnDist = player.radius + 4;
+    const proj = new Projectile(
+      `${player.id}-katanawave-${now}-${sequence}`,
+      player.id,
+      player.x + Math.cos(angle) * spawnDist,
+      player.y + Math.sin(angle) * spawnDist,
+      angle,
+      sk.waveSpeed,
+      Infinity,
+      sk.waveDamage,
+      'swordwave'
+    );
+    proj.explosionRadius = 0;
+    proj.explosionDamage = 0;
+    proj.weapon = 'katana';
+    this.projectiles.push(proj);
   }
 
   /**
@@ -2186,6 +2308,7 @@ export class Game {
 
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
+    this.pendingKatanaSlashes = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
