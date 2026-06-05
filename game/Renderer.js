@@ -2818,8 +2818,10 @@ export class Renderer {
     if (!player || player.isDead) return;
     const baseWeapon = getEffectiveWeapon(player.weapon, player.buffType);
     if (!baseWeapon) return;
-    if (!isLocal && !isAttacking) return;
-    // Local player always shows the dashed range guide; attacking overlays it with the solid shape.
+    // Reaching here means the guide should be shown: the local player always, and
+    // enemies whenever the viewer hasn't hidden them (gated by hideEnemyAttackPreviews
+    // in the caller). So enemy guides show whether or not they're mid-attack —
+    // idle draws the dashed guide, attacking overlays the solid shape.
 
     // Charging up the combo finisher? Preview its (bigger) hit range instead.
     const isFinisherPreview = activeAttack?.type === 'finisher_ready' && Boolean(activeAttack.previewType);
