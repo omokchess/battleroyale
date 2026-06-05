@@ -11,11 +11,11 @@
 @media (min-width: 1024px) {
   #weaponSwitchPanel {
     display: flex;
-    width: 16rem;        /* clearly wider */
-    top: 7rem;           /* raised toward the top of the right gutter */
+    width: 16rem;                  /* clearly wider */
+    top: 44%;                      /* centred in the right gutter, aligned with the arena middle */
     bottom: auto;
-    transform: none;
-    translate: none;     /* cancel Tailwind v4's -translate-y-1/2 (it shoved the bar off the top) */
+    transform: translateY(-50%);   /* own transform — reliable vertical centre */
+    translate: none;               /* cancel Tailwind v4's -translate-y-1/2 (it shoved the bar off the top) */
     /* no left/right here: the element keeps Tailwind's right-2 sm:right-4 (arena's right gutter) */
   }
 }
