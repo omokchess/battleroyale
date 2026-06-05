@@ -516,6 +516,10 @@ export class Game {
       this._castMagicStaff(player, now);
       return;
     }
+    if (player.weapon === 'sniper') {
+      this._fireSniperShot(player, now);
+      return;
+    }
     const combo = this._resolveComboAttack(player, weaponConfig, now);
     const attackConfig = combo.weaponConfig;
     const swingDirection = Number.isFinite(attackConfig.fixedSwingDirection)
@@ -964,6 +968,7 @@ export class Game {
       case 'hammer': this._castHammerSkill(player, now); break;
       case 'matchlock': this._fireMatchlock(player, now); break;
       case 'katana': this._castKatanaSkill(player, now); break;
+      case 'sniper': this._sniperTeleport(player, now); break;
       default: break;
     }
   }
@@ -1689,14 +1694,17 @@ export class Game {
     player.pendingIcicles = 0;
     player.lastAttackTime = now; // 3s cast cooldown restarts from firing
     const spawnDist = player.radius + 4;
-    const spread = (cfg.spreadDeg || 9) * Math.PI / 180;
+    // All four shards travel toward the cursor (player.angle); only the spawn
+    // points are spread abreast so they read as four distinct icicles.
+    const a = player.angle;
+    const ux = Math.cos(a), uy = Math.sin(a);
     for (let i = 0; i < count; i++) {
-      const a = player.angle + (i - (count - 1) / 2) * spread;
+      const off = (i - (count - 1) / 2) * 11; // perpendicular px offset
       const proj = new Projectile(
         `${player.id}-iceshard-${now}-${i}`,
         player.id,
-        player.x + Math.cos(a) * spawnDist,
-        player.y + Math.sin(a) * spawnDist,
+        player.x + ux * spawnDist - uy * off,
+        player.y + uy * spawnDist + ux * off,
         a,
         cfg.speed,
         Infinity,
@@ -1740,6 +1748,52 @@ export class Game {
         p.burnSourceId = null;
       }
     });
+  }
+
+  // --- 스나이퍼 (sniper): immobile. Its basic attack is an instant hitscan that
+  // executes the first enemy on the aim line; mobility is the F teleport only.
+  _fireSniperShot(player, now) {
+    player.lastAttackTime = now;
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+
+    let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    let hitTarget = null;
+    Object.keys(this.players).forEach(tid => {
+      const target = this.players[tid];
+      if (target.id === player.id || target.isDead || target.isInvincible()) return;
+      const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, target.x, target.y, target.radius);
+      if (d !== null && d <= hitDist) { hitDist = d; hitTarget = target; }
+    });
+
+    if (hitTarget) {
+      const died = hitTarget.takeDamage(9999, player.nickname); // instakill
+      if (died) this._creditKill(player.id, hitTarget, '스나이퍼로');
+    }
+
+    this.effects.push({
+      id: `${player.id}-sniperbeam-${now}`,
+      attackerId: player.id,
+      x: player.x, y: player.y,
+      x2: player.x + dirX * hitDist, y2: player.y + dirY * hitDist,
+      angle: player.angle,
+      weapon: 'sniper',
+      type: 'railbeam',
+      progress: 0, timestamp: now, lifetime: 320
+    });
+  }
+
+  _sniperTeleport(player, now) {
+    const sk = SkillConfig.sniper;
+    const margin = (player.radius || 14) + 12;
+    const fromX = player.x, fromY = player.y;
+    player.x = margin + Math.random() * Math.max(1, this.mapWidth - margin * 2);
+    player.y = margin + Math.random() * Math.max(1, this.mapHeight - margin * 2);
+    player.skillCdLeft = (sk?.cooldownMs || 4000) / 1000;
+    // Poof at the vacated spot and at the arrival spot (world-anchored so they stay put).
+    this.effects.push({ attackerId: player.id, x: fromX, y: fromY, weapon: 'sniper', type: 'sniper_teleport', worldAnchored: true, progress: 0, timestamp: now, lifetime: 420 });
+    this.effects.push({ attackerId: player.id, x: player.x, y: player.y, weapon: 'sniper', type: 'sniper_teleport', worldAnchored: true, progress: 0, timestamp: now, lifetime: 420 });
   }
 
   /**

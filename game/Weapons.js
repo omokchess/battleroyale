@@ -154,7 +154,7 @@ export const Weapons = {
   },
   matchlock: {
     name: '화승총',
-    damage: 999,            // 확정킬(즉사) — actual hit resolves via SkillConfig.matchlock
+    damage: Infinity,       // 확정킬(즉사) — actual hit resolves via SkillConfig.matchlock
     maxHp: 80,
     cooldown: 15000,        // F-triggered only (automaticAttack false)
     automaticAttack: false,
@@ -193,6 +193,19 @@ export const Weapons = {
     description: '평타가 3종 주문 중 하나로 무작위 시전되는 지팡이입니다. 파이어볼·아이스 샤드·라이프바운드가 무작위로 나갑니다.',
     skill: '평타(자동, 3초): 무작위 시전 — 파이어볼(40+화염 2/초·4초), 아이스 샤드(고드름 4발 장전→F로 발사·각 12), 라이프바운드(자힐 30)',
     color: '#a855f7'
+  },
+  sniper: {
+    name: '스나이퍼',
+    damage: Infinity,       // 즉사 (actual shot resolves as a 9999 hitscan)
+    maxHp: 90,
+    cooldown: 3000,         // basic-shot cadence
+    moveSpeed: 0,           // completely immobile — repositions only via F teleport
+    range: Infinity,
+    speed: Infinity,        // instant hitscan
+    type: 'projectile',     // idle preview draws the aim line
+    description: '이동속도 0의 완전 고정 저격총입니다. 평타는 조준 직선상 첫 적을 즉사시키는 즉시 명중탄이며, 이동은 오직 F 순간이동뿐입니다.',
+    skill: 'F 스킬: 경기장 내 무작위 위치로 순간이동 · 쿨타임 4초',
+    color: '#22c55e'
   }
 };
 
@@ -353,6 +366,9 @@ export const SkillConfig = {
     waveDamage: 30,
     waveSpeed: 832,         // 화살(640)의 1.3배
     attackLockMs: 250
+  },
+  sniper: {
+    cooldownMs: 4000        // F: random teleport across the arena
   }
 };
 

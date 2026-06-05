@@ -707,6 +707,29 @@ export class Renderer {
     ctx.restore();
   }
 
+  // 스나이퍼 순간이동: an expanding green scope ring with crosshair ticks.
+  _drawSniperTeleport(ctx, scr, e, alpha, zoom) {
+    const progress = clamp01(e.progress);
+    ctx.save();
+    const r = (8 + 34 * easeOutCubic(progress)) * (0.6 + zoom * 0.4);
+    ctx.shadowBlur = this._glow * 10 * alpha;
+    ctx.shadowColor = '#22c55e';
+    ctx.strokeStyle = this._hexToRGB('#22c55e', 0.8 * alpha);
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = this._hexToRGB('#bbf7d0', 0.7 * alpha);
+    ctx.lineWidth = 1.5;
+    for (const ang of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      ctx.beginPath();
+      ctx.moveTo(scr.x + Math.cos(ang) * r * 0.5, scr.y + Math.sin(ang) * r * 0.5);
+      ctx.lineTo(scr.x + Math.cos(ang) * r, scr.y + Math.sin(ang) * r);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   _drawThrownSpear(ctx, scr, angle, zoom) {
     const len = 30 * Math.max(0.6, zoom);
     const tailX = scr.x - Math.cos(angle) * len;
@@ -888,6 +911,8 @@ export class Renderer {
         this._drawLifeboundHeal(ctx, scr, e, alpha, zoom);
       } else if (e.type === 'icicle_load') {
         this._drawIcicleLoad(ctx, scr, e, alpha, zoom);
+      } else if (e.type === 'sniper_teleport') {
+        this._drawSniperTeleport(ctx, scr, e, alpha, zoom);
       }
     });
 

@@ -98,15 +98,16 @@ function displayWeaponStats(weaponType) {
   } else if (cfg.type === 'melee_slam') {
     extraDetails = `범위: 지연 원형 충격파 (${cfg.innerRange}px 안쪽 강화)`;
   } else if (cfg.type === 'projectile') {
-    extraDetails = `• 화살 속도: ${cfg.speed}px/s`;
+    extraDetails = Number.isFinite(cfg.speed) ? `• 투사체 속도: ${cfg.speed}px/s` : '• 투사체 속도: ∞ (즉시 명중)';
   }
   const rangeLabel = Number.isFinite(cfg.range) ? `${cfg.range}px` : '벽까지';
   const moveSpeedLabel = formatSpeedRatio(cfg.moveSpeed);
   const autoAttackDisabled = cfg.automaticAttack === false;
   const cooldownLabel = autoAttackDisabled ? '평타 없음' : `재사용 대기시간: ${(cfg.cooldown / 1000).toFixed(2)}초`;
+  const damageLabel = Number.isFinite(cfg.damage) ? cfg.damage : '∞ (즉사)';
   const attackLabel = autoAttackDisabled
     ? `${uiIcon('attack')}평타: <strong class="text-white">없음</strong>`
-    : `${uiIcon('attack')}공격력: <strong class="text-white">${cfg.damage}</strong>`;
+    : `${uiIcon('attack')}공격력: <strong class="text-white">${damageLabel}</strong>`;
 
   weaponStats.innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[#45f3ff] font-bold mb-1">

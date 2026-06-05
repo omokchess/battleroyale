@@ -720,6 +720,33 @@ test('magic staff lifebound heals the caster, capped at max hp', () => {
   assert.equal(mage.hp, mage.maxHp);
 });
 
+test('sniper basic shot instakills on the aim line, F teleports in-bounds, and it cannot dash', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.projectiles = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const sniper = new Player('snp', 'Snp', 'sniper', 100, 100);
+  sniper.angle = 0;
+  const victim = new Player('v', 'V', 'sword', 400, 100); // on the aim line
+  game.players[sniper.id] = sniper;
+  game.players[victim.id] = victim;
+
+  game._fireSniperShot(sniper, 1000);
+  assert.ok(victim.hp <= 0);                                  // instakill hitscan
+  assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'sniper'), true);
+
+  game._sniperTeleport(sniper, 2000);
+  assert.ok(sniper.skillCdLeft > 3.9);                        // ~4s cooldown
+  assert.ok(sniper.x >= 0 && sniper.x <= 700 && sniper.y >= 0 && sniper.y <= 700); // stayed in-bounds
+  assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 2);
+
+  assert.equal(sniper.startDash(1, 0), false);                // immobile: no dash
+});
+
 test('bow railgun vibration only fires for the local caster once', () => {
   const game = Object.create(Game.prototype);
   const calls = [];
