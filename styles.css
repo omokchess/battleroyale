@@ -12,7 +12,7 @@
   #weaponSwitchPanel {
     display: flex;
     width: 16rem;        /* clearly wider */
-    top: 13rem;          /* lowered so it clears the top-right room/settings HUD */
+    top: 7rem;           /* raised toward the top of the right gutter */
     bottom: auto;
     transform: none;
     translate: none;     /* cancel Tailwind v4's -translate-y-1/2 (it shoved the bar off the top) */

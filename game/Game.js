@@ -148,7 +148,9 @@ export class Game {
     // Render at the device's true pixel density so phones/retina screens look
     // crisp. The drawing buffer is dpr× the CSS size; Input scales pointer
     // coordinates by the same ratio so aim stays accurate everywhere.
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    // Performance mode renders at CSS resolution (dpr 1); otherwise cap at 2 —
+    // 3× quadruples the pixel/shadow work for little visible gain.
+    const dpr = this.visualSettings?.performanceMode ? 1 : Math.min(window.devicePixelRatio || 1, 2);
     const viewport = window.visualViewport;
     const fallbackWidth = document.documentElement.clientWidth || window.innerWidth || 1;
     const fallbackHeight = document.documentElement.clientHeight || window.innerHeight || 1;
@@ -173,7 +175,8 @@ export class Game {
 
     const bindings = [
       ['settingHideEnemyPreview', 'hideEnemyAttackPreviews'],
-      ['settingMinEnemyEffects', 'minimizeEnemyAttackEffects']
+      ['settingMinEnemyEffects', 'minimizeEnemyAttackEffects'],
+      ['settingPerformanceMode', 'performanceMode']
     ];
 
     const cleanups = [];
@@ -184,6 +187,8 @@ export class Game {
       const onChange = () => {
         this.visualSettings[key] = Boolean(input.checked);
         this._saveVisualSettings();
+        // Performance mode changes the render resolution (dpr) — reapply now.
+        if (key === 'performanceMode') this._resizeCanvas();
       };
       input.addEventListener('change', onChange);
       cleanups.push(() => input.removeEventListener('change', onChange));
@@ -204,12 +209,14 @@ export class Game {
       const parsed = JSON.parse(localStorage.getItem('battle_visual_settings_v1') || '{}') || {};
       return {
         hideEnemyAttackPreviews: Boolean(parsed.hideEnemyAttackPreviews),
-        minimizeEnemyAttackEffects: Boolean(parsed.minimizeEnemyAttackEffects)
+        minimizeEnemyAttackEffects: Boolean(parsed.minimizeEnemyAttackEffects),
+        performanceMode: Boolean(parsed.performanceMode)
       };
     } catch {
       return {
         hideEnemyAttackPreviews: false,
-        minimizeEnemyAttackEffects: false
+        minimizeEnemyAttackEffects: false,
+        performanceMode: false
       };
     }
   }

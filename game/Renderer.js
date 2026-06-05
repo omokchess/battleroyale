@@ -12,6 +12,8 @@ export class Renderer {
     this.particles = [];
     this.lastTime = Date.now();
     this.lastPlayersInfo = {};
+    this._glow = 1;     // shadowBlur multiplier — set to 0 by performance mode
+    this._perf = false; // performance mode: glows + particles disabled
   }
 
   /**
@@ -27,9 +29,19 @@ export class Renderer {
     this.lastTime = nowTime;
     const activeEffects = gameState.effects || [];
 
+    // Performance mode kills the two heaviest canvas costs: glows (every
+    // shadowBlur is multiplied by _glow) and particles. Everything else still
+    // renders normally.
+    this._perf = !!visualSettings.performanceMode;
+    this._glow = this._perf ? 0 : 1;
+
     // Particle logic updates & triggers
-    this._triggerInstantSparks(gameState, dt);
-    this._updateParticles(dt);
+    if (this._perf) {
+      if (this.particles.length) this.particles.length = 0;
+    } else {
+      this._triggerInstantSparks(gameState, dt);
+      this._updateParticles(dt);
+    }
 
     // Clear Screen
     ctx.fillStyle = '#0f1015';
@@ -410,7 +422,7 @@ export class Renderer {
     const bottomRight = camera.toScreen(mapWidth, mapHeight, cw, ch);
 
     // Glowing Neon Border shadow
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = this._glow *15;
     ctx.shadowColor = '#45f3ff';
     ctx.strokeStyle = '#45f3ff';
     ctx.lineWidth = 4;
@@ -418,7 +430,7 @@ export class Renderer {
     ctx.strokeRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
 
     // Subtly darken outside of boundary
-    ctx.shadowBlur = 0;
+    ctx.shadowBlur = this._glow *0;
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     
     // Top outside
@@ -576,7 +588,7 @@ export class Renderer {
     ctx.save();
     ctx.translate(scr.x, scr.y);
     ctx.rotate(angle);
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = this._glow *14;
     ctx.shadowColor = '#45f3ff';
     ctx.lineCap = 'round';
 
@@ -644,7 +656,7 @@ export class Renderer {
         return;
       }
 
-      ctx.shadowBlur = (minimized ? 4 : 14) * alpha;
+      ctx.shadowBlur = this._glow *(minimized ? 4 : 14) * alpha;
       ctx.shadowColor = weapon.color;
 
       if (e.type === 'melee_heavy_arc') {
@@ -770,7 +782,7 @@ export class Renderer {
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.shadowBlur = (finisher ? 18 : 12) * alpha;
+    ctx.shadowBlur = this._glow *(finisher ? 18 : 12) * alpha;
     ctx.shadowColor = '#ffffff';
     ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.1 : 0.07) * alpha);
     ctx.beginPath();
@@ -912,7 +924,7 @@ export class Renderer {
     ctx.save();
     ctx.translate(scr.x, scr.y);
     ctx.rotate(angle);
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = this._glow *16;
     ctx.shadowColor = Weapons.greatsword.color;
     ctx.lineCap = 'round';
 
@@ -1150,7 +1162,7 @@ export class Renderer {
     const target = 52 - 36 * perfectT;
 
     ctx.save();
-    ctx.shadowBlur = 14 * alpha;
+    ctx.shadowBlur = this._glow *14 * alpha;
     ctx.shadowColor = weapon.color;
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.65 * alpha);
     ctx.lineWidth = 2.4;
@@ -1258,7 +1270,7 @@ export class Renderer {
       this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, 10, this._hexToRGB(weapon.color, 0.08 * alpha));
     }
 
-    ctx.shadowBlur = 12 * alpha;
+    ctx.shadowBlur = this._glow *12 * alpha;
     ctx.shadowColor = weapon.color;
     ctx.fillStyle = this._hexToRGB(weapon.color, 0.32 * alpha);
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
@@ -1644,7 +1656,7 @@ export class Renderer {
     ctx.translate(fistX, fistY);
     ctx.rotate(angle);
 
-    ctx.shadowBlur = 12 * alpha;
+    ctx.shadowBlur = this._glow *12 * alpha;
     ctx.shadowColor = weapon.color;
     ctx.fillStyle = this._hexToRGB(weapon.color, 0.72 * alpha);
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
@@ -1826,7 +1838,7 @@ export class Renderer {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.shadowColor = color;
-    ctx.shadowBlur = 12 * alpha;
+    ctx.shadowBlur = this._glow *12 * alpha;
 
     ctx.fillStyle = this._hexToRGB(color, (isAxe ? 0.12 : 0.1) * alpha);
     ctx.beginPath();
@@ -2200,7 +2212,7 @@ export class Renderer {
       ctx.save();
       
       // Glow and Shadow under player
-      ctx.shadowBlur = isLocal ? 15 : 4;
+      ctx.shadowBlur = this._glow * (isLocal ? 15 : 4);
       ctx.shadowColor = isLocal ? '#ef4444' : p.color;
       ctx.fillStyle = p.color;
 
@@ -2218,7 +2230,7 @@ export class Renderer {
       ctx.fill();
 
       // Outline
-      ctx.shadowBlur = 0;
+      ctx.shadowBlur = this._glow *0;
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = isLocal ? '#ef4444' : '#0b0c10';
       ctx.stroke();
@@ -2228,7 +2240,7 @@ export class Renderer {
       if (p.iframeTimeLeft > 0) {
         const iAlpha = clamp01(p.iframeTimeLeft / (DashConfig.iframeMs / 1000));
         ctx.save();
-        ctx.shadowBlur = 16 * iAlpha;
+        ctx.shadowBlur = this._glow *16 * iAlpha;
         ctx.shadowColor = '#ffffff';
         ctx.fillStyle = this._hexToRGB('#ffffff', 0.85 * iAlpha);
         ctx.beginPath();
@@ -2251,7 +2263,7 @@ export class Renderer {
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 3;
         ctx.shadowColor = '#ef4444';
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = this._glow *12;
         ctx.beginPath();
         ctx.arc(bodyScr.x, bodyScr.y, radius + pulse, 0, Math.PI * 2);
         ctx.stroke();
@@ -2368,7 +2380,7 @@ export class Renderer {
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.fillStyle = '#111216';
-    ctx.shadowBlur = active ? 8 : 0;
+    ctx.shadowBlur = this._glow * (active ? 8 : 0);
     ctx.shadowColor = player.accentColor;
 
     const weaponType = player.weapon;
@@ -2655,7 +2667,7 @@ export class Renderer {
       ctx.translate(gripX, gripY);
       ctx.rotate(scytheAngle);
 
-      ctx.shadowBlur = active ? 8 : 3;
+      ctx.shadowBlur = this._glow * (active ? 8 : 3);
       ctx.shadowColor = player.accentColor;
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
       ctx.lineWidth = 3.4;
@@ -3041,7 +3053,7 @@ export class Renderer {
     ctx.stroke();
 
     // Colored inner lines
-    ctx.shadowBlur = bright ? 10 : 4;
+    ctx.shadowBlur = this._glow * (bright ? 10 : 4);
     ctx.shadowColor = color;
     ctx.strokeStyle = bright ? color : this._hexToRGB(color, 0.85);
     ctx.lineWidth = bright ? 2.2 : 1.4;
@@ -3053,7 +3065,7 @@ export class Renderer {
     ctx.stroke();
 
     // Center dot
-    ctx.shadowBlur = 0;
+    ctx.shadowBlur = this._glow *0;
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(sx, sy, bright ? 2.8 : 2, 0, Math.PI * 2);
