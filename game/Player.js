@@ -44,6 +44,11 @@ export class Player {
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
     this.hammerSkillUntil = 0; // host-ms timestamp: no basic attacks until the hammer skill fully ends
+    this.pendingIcicles = 0;   // magic staff: ice shards loaded, waiting for F to fire
+    this.burnTimeLeft = 0;     // fire DoT: seconds remaining
+    this.burnTickLeft = 0;     // fire DoT: seconds until the next tick
+    this.burnDps = 0;          // fire DoT: damage per tick
+    this.burnSourceId = null;  // fire DoT: who applied it (kill credit)
     this.pendingWeapon = null; // queued weapon swap, applied on next respawn
     this.arrowStacks = 0;     // bow skill charges earned by landing arrows
     this.greatswordChargeStart = 0;
@@ -184,6 +189,11 @@ export class Player {
     this.buffTimeLeft = 0;
     this.spearThrown = false;
     this.hammerSkillUntil = 0;
+    this.pendingIcicles = 0;
+    this.burnTimeLeft = 0;
+    this.burnTickLeft = 0;
+    this.burnDps = 0;
+    this.burnSourceId = null;
     this.arrowStacks = 0;
     this.greatswordChargeStart = 0;
     this.greatswordChargeAngle = 0;
@@ -199,6 +209,8 @@ export class Player {
     if (this.isDead || this.stunTimeLeft > 0 || this.spearThrown || this.greatswordChargeStart > 0 || this.daggerQte) return false;
     // Hammer skill: absolutely no basic attacks from cast until the last shockwave fires.
     if (now < (this.hammerSkillUntil || 0)) return false;
+    // Magic staff: don't auto-cast again while ice shards are loaded (waiting for F).
+    if (this.weapon === 'magicstaff' && this.pendingIcicles > 0) return false;
     const ignoresComboDelay = this.weapon === 'axe' && this.buffType === 'axe_rage';
     if (!ignoresComboDelay && now < (this.comboDelayUntil || 0)) return false;
     const weaponConfig = getEffectiveWeapon(this.weapon, this.buffType);
@@ -252,6 +264,8 @@ export class Player {
       daggerQte: serializeDaggerQte(this.daggerQte),
       comboStep: this.comboStep || 0,
       comboDelayMs: Math.max(0, Math.round((this.comboDelayUntil || 0) - Date.now())),
+      pendingIcicles: this.pendingIcicles || 0,
+      burnMs: Math.round((this.burnTimeLeft || 0) * 1000),
       color: this.color,
       accentColor: this.accentColor
     };

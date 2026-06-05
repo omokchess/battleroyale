@@ -9,7 +9,7 @@ import { Collision } from './Collision.js';
 import { Camera } from './Camera.js';
 import { Input } from './Input.js';
 import { Renderer } from './Renderer.js';
-import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig } from './Weapons.js';
+import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig, MagicConfig } from './Weapons.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 
 // Time a dead player waits before respawning.
@@ -376,6 +376,9 @@ export class Game {
       }
     });
 
+    // 3b. Tick fire DoT (magic staff fireball burns).
+    this._tickBurns(deltaTime, now);
+
     // 4. Update and check projectile hits
     this.projectiles.forEach(proj => {
       if (proj.isDead) return;
@@ -418,6 +421,21 @@ export class Game {
             const died = target.takeDamage(proj.damage, 'swordwave');
             if (died) this._creditKill(proj.ownerId, target, '검기로');
             this._explodeSwordWave(proj, now);
+            return;
+          }
+
+          if (proj.kind === 'fireball') {
+            proj.isDead = true;
+            const died = target.takeDamage(proj.damage, '파이어볼');
+            this._applyBurn(target, proj.ownerId, proj.burnDps || 2, proj.burnDurationMs || 4000);
+            if (died) this._creditKill(proj.ownerId, target, '파이어볼로');
+            return;
+          }
+
+          if (proj.kind === 'iceshard') {
+            proj.isDead = true;
+            const died = target.takeDamage(proj.damage, '아이스 샤드');
+            if (died) this._creditKill(proj.ownerId, target, '아이스 샤드로');
             return;
           }
 
@@ -494,6 +512,10 @@ export class Game {
   }
 
   _performAutomaticAttack(player, weaponConfig, now) {
+    if (player.weapon === 'magicstaff') {
+      this._castMagicStaff(player, now);
+      return;
+    }
     const combo = this._resolveComboAttack(player, weaponConfig, now);
     const attackConfig = combo.weaponConfig;
     const swingDirection = Number.isFinite(attackConfig.fixedSwingDirection)
@@ -890,6 +912,10 @@ export class Game {
     if (!player || player.isDead || player.stunTimeLeft > 0) return;
     if (player.weapon === 'dagger' && player.daggerQte) {
       this._tryDaggerQteInput(player, now);
+      return;
+    }
+    if (player.weapon === 'magicstaff' && player.pendingIcicles > 0) {
+      this._fireIcicles(player, now);
       return;
     }
     if (player.weapon === 'greatsword') {
@@ -1599,6 +1625,123 @@ export class Game {
     this.projectiles.push(proj);
   }
 
+  // --- 마법 지팡이 (magic staff): every auto-cast rolls one of three spells.
+  _castMagicStaff(player, now) {
+    player.lastAttackTime = now;
+    const roll = Math.floor(Math.random() * 3);
+    if (roll === 0) this._castFireball(player, now);
+    else if (roll === 1) this._castIceShards(player, now);
+    else this._castLifebound(player, now);
+  }
+
+  _castFireball(player, now) {
+    const cfg = MagicConfig.fireball;
+    const angle = player.angle;
+    const spawnDist = player.radius + 4;
+    const proj = new Projectile(
+      `${player.id}-fireball-${now}`,
+      player.id,
+      player.x + Math.cos(angle) * spawnDist,
+      player.y + Math.sin(angle) * spawnDist,
+      angle,
+      cfg.speed,
+      Infinity,
+      cfg.damage,
+      'fireball'
+    );
+    proj.weapon = 'magicstaff';
+    proj.radius = cfg.radius;
+    proj.burnDps = cfg.burnDps;
+    proj.burnDurationMs = cfg.burnDurationMs;
+    this.projectiles.push(proj);
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle,
+      weapon: 'magicstaff', type: 'projectile_shot', projectileKind: 'fireball',
+      progress: 0, timestamp: now, lifetime: 200
+    });
+  }
+
+  _castIceShards(player, now) {
+    const cfg = MagicConfig.iceShard;
+    player.pendingIcicles = cfg.count; // loaded; canAttack pauses auto-cast until F fires them
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y,
+      weapon: 'magicstaff', type: 'icicle_load',
+      progress: 0, timestamp: now, lifetime: 320
+    });
+  }
+
+  _castLifebound(player, now) {
+    const cfg = MagicConfig.lifebound;
+    player.hp = Math.min(player.maxHp, player.hp + (cfg.heal || 30));
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y,
+      weapon: 'magicstaff', type: 'lifebound_heal',
+      progress: 0, timestamp: now, lifetime: 620
+    });
+  }
+
+  // Fire the loaded ice shards in a fan, then restart the cast cooldown.
+  _fireIcicles(player, now) {
+    const cfg = MagicConfig.iceShard;
+    const count = Math.max(0, Math.floor(player.pendingIcicles || 0));
+    if (count <= 0) return;
+    player.pendingIcicles = 0;
+    player.lastAttackTime = now; // 3s cast cooldown restarts from firing
+    const spawnDist = player.radius + 4;
+    const spread = (cfg.spreadDeg || 9) * Math.PI / 180;
+    for (let i = 0; i < count; i++) {
+      const a = player.angle + (i - (count - 1) / 2) * spread;
+      const proj = new Projectile(
+        `${player.id}-iceshard-${now}-${i}`,
+        player.id,
+        player.x + Math.cos(a) * spawnDist,
+        player.y + Math.sin(a) * spawnDist,
+        a,
+        cfg.speed,
+        Infinity,
+        cfg.damage,
+        'iceshard'
+      );
+      proj.weapon = 'magicstaff';
+      proj.radius = cfg.radius;
+      this.projectiles.push(proj);
+    }
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+      weapon: 'magicstaff', type: 'projectile_shot', projectileKind: 'iceshard',
+      progress: 0, timestamp: now, lifetime: 200
+    });
+  }
+
+  _applyBurn(target, sourceId, dps, durationMs) {
+    if (!target || target.isDead) return;
+    target.burnTimeLeft = Math.max(target.burnTimeLeft || 0, (durationMs || 4000) / 1000);
+    target.burnDps = dps || 2;
+    target.burnSourceId = sourceId;
+    if (!(target.burnTickLeft > 0)) target.burnTickLeft = 1; // first tick 1s after ignition
+  }
+
+  _tickBurns(deltaTime, now) {
+    Object.keys(this.players).forEach(id => {
+      const p = this.players[id];
+      if (!p || p.isDead || !(p.burnTimeLeft > 0)) return;
+      p.burnTimeLeft = Math.max(0, p.burnTimeLeft - deltaTime);
+      p.burnTickLeft -= deltaTime;
+      if (p.burnTickLeft <= 0 && !p.isDead) {
+        p.burnTickLeft += 1;
+        const died = p.takeDamage(p.burnDps || 2, '화염');
+        if (died) this._creditKill(p.burnSourceId, p, '화염으로');
+      }
+      if (p.burnTimeLeft <= 0) {
+        p.burnTimeLeft = 0;
+        p.burnTickLeft = 0;
+        p.burnDps = 0;
+        p.burnSourceId = null;
+      }
+    });
+  }
+
   /**
    * Bow skill: spend arrow stacks, then fire one railgun per stack.
    */
@@ -1948,6 +2091,7 @@ export class Game {
       if (p.iframeTimeLeft > 0) p.iframeTimeLeft = Math.max(0, p.iframeTimeLeft - deltaTime);
       if (p.buffTimeLeft > 0) p.buffTimeLeft = Math.max(0, p.buffTimeLeft - deltaTime);
       if (p.stunTimeLeft > 0) p.stunTimeLeft = Math.max(0, p.stunTimeLeft - deltaTime);
+      if (p.burnTimeLeft > 0) p.burnTimeLeft = Math.max(0, p.burnTimeLeft - deltaTime);
     });
 
     // Smoothly drag and interpolate positions
@@ -2470,6 +2614,8 @@ export class Game {
             } : null;
             p.comboStep = Math.max(0, Math.floor(snap.comboStep || 0));
             p.comboDelayUntil = Date.now() + Math.max(0, Math.round(snap.comboDelayMs || 0));
+            p.pendingIcicles = Math.max(0, Math.floor(snap.pendingIcicles || 0));
+            p.burnTimeLeft = Math.max(0, (snap.burnMs || 0) / 1000);
             p.color = snap.color;
             p.accentColor = snap.accentColor;
 

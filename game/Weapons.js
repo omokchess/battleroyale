@@ -180,6 +180,19 @@ export const Weapons = {
     description: '검과 같은 베기지만 더 빠르게 휘두르는 쾌속 도검입니다.',
     skill: 'F 스킬: 앞으로 돌진하며 2회 베고, 벨 때마다 벽까지 닿는 검기 발사 (직접 40·검기 30) · 쿨타임 7초',
     color: '#f43f5e'
+  },
+  magicstaff: {
+    name: '마법 지팡이',
+    damage: 40,             // fireball direct (display)
+    maxHp: 95,
+    cooldown: 3000,         // 3s between random casts
+    moveSpeed: 0.9,
+    range: Infinity,
+    speed: 540,             // shown as cast speed
+    type: 'projectile',     // idle preview draws the aim line
+    description: '평타가 3종 주문 중 하나로 무작위 시전되는 지팡이입니다. 파이어볼·아이스 샤드·라이프바운드가 무작위로 나갑니다.',
+    skill: '평타(자동, 3초): 무작위 시전 — 파이어볼(40+화염 2/초·4초), 아이스 샤드(고드름 4발 장전→F로 발사·각 12), 라이프바운드(자힐 30)',
+    color: '#a855f7'
   }
 };
 
@@ -451,6 +464,14 @@ export const ComboConfig = {
       cooldown: 600
     }
   }
+};
+
+// --- Magic staff spell tuning (random auto-cast every cooldownMs) -------------
+export const MagicConfig = {
+  cooldownMs: 3000,
+  fireball:  { damage: 40, speed: 540, radius: 9, burnDps: 2, burnDurationMs: 4000 }, // 화살(640)보다 약간 느리게
+  iceShard:  { count: 4, damage: 12, speed: 740, radius: 6, spreadDeg: 9 },            // 화살보다 약간 빠르게
+  lifebound: { heal: 30 }
 };
 
 /**

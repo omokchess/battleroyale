@@ -466,6 +466,10 @@ export class Renderer {
         this._drawSwordWave(ctx, scr, angle, zoom);
       } else if (p.kind === 'greatswordwave') {
         this._drawGreatswordWave(ctx, scr, angle, zoom);
+      } else if (p.kind === 'fireball') {
+        this._drawFireball(ctx, scr, angle, zoom);
+      } else if (p.kind === 'iceshard') {
+        this._drawIceShard(ctx, scr, angle, zoom);
       } else {
         this._drawArrow(ctx, scr, angle);
       }
@@ -536,6 +540,170 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
 
+    ctx.restore();
+  }
+
+  // Trace a regular polygon (used by the fireball's hexagon trail).
+  _tracePolygon(ctx, cx, cy, r, sides, rot = 0) {
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const a = rot + (i / sides) * Math.PI * 2;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  // 마법 지팡이 — 파이어볼: orange orb with a trailing chain of hexagons.
+  _drawFireball(ctx, scr, angle, zoom) {
+    ctx.save();
+    const r = 9 * (0.7 + zoom * 0.4);
+    const t = Date.now();
+    for (let i = 3; i >= 1; i--) {
+      const tx = scr.x - Math.cos(angle) * (i * 9);
+      const ty = scr.y - Math.sin(angle) * (i * 9);
+      ctx.strokeStyle = this._hexToRGB('#fb923c', 0.5 - i * 0.12);
+      ctx.lineWidth = 2;
+      this._tracePolygon(ctx, tx, ty, r * (1 - i * 0.2), 6, t / 280 + i);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = this._glow * 16;
+    ctx.shadowColor = '#fb923c';
+    ctx.fillStyle = '#fed7aa';
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f97316';
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 마법 지팡이 — 아이스 샤드: light-blue icicle with a dotted trail.
+  _drawIceShard(ctx, scr, angle, zoom) {
+    ctx.save();
+    const s = 7 * (0.7 + zoom * 0.4);
+    for (let i = 3; i >= 1; i--) {
+      const tx = scr.x - Math.cos(angle) * (i * 7);
+      const ty = scr.y - Math.sin(angle) * (i * 7);
+      ctx.fillStyle = this._hexToRGB('#7dd3fc', 0.5 - i * 0.12);
+      ctx.beginPath();
+      ctx.arc(tx, ty, (4 - i) * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(angle);
+    ctx.shadowBlur = this._glow * 10;
+    ctx.shadowColor = '#7dd3fc';
+    ctx.fillStyle = '#e0f2fe';
+    ctx.beginPath();
+    ctx.moveTo(s * 1.6, 0);
+    ctx.lineTo(-s * 0.4, -s * 0.55);
+    ctx.lineTo(-s * 0.9, 0);
+    ctx.lineTo(-s * 0.4, s * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath();
+    ctx.moveTo(s * 1.2, 0);
+    ctx.lineTo(-s * 0.2, -s * 0.28);
+    ctx.lineTo(-s * 0.2, s * 0.28);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Fire DoT: flickering flames ringing a burning player.
+  _drawBurnFlames(ctx, scr, radius, zoom) {
+    ctx.save();
+    const t = Date.now();
+    ctx.shadowBlur = this._glow * 8;
+    ctx.shadowColor = '#f97316';
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + t / 220;
+      const wob = Math.sin(t / 90 + i * 1.7);
+      const fx = scr.x + Math.cos(a) * radius * 0.75;
+      const fy = scr.y + Math.sin(a) * radius * 0.75 - radius * 0.3;
+      const h = (6 + wob * 3) * (0.7 + zoom * 0.3);
+      ctx.fillStyle = this._hexToRGB(i % 2 ? '#fb923c' : '#fbbf24', 0.85);
+      ctx.beginPath();
+      ctx.moveTo(fx, fy - h);
+      ctx.quadraticCurveTo(fx + 3, fy, fx, fy + 2);
+      ctx.quadraticCurveTo(fx - 3, fy, fx, fy - h);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Loaded ice shards orbiting a magic-staff caster (waiting for F).
+  _drawLoadedIcicles(ctx, scr, count, radius, zoom) {
+    ctx.save();
+    const t = Date.now();
+    const orbit = radius + 16;
+    ctx.shadowBlur = this._glow * 8;
+    ctx.shadowColor = '#7dd3fc';
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + t / 600;
+      const ix = scr.x + Math.cos(a) * orbit;
+      const iy = scr.y + Math.sin(a) * orbit;
+      ctx.save();
+      ctx.translate(ix, iy);
+      ctx.rotate(a + Math.PI / 2); // tip pointing outward
+      const s = 6 * (0.7 + zoom * 0.3);
+      ctx.fillStyle = '#e0f2fe';
+      ctx.beginPath();
+      ctx.moveTo(0, -s);
+      ctx.lineTo(s * 0.45, s * 0.5);
+      ctx.lineTo(-s * 0.45, s * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 0.6);
+      ctx.lineTo(s * 0.22, s * 0.4);
+      ctx.lineTo(-s * 0.22, s * 0.4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // 라이프바운드: a green heal ring with rising sparkles.
+  _drawLifeboundHeal(ctx, scr, e, alpha, zoom) {
+    const progress = clamp01(e.progress);
+    ctx.save();
+    const r = (14 + 40 * easeOutCubic(progress)) * (0.6 + zoom * 0.4);
+    ctx.shadowBlur = this._glow * 10 * alpha;
+    ctx.shadowColor = '#a3e635';
+    ctx.strokeStyle = this._hexToRGB('#a3e635', 0.7 * alpha);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = this._hexToRGB('#bef264', 0.85 * alpha);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const rise = progress * 30;
+      ctx.beginPath();
+      ctx.arc(scr.x + Math.cos(a) * r * 0.6, scr.y + Math.sin(a) * r * 0.6 - rise, 2.4 * (1 - progress) + 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 아이스 샤드 장전: a quick light-blue ripple when shards are loaded.
+  _drawIcicleLoad(ctx, scr, e, alpha, zoom) {
+    const progress = clamp01(e.progress);
+    ctx.save();
+    const r = (10 + 30 * easeOutCubic(progress)) * (0.6 + zoom * 0.4);
+    ctx.strokeStyle = this._hexToRGB('#7dd3fc', 0.6 * (1 - progress));
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -716,6 +884,10 @@ export class Renderer {
         this._drawRailBeam(ctx, scr, endScr, e, weapon, alpha);
       } else if (e.type === 'buff_activate') {
         this._drawBuffActivate(ctx, scr, e, weapon, alpha, zoom);
+      } else if (e.type === 'lifebound_heal') {
+        this._drawLifeboundHeal(ctx, scr, e, alpha, zoom);
+      } else if (e.type === 'icicle_load') {
+        this._drawIcicleLoad(ctx, scr, e, alpha, zoom);
       }
     });
 
@@ -2234,6 +2406,10 @@ export class Renderer {
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = isLocal ? '#ef4444' : '#0b0c10';
       ctx.stroke();
+
+      // Magic staff status overlays: fire DoT flames + loaded ice shards orbiting.
+      if (p.burnTimeLeft > 0) this._drawBurnFlames(ctx, bodyScr, radius, camera.zoom || 1);
+      if (p.pendingIcicles > 0) this._drawLoadedIcicles(ctx, bodyScr, p.pendingIcicles, radius, camera.zoom || 1);
 
       // Dash i-frame white highlight — bright flash that fades as the
       // invulnerability window expires.

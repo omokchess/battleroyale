@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Player } from '../game/Player.js';
 import { Collision } from '../game/Collision.js';
-import { getEffectiveWeapon, SkillConfig, DashConfig, Weapons, ComboConfig } from '../game/Weapons.js';
+import { getEffectiveWeapon, SkillConfig, DashConfig, Weapons, ComboConfig, MagicConfig } from '../game/Weapons.js';
 import { Game, rebaseEffectSnapshot } from '../game/Game.js';
 
 test('dash grants i-frames and bursts the player along the held direction', () => {
@@ -642,6 +642,82 @@ test('katana skill queues two slashes and launches a blade wave per slash', () =
   game._releaseDueKatanaSlashes(1000 + d.slashIntervalMs);   // second slash
   assert.equal(game.pendingKatanaSlashes.length, 0);
   assert.equal(game.projectiles.filter(p => p.weapon === 'katana').length, 2);
+});
+
+test('magic staff fireball deals direct damage then a burn that ticks 2/sec for 4s', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.projectiles = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const mage = new Player('mage', 'Mage', 'magicstaff', 100, 100);
+  mage.angle = 0;
+  game.players[mage.id] = mage;
+
+  game._castFireball(mage, 1000);
+  assert.equal(game.projectiles.length, 1);
+  assert.equal(game.projectiles[0].kind, 'fireball');
+
+  const target = new Player('t', 'T', 'sword', 200, 100);
+  game.players[target.id] = target;
+  const hp0 = target.hp;
+  target.takeDamage(MagicConfig.fireball.damage, '파이어볼');         // direct hit
+  game._applyBurn(target, mage.id, MagicConfig.fireball.burnDps, MagicConfig.fireball.burnDurationMs);
+  assert.equal(target.hp, hp0 - 40);
+  assert.ok(target.burnTimeLeft > 3.9);
+
+  game._tickBurns(1.0, 2000);
+  assert.equal(target.hp, hp0 - 40 - 2);                            // first tick
+  game._tickBurns(1.0, 3000);
+  game._tickBurns(1.0, 4000);
+  game._tickBurns(1.0, 5000);
+  assert.equal(target.hp, hp0 - 40 - 8);                            // 4 ticks total = 8
+  assert.equal(target.burnTimeLeft, 0);
+});
+
+test('magic staff ice shards load, pause auto-cast, and fire a volley on F', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.projectiles = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+
+  const mage = new Player('mage', 'Mage', 'magicstaff', 100, 100);
+  mage.angle = 0;
+  mage.lastAttackTime = -99999;
+  game.players[mage.id] = mage;
+
+  assert.equal(mage.canAttack(5000), true);                 // free to cast
+  game._castIceShards(mage, 5000);
+  assert.equal(mage.pendingIcicles, MagicConfig.iceShard.count);
+  assert.equal(mage.canAttack(99999), false);               // auto-cast paused while loaded
+
+  game._fireIcicles(mage, 6000);
+  assert.equal(mage.pendingIcicles, 0);
+  assert.equal(game.projectiles.filter(p => p.kind === 'iceshard').length, MagicConfig.iceShard.count);
+  assert.equal(mage.canAttack(6000), false);                            // cooldown restarts from firing
+  assert.equal(mage.canAttack(6000 + MagicConfig.cooldownMs), true);
+});
+
+test('magic staff lifebound heals the caster, capped at max hp', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+
+  const mage = new Player('mage', 'Mage', 'magicstaff', 100, 100);
+  game.players[mage.id] = mage;
+
+  mage.hp = 50;
+  game._castLifebound(mage, 1000);
+  assert.equal(mage.hp, 50 + MagicConfig.lifebound.heal);
+
+  mage.hp = mage.maxHp - 5;
+  game._castLifebound(mage, 2000);
+  assert.equal(mage.hp, mage.maxHp);
 });
 
 test('bow railgun vibration only fires for the local caster once', () => {
