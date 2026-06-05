@@ -3,9 +3,11 @@
 /* In-game weapon switch: a vertical bar in the arena's right gutter.
    Desktop (>=1024px): always visible. Mobile: hidden until the toggle opens it. */
 #weaponSwitchPanel {
-  display: none;            /* mobile default: closed */
+  display: none;                 /* mobile default: closed */
   flex-direction: column;
   width: 9.5rem;
+  top: 50%;                      /* vertical centre when shown (mobile open) */
+  transform: translateY(-50%);   /* own transform — the element no longer carries Tailwind's translate */
 }
 #weaponSwitchPanel.open { display: flex; }              /* mobile: opened via the toggle */
 @media (min-width: 1024px) {
@@ -15,7 +17,6 @@
     top: 44%;                      /* centred in the right gutter, aligned with the arena middle */
     bottom: auto;
     transform: translateY(-50%);   /* own transform — reliable vertical centre */
-    translate: none;               /* cancel Tailwind v4's -translate-y-1/2 (it shoved the bar off the top) */
     /* no left/right here: the element keeps Tailwind's right-2 sm:right-4 (arena's right gutter) */
   }
 }
