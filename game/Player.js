@@ -49,6 +49,7 @@ export class Player {
     this.burnTickLeft = 0;     // fire DoT: seconds until the next tick
     this.burnDps = 0;          // fire DoT: damage per tick
     this.burnSourceId = null;  // fire DoT: who applied it (kill credit)
+    this.teleportReadyAt = 0;  // sniper R teleport: host-ms timestamp when ready again
     this.pendingWeapon = null; // queued weapon swap, applied on next respawn
     this.arrowStacks = 0;     // bow skill charges earned by landing arrows
     this.greatswordChargeStart = 0;
@@ -153,7 +154,6 @@ export class Player {
   startDash(dirX = 0, dirY = 0) {
     if (this.isDead || this.stunTimeLeft > 0 || this.dashCdLeft > 0 || this.dashTimeLeft > 0) return false;
     if (this.buffType === 'axe_rage' && this.buffTimeLeft > 0) return false; // rooted during axe rage
-    if (this.weapon === 'sniper') return false; // immobile — only the F teleport moves it
 
     let len = Math.hypot(dirX, dirY);
     if (len < 1e-4) {
@@ -195,6 +195,7 @@ export class Player {
     this.burnTickLeft = 0;
     this.burnDps = 0;
     this.burnSourceId = null;
+    this.teleportReadyAt = 0;
     this.arrowStacks = 0;
     this.greatswordChargeStart = 0;
     this.greatswordChargeAngle = 0;

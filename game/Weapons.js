@@ -198,13 +198,14 @@ export const Weapons = {
     name: '스나이퍼',
     damage: Infinity,       // 즉사 (actual shot resolves as a 9999 hitscan)
     maxHp: 90,
-    cooldown: 3000,         // basic-shot cadence
-    moveSpeed: 0,           // completely immobile — repositions only via F teleport
+    cooldown: 3000,
+    automaticAttack: false, // F fires; 걷기 불가(이동속도 0)지만 대시는 가능
+    moveSpeed: 0,           // cannot walk — moves only by dashing
     range: Infinity,
     speed: Infinity,        // instant hitscan
     type: 'projectile',     // idle preview draws the aim line
-    description: '이동속도 0의 완전 고정 저격총입니다. 평타는 조준 직선상 첫 적을 즉사시키는 즉시 명중탄이며, 이동은 오직 F 순간이동뿐입니다.',
-    skill: 'F 스킬: 경기장 내 무작위 위치로 순간이동 · 쿨타임 4초',
+    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 저격총입니다. F로 조준 직선상 첫 적을 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
+    skill: 'F 키: 조준 직선상 첫 적 즉사(즉시 명중·쿨 4초) · R 키: 무작위 순간이동(쿨 4초)',
     color: '#22c55e'
   }
 };
@@ -368,7 +369,8 @@ export const SkillConfig = {
     attackLockMs: 250
   },
   sniper: {
-    cooldownMs: 4000        // F: random teleport across the arena
+    cooldownMs: 4000,         // F: instakill shot cooldown
+    teleportCooldownMs: 4000  // R: random teleport cooldown
   }
 };
 

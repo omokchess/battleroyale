@@ -29,6 +29,7 @@ export class Input {
 
     // Edge-triggered one-shot actions consumed once per frame by the game loop.
     this.dashRequested = false;
+    this.teleportRequested = false;
     this.skillRequested = false;
     this.skillDownRequested = false;
     this.skillUpRequested = false;
@@ -101,6 +102,7 @@ export class Input {
       // Space = dash, F = weapon skill (edge-triggered, ignore auto-repeat)
       if (key === ' ' && !e.repeat) this.dashRequested = true;
       if (key === 'f' && !e.repeat) this._requestSkillDown();
+      if (key === 'r' && !e.repeat) this.teleportRequested = true;
 
       // Prevent scrolling behaviors on gaming buttons
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(e.key.toLowerCase())) {
@@ -425,6 +427,15 @@ export class Input {
   }
 
   /**
+   * Read-and-clear the queued teleport (R) request (edge-triggered).
+   */
+  consumeTeleport() {
+    if (!this.teleportRequested) return false;
+    this.teleportRequested = false;
+    return true;
+  }
+
+  /**
    * Read-and-clear the queued skill request (edge-triggered).
    */
   consumeSkill() {
@@ -528,6 +539,7 @@ export class Input {
     }
 
     this.dashRequested = false;
+    this.teleportRequested = false;
     this.skillRequested = false;
     this.skillDownRequested = false;
     this.skillUpRequested = false;

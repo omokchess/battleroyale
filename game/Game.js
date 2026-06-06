@@ -262,6 +262,9 @@ export class Game {
           if (this.input.consumeSkillUp()) {
             this._handleSkillReleased(hp, now);
           }
+          if (this.input.consumeTeleport()) {
+            this._handleTeleport(hp, now);
+          }
         }
       }
 
@@ -296,6 +299,9 @@ export class Game {
         }
         if (this.input.consumeSkillUp()) {
           this.networkManager.sendToHost(Protocol.clientAction('skillUp'));
+        }
+        if (this.input.consumeTeleport()) {
+          this.networkManager.sendToHost(Protocol.clientAction('teleport'));
         }
 
         // Optimistic local update for zero input latency feel
@@ -514,10 +520,6 @@ export class Game {
   _performAutomaticAttack(player, weaponConfig, now) {
     if (player.weapon === 'magicstaff') {
       this._castMagicStaff(player, now);
-      return;
-    }
-    if (player.weapon === 'sniper') {
-      this._fireSniperShot(player, now);
       return;
     }
     const combo = this._resolveComboAttack(player, weaponConfig, now);
@@ -903,6 +905,8 @@ export class Game {
       this._handleSkillPressed(player, now);
     } else if (data.action === 'skillUp') {
       this._handleSkillReleased(player, now);
+    } else if (data.action === 'teleport') {
+      this._handleTeleport(player, now);
     }
   }
 
@@ -968,7 +972,7 @@ export class Game {
       case 'hammer': this._castHammerSkill(player, now); break;
       case 'matchlock': this._fireMatchlock(player, now); break;
       case 'katana': this._castKatanaSkill(player, now); break;
-      case 'sniper': this._sniperTeleport(player, now); break;
+      case 'sniper': this._fireSniperShot(player, now); break;
       default: break;
     }
   }
@@ -1753,7 +1757,7 @@ export class Game {
   // --- 스나이퍼 (sniper): immobile. Its basic attack is an instant hitscan that
   // executes the first enemy on the aim line; mobility is the F teleport only.
   _fireSniperShot(player, now) {
-    player.lastAttackTime = now;
+    player.skillCdLeft = (SkillConfig.sniper?.cooldownMs || 4000) / 1000;
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
@@ -1784,14 +1788,22 @@ export class Game {
     });
   }
 
+  // R key: teleport the sniper to a random in-arena spot (its own 4s cooldown,
+  // separate from the F shot). Host-authoritative.
+  _handleTeleport(player, now) {
+    if (!player || player.isDead || player.weapon !== 'sniper') return;
+    if (now < (player.teleportReadyAt || 0)) return;
+    this._sniperTeleport(player, now);
+  }
+
   _sniperTeleport(player, now) {
     const sk = SkillConfig.sniper;
     const margin = (player.radius || 14) + 12;
     const fromX = player.x, fromY = player.y;
     player.x = margin + Math.random() * Math.max(1, this.mapWidth - margin * 2);
     player.y = margin + Math.random() * Math.max(1, this.mapHeight - margin * 2);
-    player.skillCdLeft = (sk?.cooldownMs || 4000) / 1000;
-    // Poof at the vacated spot and at the arrival spot (world-anchored so they stay put).
+    player.teleportReadyAt = now + (sk?.teleportCooldownMs || 4000);
+    // Poof at the vacated spot and the arrival spot (world-anchored so they stay put).
     this.effects.push({ attackerId: player.id, x: fromX, y: fromY, weapon: 'sniper', type: 'sniper_teleport', worldAnchored: true, progress: 0, timestamp: now, lifetime: 420 });
     this.effects.push({ attackerId: player.id, x: player.x, y: player.y, weapon: 'sniper', type: 'sniper_teleport', worldAnchored: true, progress: 0, timestamp: now, lifetime: 420 });
   }

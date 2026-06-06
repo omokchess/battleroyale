@@ -720,7 +720,7 @@ test('magic staff lifebound heals the caster, capped at max hp', () => {
   assert.equal(mage.hp, mage.maxHp);
 });
 
-test('sniper basic shot instakills on the aim line, F teleports in-bounds, and it cannot dash', () => {
+test('sniper: F instakills on the aim line (own cooldown); R teleports in-bounds; dash allowed', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -735,16 +735,19 @@ test('sniper basic shot instakills on the aim line, F teleports in-bounds, and i
   game.players[sniper.id] = sniper;
   game.players[victim.id] = victim;
 
-  game._fireSniperShot(sniper, 1000);
+  game._fireSniperShot(sniper, 1000);                         // F = shot
   assert.ok(victim.hp <= 0);                                  // instakill hitscan
+  assert.ok(sniper.skillCdLeft > 3.9);                        // F shot's own ~4s cooldown
   assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'sniper'), true);
 
-  game._sniperTeleport(sniper, 2000);
-  assert.ok(sniper.skillCdLeft > 3.9);                        // ~4s cooldown
-  assert.ok(sniper.x >= 0 && sniper.x <= 700 && sniper.y >= 0 && sniper.y <= 700); // stayed in-bounds
+  game._handleTeleport(sniper, 2000);                         // R = teleport
+  assert.ok(sniper.teleportReadyAt > 2000);                   // separate teleport cooldown
+  assert.ok(sniper.x >= 0 && sniper.x <= 700 && sniper.y >= 0 && sniper.y <= 700); // in-bounds
+  assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 2);
+  game._handleTeleport(sniper, 2500);                         // still on cooldown → no-op
   assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 2);
 
-  assert.equal(sniper.startDash(1, 0), false);                // immobile: no dash
+  assert.equal(sniper.startDash(1, 0), true);                 // dash is now allowed
 });
 
 test('bow railgun vibration only fires for the local caster once', () => {
