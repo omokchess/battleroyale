@@ -71,6 +71,13 @@ function setupWeaponSelector() {
     });
   });
 
+  // Tint each weapon card's icon with that weapon's own color (matches the swap list).
+  weaponCards.forEach(card => {
+    const svg = card.querySelector('svg');
+    const cfg = Weapons[card.dataset.weapon];
+    if (svg && cfg) svg.style.stroke = cfg.color;
+  });
+
   // Pre-select default sword
   const defaultCard = document.querySelector('.weapon-card[data-weapon="sword"]');
   if (defaultCard) {

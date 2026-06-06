@@ -2405,6 +2405,29 @@ export class Game {
         dashBar.style.background = '#22d3ee';
       }
     }
+
+    // R teleport cooldown — only the sniper has it, so the row is hidden otherwise.
+    const teleportRow = document.getElementById('hudTeleportRow');
+    const teleportState = document.getElementById('hudTeleportState');
+    const teleportBar = document.getElementById('hudTeleportBar');
+    if (teleportRow && teleportState && teleportBar) {
+      if (local.weapon === 'sniper') {
+        teleportRow.classList.remove('hidden');
+        const total = SkillConfig.sniper?.teleportCooldownMs || 4000;
+        const leftMs = Math.max(0, (local.teleportReadyAt || 0) - Date.now());
+        if (leftMs > 0) {
+          teleportState.textContent = `${(leftMs / 1000).toFixed(1)}s`;
+          teleportBar.style.width = `${clamp01(1 - leftMs / total) * 100}%`;
+          teleportBar.style.background = '#4b5563';
+        } else {
+          teleportState.textContent = '준비!';
+          teleportBar.style.width = '100%';
+          teleportBar.style.background = '#22c55e';
+        }
+      } else {
+        teleportRow.classList.add('hidden');
+      }
+    }
   }
 
   /**
@@ -2688,6 +2711,7 @@ export class Game {
             p.comboDelayUntil = Date.now() + Math.max(0, Math.round(snap.comboDelayMs || 0));
             p.pendingIcicles = Math.max(0, Math.floor(snap.pendingIcicles || 0));
             p.burnTimeLeft = Math.max(0, (snap.burnMs || 0) / 1000);
+            p.teleportReadyAt = Date.now() + Math.max(0, Math.round(snap.teleportCdMs || 0));
             p.color = snap.color;
             p.accentColor = snap.accentColor;
 

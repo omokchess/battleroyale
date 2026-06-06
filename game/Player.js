@@ -274,6 +274,7 @@ export class Player {
       comboDelayMs: Math.max(0, Math.round((this.comboDelayUntil || 0) - Date.now())),
       pendingIcicles: this.pendingIcicles || 0,
       burnMs: Math.round((this.burnTimeLeft || 0) * 1000),
+      teleportCdMs: Math.max(0, Math.round((this.teleportReadyAt || 0) - Date.now())),
       color: this.color,
       accentColor: this.accentColor
     };
