@@ -2608,7 +2608,7 @@ export class Game {
    * Update the F-skill and Space-dash readiness widgets.
    */
   _updateAbilityHud(local) {
-    const weaponColor = Weapons[local.weapon]?.color || '#45f3ff';
+    const weaponColor = Weapons[local.weapon]?.color || '#d4af37';
 
     const skillState = document.getElementById('hudSkillState');
     const skillBar = document.getElementById('hudSkillBar');
@@ -2677,7 +2677,7 @@ export class Game {
       } else {
         dashState.textContent = '준비!';
         dashBar.style.width = '100%';
-        dashBar.style.background = '#22d3ee';
+        dashBar.style.background = '#c9a227';
       }
     }
 

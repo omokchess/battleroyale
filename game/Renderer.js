@@ -448,10 +448,10 @@ export class Renderer {
     for (let x = 0; x <= mapWidth; x += gridSize) vline(x, '#141119', 2);
     for (let y = 0; y <= mapHeight; y += gridSize) hline(y, '#141119', 2);
 
-    // Glowing neon energy veins every 3rd seam (the modern layer).
-    const neon = this._hexToRGB('#45f3ff', 0.14);
-    for (let x = 0; x <= mapWidth; x += gridSize * 3) vline(x, neon, 1);
-    for (let y = 0; y <= mapHeight; y += gridSize * 3) hline(y, neon, 1);
+    // Faint torch-gilded accent seams every 3rd line (warm gold, no neon).
+    const gild = this._hexToRGB('#c9a227', 0.10);
+    for (let x = 0; x <= mapWidth; x += gridSize * 3) vline(x, gild, 1);
+    for (let y = 0; y <= mapHeight; y += gridSize * 3) hline(y, gild, 1);
 
     // Center heraldic emblem (crossed swords on a stone medallion).
     const ec = camera.toScreen(mapWidth / 2, mapHeight / 2, cw, ch);
@@ -514,10 +514,10 @@ export class Renderer {
     ctx.lineWidth = 2;
     ctx.strokeRect(tl.x - 3, tl.y - 3, w + 6, h + 6);
 
-    // Neon containment trim on the inner edge (the modern layer).
-    ctx.shadowBlur = this._glow * 12;
-    ctx.shadowColor = '#45f3ff';
-    ctx.strokeStyle = '#45f3ff';
+    // Gilded brass trim on the inner edge (medieval, torch-lit).
+    ctx.shadowBlur = this._glow * 10;
+    ctx.shadowColor = '#c9a227';
+    ctx.strokeStyle = '#d4af37';
     ctx.lineWidth = 2;
     ctx.strokeRect(tl.x + 4, tl.y + 4, w - 8, h - 8);
     ctx.shadowBlur = 0;

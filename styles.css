@@ -62,8 +62,8 @@
 
 /* Equipped / queued markers */
 .weapon-switch.weapon-current {
-  border-color: #45f3ff;
-  box-shadow: 0 0 10px rgba(69, 243, 255, 0.6);
+  border-color: #d4af37;
+  box-shadow: 0 0 10px rgba(201, 162, 39, 0.6);
   background: rgba(31, 40, 51, 0.95);
 }
 .weapon-switch.weapon-pending {
@@ -80,7 +80,7 @@
   border-radius: 3px;
   color: #0b0c10;
 }
-.weapon-switch.weapon-current::after { content: "착용"; background: #45f3ff; }
+.weapon-switch.weapon-current::after { content: "착용"; background: #d4af37; }
 .weapon-switch.weapon-pending::after { content: "대기"; background: #fbbf24; }
 
 @theme {
@@ -101,8 +101,8 @@ body,
 #resultOverlay {
   background-color: #0c0a12 !important;
   background-image:
-    radial-gradient(110% 75% at 10% -8%, rgba(251, 146, 60, 0.13), transparent 55%),
-    radial-gradient(110% 75% at 92% 108%, rgba(69, 243, 255, 0.08), transparent 55%),
+    radial-gradient(110% 75% at 10% -8%, rgba(251, 146, 60, 0.14), transparent 55%),
+    radial-gradient(110% 75% at 92% 108%, rgba(139, 46, 46, 0.13), transparent 55%),
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 6px),
     linear-gradient(160deg, #16121d, #0a0810) !important;
 }
@@ -118,6 +118,12 @@ body,
 
 /* Antique brass replaces the neon-cyan borders (the medieval metal layer). */
 .border-\[\#45f3ff\] { border-color: #a8842c !important; }
+
+/* No cyber-cyan left: recolor every neon accent to gold / parchment / brass. */
+.text-\[\#45f3ff\], .text-\[\#66fcf1\] { color: #d8b24a !important; }
+.text-\[\#22d3ee\] { color: #c99a3a !important; }
+.bg-\[\#45f3ff\] { background-color: #b8902f !important; }
+.border-\[\#22d3ee\], .border-\[\#66fcf1\] { border-color: #a8842c !important; }
 
 /* Gilded titles + torch-amber warmth on primary actions. Cyan text accents remain = modern hint. */
 h1 {
