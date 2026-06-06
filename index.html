@@ -15,7 +15,28 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body class="bg-[#0b0c10] text-gray-200 font-sans overflow-hidden select-none">
-    
+
+    <!-- LOGIN GATE (shown until a session is resolved; hidden in guest mode) -->
+    <div id="authScreen" class="absolute inset-0 z-[60] flex items-center justify-center bg-[#0b0c10] p-4">
+      <div class="w-full max-w-sm p-8 bg-[#1f2833] border-4 border-[#45f3ff] text-center shadow-[0_0_20px_rgba(69,243,255,0.3)]">
+        <h1 class="font-display text-3xl font-extrabold text-[#45f3ff] uppercase mb-2 drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]">픽셀로얄</h1>
+        <p class="font-mono text-xs text-[#66fcf1] mb-6 tracking-wider">로그인하고 게임을 즐기세요</p>
+
+        <!-- ID + password login -->
+        <div class="space-y-2 text-left mb-3">
+          <input id="authId" type="text" maxlength="20" autocomplete="username" placeholder="아이디 (영문/숫자)"
+            class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-3 py-2 font-mono text-sm focus:outline-none" />
+          <input id="authPw" type="password" maxlength="64" autocomplete="current-password" placeholder="비밀번호 (6자 이상)"
+            class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-3 py-2 font-mono text-sm focus:outline-none" />
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="loginBtn" class="bg-gradient-to-r from-teal-500 to-[#1f2833] hover:from-teal-400 border-2 border-teal-300 text-white font-mono text-sm font-bold py-2 uppercase cursor-pointer active:scale-95 transition-transform">로그인</button>
+          <button id="signupBtn" class="bg-[#1f2833] hover:bg-gray-700 border-2 border-[#45f3ff] text-[#45f3ff] font-mono text-sm font-bold py-2 uppercase cursor-pointer active:scale-95 transition-transform">회원가입</button>
+        </div>
+        <p id="authNote" class="hidden mt-4 font-mono text-[11px] text-yellow-400 leading-snug"></p>
+      </div>
+    </div>
+
     <!-- MAIN LOBBY/START MENU -->
     <div id="lobbyMenu" class="absolute inset-0 z-50 flex items-center justify-center bg-[#0b0c10] bg-opacity-95 transition-all duration-300 p-3 sm:p-4 overflow-y-auto">
       <div class="w-full max-w-5xl flex flex-col lg:flex-row gap-4 items-stretch my-auto">
@@ -30,6 +51,23 @@
           </h1>
           <p class="font-mono text-xs text-[#66fcf1] tracking-wider uppercase">P2P 멀티플레이어 실시간 결투장</p>
           <div class="h-1 bg-gradient-to-r from-transparent via-[#45f3ff] to-transparent mt-3"></div>
+        </div>
+
+        <!-- Account bar: username, coins, ranking/shop/logout (filled by account-ui) -->
+        <div id="accountBar" class="hidden items-center justify-between gap-2 mb-5 p-2.5 bg-[#0b0c10] border-2 border-gray-700">
+          <div class="min-w-0">
+            <div class="font-mono text-[9px] text-gray-400 uppercase">플레이어</div>
+            <div id="accountName" class="font-mono text-sm text-white font-bold truncate max-w-[110px]">-</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span class="font-mono text-xs text-yellow-300 font-bold mr-1 inline-flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M9.5 10.5h3a1.5 1.5 0 0 1 0 3h-3"/></svg>
+              <span id="accountCoins">0</span>
+            </span>
+            <button id="rankBtn" class="bg-[#1f2833] border border-[#45f3ff] text-[#45f3ff] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">랭킹</button>
+            <button id="shopBtn" class="bg-[#1f2833] border border-[#66fcf1] text-[#66fcf1] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">상점</button>
+            <button id="logoutBtn" class="bg-[#1f2833] border border-gray-600 text-gray-400 font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">로그아웃</button>
+          </div>
         </div>
 
         <!-- 1. Nickname & Weapon Selection -->
@@ -478,6 +516,32 @@
       </div>
     </div>
     
+    <!-- LEADERBOARD MODAL -->
+    <div id="leaderboardModal" data-close-modal="leaderboardModal" class="hidden absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-md bg-[#1f2833] border-4 border-[#45f3ff] p-5 max-h-[85vh] flex flex-col shadow-[0_0_20px_rgba(69,243,255,0.3)]">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-display text-xl text-[#45f3ff] font-bold uppercase tracking-widest">랭킹보드</h2>
+          <button data-close-modal="leaderboardModal" class="text-gray-400 hover:text-white font-mono text-lg leading-none px-2 cursor-pointer">✕</button>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 mb-2">누적 처치 수 기준 상위 100명</div>
+        <div id="leaderboardBody" class="overflow-y-auto pr-1"></div>
+      </div>
+    </div>
+
+    <!-- COSTUME SHOP MODAL -->
+    <div id="shopModal" data-close-modal="shopModal" class="hidden absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-lg bg-[#1f2833] border-4 border-[#66fcf1] p-5 max-h-[85vh] flex flex-col shadow-[0_0_20px_rgba(102,252,241,0.2)]">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-display text-xl text-[#66fcf1] font-bold uppercase tracking-widest">코스튬 상점</h2>
+          <div class="flex items-center gap-3">
+            <span class="font-mono text-xs text-yellow-300 font-bold">보유 <span id="shopCoins">0</span> 코인</span>
+            <button data-close-modal="shopModal" class="text-gray-400 hover:text-white font-mono text-lg leading-none px-2 cursor-pointer">✕</button>
+          </div>
+        </div>
+        <div id="shopBody" class="overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-3 pr-1"></div>
+      </div>
+    </div>
+
     <script type="module" src="/main.js"></script>
   </body>
 </html>

@@ -6,7 +6,7 @@
 import { Weapons, getEffectiveWeapon, DashConfig } from './Weapons.js';
 
 export class Player {
-  constructor(id, nickname, weaponType, x = 0, y = 0) {
+  constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
     this.id = id;
     this.nickname = nickname || 'Gladiator';
     this.weapon = weaponType in Weapons ? weaponType : 'sword';
@@ -56,10 +56,16 @@ export class Player {
     this.greatswordChargeAngle = 0;
     this.daggerQte = null;
 
-    // Generate unique colors based on hash of peer ID
-    const colors = this._generateColorsFromId(id);
-    this.color = colors.primary;
-    this.accentColor = colors.accent;
+    // Equipped costume overrides the auto-generated colors; otherwise derive
+    // a unique color scheme from the peer ID hash.
+    if (costume && costume.color) {
+      this.color = costume.color;
+      this.accentColor = costume.accentColor || costume.color;
+    } else {
+      const colors = this._generateColorsFromId(id);
+      this.color = colors.primary;
+      this.accentColor = colors.accent;
+    }
   }
 
   /**

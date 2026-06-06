@@ -16,10 +16,12 @@ import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 const RESPAWN_MS = 500;
 
 export class Game {
-  constructor(canvas, networkManager) {
+  constructor(canvas, networkManager, costume = null) {
     this.canvas = canvas;
     this.networkManager = networkManager;
-    
+    // Local player's equipped costume colors { color, accentColor } or null.
+    this.localCostume = costume;
+
     // Arena Boundaries
     this.mapWidth = 700;
     this.mapHeight = 700;
@@ -101,7 +103,7 @@ export class Game {
     if (this.networkManager.isHost) {
       // Host adds themselves directly
       const spawnP = this._getRandomSpawnPoint();
-      const hostPlayer = new Player(this.localPlayerId, localNick, localWeapon, spawnP.x, spawnP.y);
+      const hostPlayer = new Player(this.localPlayerId, localNick, localWeapon, spawnP.x, spawnP.y, this.localCostume);
       this.players[this.localPlayerId] = hostPlayer;
       
       this._announce('MATCH STARTED');
@@ -2495,6 +2497,9 @@ export class Game {
   quit() {
     if (this._hasQuit) return;
 
+    // Snapshot this session's kill count before teardown (used to award coins).
+    const localKills = this.players[this.localPlayerId]?.kills || 0;
+
     this._hasQuit = true;
     this.isRunning = false;
     if (this.animationFrameId) {
@@ -2534,7 +2539,7 @@ export class Game {
     if (overlay) overlay.classList.add('hidden');
 
     if (this.onQuitCallback) {
-      this.onQuitCallback();
+      this.onQuitCallback({ kills: localKills });
     }
   }
 
@@ -2553,7 +2558,8 @@ export class Game {
       const spawnP = this._getRandomSpawnPoint();
       const nickname = sanitizeNickname(joinPayload.nickname);
       const weapon = Weapons[joinPayload.weapon] ? joinPayload.weapon : 'sword';
-      const guestPlayer = new Player(remoteId, nickname, weapon, spawnP.x, spawnP.y);
+      const costume = sanitizeCostume(joinPayload.costume);
+      const guestPlayer = new Player(remoteId, nickname, weapon, spawnP.x, spawnP.y, costume);
       this.players[remoteId] = guestPlayer;
 
       this._announce(`${guestPlayer.nickname}님이 전장에 입장했습니다!`);
@@ -2833,6 +2839,20 @@ function dirFromKeys(keys = {}) {
 function sanitizeNickname(value) {
   const nickname = String(value || '').trim().replace(/[^\p{L}\p{N}_ -]/gu, '').slice(0, 12);
   return nickname || 'Gladiator';
+}
+
+// Validate a costume frame received from a peer — only allow safe CSS color
+// strings (hsl/rgb/#hex/names). Returns null to fall back to the hash colors.
+function sanitizeCostume(costume) {
+  if (!costume || typeof costume !== 'object') return null;
+  const safe = (c) => {
+    if (typeof c !== 'string') return null;
+    const s = c.trim().slice(0, 40);
+    return /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|(?:hsla?|rgba?)\([0-9.,%\s]+\))$/.test(s) ? s : null;
+  };
+  const color = safe(costume.color);
+  if (!color) return null;
+  return { color, accentColor: safe(costume.accentColor) || color };
 }
 
 function sanitizeInputKeys(keys = {}) {
