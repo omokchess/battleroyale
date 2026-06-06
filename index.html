@@ -21,6 +21,25 @@
       <div class="w-full max-w-sm p-8 bg-[#1f2833] border-4 border-[#45f3ff] text-center shadow-[0_0_20px_rgba(69,243,255,0.3)]">
         <h1 class="font-display text-3xl font-extrabold text-[#45f3ff] uppercase mb-2 drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]">픽셀 쇼다운</h1>
         <p class="font-mono text-xs text-[#66fcf1] mb-6 tracking-wider">로그인하고 랭킹 · 코인 · 코스튬을 즐기세요</p>
+
+        <!-- ID + password login -->
+        <div class="space-y-2 text-left mb-3">
+          <input id="authId" type="text" maxlength="20" autocomplete="username" placeholder="아이디 (영문/숫자)"
+            class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-3 py-2 font-mono text-sm focus:outline-none" />
+          <input id="authPw" type="password" maxlength="64" autocomplete="current-password" placeholder="비밀번호 (6자 이상)"
+            class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-3 py-2 font-mono text-sm focus:outline-none" />
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="loginBtn" class="bg-gradient-to-r from-teal-500 to-[#1f2833] hover:from-teal-400 border-2 border-teal-300 text-white font-mono text-sm font-bold py-2 uppercase cursor-pointer active:scale-95 transition-transform">로그인</button>
+          <button id="signupBtn" class="bg-[#1f2833] hover:bg-gray-700 border-2 border-[#45f3ff] text-[#45f3ff] font-mono text-sm font-bold py-2 uppercase cursor-pointer active:scale-95 transition-transform">회원가입</button>
+        </div>
+
+        <!-- Divider + Google (optional; works once configured in Supabase) -->
+        <div class="flex items-center gap-2 my-4">
+          <div class="h-px flex-1 bg-gray-700"></div>
+          <span class="font-mono text-[10px] text-gray-500">또는</span>
+          <div class="h-px flex-1 bg-gray-700"></div>
+        </div>
         <button id="googleLoginBtn" class="w-full flex items-center justify-center gap-2 bg-white text-gray-800 font-bold py-2.5 px-4 border-2 border-gray-300 hover:bg-gray-100 active:scale-95 transition-all cursor-pointer">
           <svg class="w-5 h-5" viewBox="0 0 48 48" aria-hidden="true">
             <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/>

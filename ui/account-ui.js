@@ -5,6 +5,8 @@
 
 import {
   signInWithGoogle,
+  signUpWithId,
+  signInWithId,
   signOut,
   onAuthChange,
   fetchMyProfile,
@@ -127,16 +129,83 @@ function setGuestMode() {
   }
 }
 
+function showAuthNote(msg, colorClass = 'text-yellow-400') {
+  const note = $('authNote');
+  if (!note) return;
+  note.textContent = msg;
+  note.className = 'mt-4 font-mono text-[11px] leading-snug ' + colorClass;
+}
+
+// Supabase 영문 에러 메시지를 친절한 한국어로 변환
+function authErrorMessage(e) {
+  const m = String(e?.message || e || '').toLowerCase();
+  if (m.includes('email not confirmed'))
+    return '가입은 됐지만 자동 로그인이 막혀 있어요. Supabase ▸ Authentication ▸ Providers ▸ Email 에서 "Confirm email" 을 끄세요.';
+  if (m.includes('invalid login')) return '아이디 또는 비밀번호가 올바르지 않습니다.';
+  if (m.includes('already registered') || m.includes('already been registered') || m.includes('user already'))
+    return '이미 사용 중인 아이디입니다. 로그인하거나 다른 아이디를 쓰세요.';
+  if (m.includes('weak password') || m.includes('should be at least') || (m.includes('password') && m.includes('6')))
+    return '비밀번호가 너무 짧습니다 (6자 이상).';
+  if (m.includes('signups not allowed') || m.includes('signup is disabled'))
+    return '회원가입이 비활성화되어 있습니다 (Supabase 설정 확인).';
+  return '오류: ' + (e?.message || e);
+}
+
+// 아이디/비밀번호 입력값 검증 후 반환 (실패 시 null + 안내)
+function readCredentials() {
+  const id = ($('authId')?.value || '').trim();
+  const pw = $('authPw')?.value || '';
+  if (!/^[A-Za-z0-9._-]{2,20}$/.test(id)) {
+    showAuthNote('아이디는 영문/숫자 2~20자로 입력하세요.');
+    return null;
+  }
+  if (pw.length < 6) {
+    showAuthNote('비밀번호는 6자 이상이어야 합니다.');
+    return null;
+  }
+  return { id, pw };
+}
+
 function wireStaticButtons() {
+  // 아이디 + 비밀번호 로그인
+  $('loginBtn')?.addEventListener('click', async () => {
+    const c = readCredentials();
+    if (!c) return;
+    showAuthNote('로그인 중...', 'text-gray-400');
+    try {
+      await signInWithId(c.id, c.pw);
+      // 성공 시 onAuthChange 가 로비로 전환
+    } catch (e) {
+      showAuthNote(authErrorMessage(e));
+    }
+  });
+
+  // 아이디 + 비밀번호 회원가입
+  $('signupBtn')?.addEventListener('click', async () => {
+    const c = readCredentials();
+    if (!c) return;
+    showAuthNote('가입 중...', 'text-gray-400');
+    try {
+      const session = await signUpWithId(c.id, c.pw);
+      if (!session) {
+        showAuthNote('가입 완료! "로그인"을 눌러주세요. (로그인이 안 되면 Supabase에서 Confirm email 끄기)', 'text-teal-300');
+      }
+    } catch (e) {
+      showAuthNote(authErrorMessage(e));
+    }
+  });
+
+  // Enter 키로 로그인
+  $('authPw')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('loginBtn')?.click();
+  });
+
+  // Google 로그인 (Supabase에 Google 프로바이더를 설정한 경우에만 동작)
   $('googleLoginBtn')?.addEventListener('click', async () => {
     try {
       await signInWithGoogle();
     } catch (e) {
-      const note = $('authNote');
-      if (note) {
-        note.textContent = '로그인에 실패했습니다: ' + (e?.message || e);
-        note.classList.remove('hidden');
-      }
+      showAuthNote('Google 로그인은 아직 설정되지 않았어요. 아이디/비밀번호를 사용하세요. (' + (e?.message || e) + ')');
     }
   });
 

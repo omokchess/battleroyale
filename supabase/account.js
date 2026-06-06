@@ -10,6 +10,39 @@ import { supabase, isSupabaseConfigured } from './client.js';
  * 모든 함수는 Supabase 미설정 시 안전하게 no-op / null 을 반환합니다.
  */
 
+// 아이디(영문/숫자)를 Supabase 인증용 이메일로 매핑. 실제 메일 발송은 없음
+// (Supabase 대시보드에서 "Confirm email" 을 꺼두면 즉시 로그인됨).
+const ID_EMAIL_DOMAIN = 'battleroyale.app';
+
+function idToEmail(id) {
+  return `${String(id || '').trim().toLowerCase()}@${ID_EMAIL_DOMAIN}`;
+}
+
+/**
+ * 아이디 + 비밀번호 회원가입. username 은 아이디로 저장됨(트리거가 처리).
+ * 반환된 session 이 null 이면 Supabase 의 "Confirm email" 이 켜져 있는 상태.
+ */
+export async function signUpWithId(id, password) {
+  if (!supabase) throw new Error('Supabase가 설정되지 않았습니다');
+  const { data, error } = await supabase.auth.signUp({
+    email: idToEmail(id),
+    password,
+    options: { data: { full_name: String(id || '').trim() } },
+  });
+  if (error) throw error;
+  return data.session;
+}
+
+/** 아이디 + 비밀번호 로그인 */
+export async function signInWithId(id, password) {
+  if (!supabase) throw new Error('Supabase가 설정되지 않았습니다');
+  const { error } = await supabase.auth.signInWithPassword({
+    email: idToEmail(id),
+    password,
+  });
+  if (error) throw error;
+}
+
 /** Google OAuth 로그인 (현재 페이지로 리디렉션 복귀) */
 export async function signInWithGoogle() {
   if (!supabase) return;
