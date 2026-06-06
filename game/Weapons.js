@@ -149,7 +149,7 @@ export const Weapons = {
     knockback: 68,
     type: 'melee_slam',
     description: '묵직한 원형 내려찍기 무기입니다. 맞은 적을 크게 밀어냅니다.',
-    skill: 'F 스킬: 1초 예열 후 0.8·0.8·1.2초 간격으로 점점 커지는 충격파 3연발 (60·123·156px / 20·40·52 피해 / 0.7·0.75·1.1초 스턴), 시전~종료까지 평타 불가 · 쿨타임 8.5초',
+    skill: 'F 스킬: 1초 예열 후 점점 커지는 충격파 3연발 (피해 20·40·52, 스턴 동반). 시전~종료까지 평타 불가 · 쿨타임 8.5초',
     color: '#fb923c'
   },
   matchlock: {
@@ -232,16 +232,16 @@ Object.assign(Weapons.dagger, {
 });
 
 Object.assign(Weapons.magicstaff, {
-  description: 'Three separate spells: F fireball, left-click ice shards, R lifebound.',
-  skill: 'F fireball / left-click ice shards to target / R heal. Each spell has its own 2s cooldown.'
+  description: '세 가지 주문을 상황에 맞게 따로 쓰는 마법 지팡이입니다.',
+  skill: 'F: 파이어볼 발사 ·  좌클릭: 조준 지점에 아이스 샤드 ·  R: 자가 회복  (주문마다 개별 쿨타임 2초)'
 });
 
 Object.assign(Weapons.sniper, {
-  skill: 'F shot cooldown 2s / R teleport cooldown 2s.'
+  skill: 'F: 즉사 저격 사격 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)'
 });
 
 Object.assign(Weapons.katana, {
-  skill: 'F double slash remains available. Hold R to charge iaijutsu for 1s, then cut a 40px-wide forward line for 80 damage.'
+  skill: 'F: 기존 2회 베기 그대로 ·  R 홀드: 1초간 발도술 차징 후 전방 40px 폭 직선을 베어 80 피해'
 });
 
 // --- Dash (Spacebar) tuning --------------------------------------------------

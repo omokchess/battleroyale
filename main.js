@@ -88,9 +88,11 @@ function setupWeaponSelector() {
     const w = card.dataset.weapon;
     const iconBox = card.querySelector('div');
     if (iconBox && w) {
+      iconBox.style.width = '3.5rem';
+      iconBox.style.height = '3.5rem';
       iconBox.innerHTML =
         `<img src="/assets/weapons/${w}.png" alt="${w}" draggable="false" ` +
-        `class="w-9 h-9 object-contain" style="image-rendering:pixelated" />`;
+        `class="w-full h-full object-contain" style="image-rendering:pixelated" />`;
     }
   });
 
