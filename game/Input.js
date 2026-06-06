@@ -30,10 +30,13 @@ export class Input {
     // Edge-triggered one-shot actions consumed once per frame by the game loop.
     this.dashRequested = false;
     this.teleportRequested = false;
+    this.teleportUpRequested = false;
     this.skillRequested = false;
     this.skillDownRequested = false;
     this.skillUpRequested = false;
     this.skillHeld = false;
+    this.targetCastRequested = false;
+    this.targetCastPointer = null;
     this.lastSkillPointerAt = 0;
 
     // Detect if device is touch-capable or loaded from stored preference
@@ -50,6 +53,7 @@ export class Input {
     this._keyDownHandler = null;
     this._keyUpHandler = null;
     this._mouseMoveHandler = null;
+    this._mouseDownHandler = null;
     this._touchStartHandler = null;
     this._touchMoveHandler = null;
     this._touchEndHandler = null;
@@ -117,6 +121,7 @@ export class Input {
       if (key === 'a' || e.key === 'ArrowLeft') this.keys.a = false;
       if (key === 'd' || e.key === 'ArrowRight') this.keys.d = false;
       if (key === 'f') this._requestSkillUp();
+      if (key === 'r') this.teleportUpRequested = true;
     };
 
     this._mouseMoveHandler = (e) => {
@@ -132,6 +137,20 @@ export class Input {
       // Angle is computed in updateAimAngle() each frame — do NOT compute it
       // here. Computing from canvas center here would fight with the correct
       // player→mouse calculation and cause visible aim jitter.
+    };
+
+    this._mouseDownHandler = (e) => {
+      if (e.button !== 0) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = rect.width ? canvas.width / rect.width : 1;
+      const scaleY = rect.height ? canvas.height / rect.height : 1;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+      this.mouse.x = x;
+      this.mouse.y = y;
+      this.targetCastPointer = { x, y };
+      this.targetCastRequested = true;
+      this.hasMouseInput = true;
     };
 
     // Mobile / Tablet General Screen Touch Event Fallbacks
@@ -184,6 +203,7 @@ export class Input {
     document.addEventListener('keydown', this._keyDownHandler);
     document.addEventListener('keyup', this._keyUpHandler);
     canvas.addEventListener('mousemove', this._mouseMoveHandler);
+    canvas.addEventListener('mousedown', this._mouseDownHandler);
 
     // Passive parameters set for better scroll safety
     canvas.addEventListener('touchstart', this._touchStartHandler, { passive: false });
@@ -435,6 +455,18 @@ export class Input {
     return true;
   }
 
+  consumeTeleportUp() {
+    if (!this.teleportUpRequested) return false;
+    this.teleportUpRequested = false;
+    return true;
+  }
+
+  consumeTargetCast() {
+    if (!this.targetCastRequested) return null;
+    this.targetCastRequested = false;
+    return this.targetCastPointer ? { ...this.targetCastPointer } : null;
+  }
+
   /**
    * Read-and-clear the queued skill request (edge-triggered).
    */
@@ -511,6 +543,7 @@ export class Input {
     if (this._keyDownHandler) document.removeEventListener('keydown', this._keyDownHandler);
     if (this._keyUpHandler) document.removeEventListener('keyup', this._keyUpHandler);
     if (canvas && this._mouseMoveHandler) canvas.removeEventListener('mousemove', this._mouseMoveHandler);
+    if (canvas && this._mouseDownHandler) canvas.removeEventListener('mousedown', this._mouseDownHandler);
     
     if (canvas && this._touchStartHandler) canvas.removeEventListener('touchstart', this._touchStartHandler);
     if (canvas && this._touchMoveHandler) canvas.removeEventListener('touchmove', this._touchMoveHandler);
@@ -540,10 +573,13 @@ export class Input {
 
     this.dashRequested = false;
     this.teleportRequested = false;
+    this.teleportUpRequested = false;
     this.skillRequested = false;
     this.skillDownRequested = false;
     this.skillUpRequested = false;
     this.skillHeld = false;
+    this.targetCastRequested = false;
+    this.targetCastPointer = null;
 
     const leftContainer = document.getElementById('leftJoystickContainer');
     const rightContainer = document.getElementById('rightJoystickContainer');

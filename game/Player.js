@@ -45,6 +45,7 @@ export class Player {
     this.spearThrown = false; // true while the javelin skill is airborne
     this.hammerSkillUntil = 0; // host-ms timestamp: no basic attacks until the hammer skill fully ends
     this.pendingIcicles = 0;   // magic staff: ice shards loaded, waiting for F to fire
+    this.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };
     this.burnTimeLeft = 0;     // fire DoT: seconds remaining
     this.burnTickLeft = 0;     // fire DoT: seconds until the next tick
     this.burnDps = 0;          // fire DoT: damage per tick
@@ -54,6 +55,8 @@ export class Player {
     this.arrowStacks = 0;     // bow skill charges earned by landing arrows
     this.greatswordChargeStart = 0;
     this.greatswordChargeAngle = 0;
+    this.katanaChargeStart = 0;
+    this.katanaChargeAngle = 0;
     this.daggerQte = null;
 
     // Equipped costume overrides the auto-generated colors; otherwise derive
@@ -61,10 +64,14 @@ export class Player {
     if (costume && costume.color) {
       this.color = costume.color;
       this.accentColor = costume.accentColor || costume.color;
+      this.costumeDecoration = costume.decoration || null;
+      this.costumeEffect = costume.effect || null;
     } else {
       const colors = this._generateColorsFromId(id);
       this.color = colors.primary;
       this.accentColor = colors.accent;
+      this.costumeDecoration = null;
+      this.costumeEffect = null;
     }
   }
 
@@ -197,6 +204,7 @@ export class Player {
     this.spearThrown = false;
     this.hammerSkillUntil = 0;
     this.pendingIcicles = 0;
+    this.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };
     this.burnTimeLeft = 0;
     this.burnTickLeft = 0;
     this.burnDps = 0;
@@ -205,6 +213,8 @@ export class Player {
     this.arrowStacks = 0;
     this.greatswordChargeStart = 0;
     this.greatswordChargeAngle = 0;
+    this.katanaChargeStart = 0;
+    this.katanaChargeAngle = 0;
     this.daggerQte = null;
     this.comboStep = 0;
     this.comboDelayUntil = 0;
@@ -214,7 +224,7 @@ export class Player {
    * Try to initiate an attack based on weapon cooldown
    */
   canAttack(now) {
-    if (this.isDead || this.stunTimeLeft > 0 || this.spearThrown || this.greatswordChargeStart > 0 || this.daggerQte) return false;
+    if (this.isDead || this.stunTimeLeft > 0 || this.spearThrown || this.greatswordChargeStart > 0 || this.katanaChargeStart > 0 || this.daggerQte) return false;
     // Hammer skill: absolutely no basic attacks from cast until the last shockwave fires.
     if (now < (this.hammerSkillUntil || 0)) return false;
     // Magic staff: don't auto-cast again while ice shards are loaded (waiting for F).
@@ -269,14 +279,18 @@ export class Player {
       spearThrown: this.spearThrown,
       arrowStacks: this.arrowStacks || 0,
       greatswordChargeMs: this.greatswordChargeStart > 0 ? Math.max(0, Date.now() - this.greatswordChargeStart) : 0,
+      katanaChargeMs: this.katanaChargeStart > 0 ? Math.max(0, Date.now() - this.katanaChargeStart) : 0,
       daggerQte: serializeDaggerQte(this.daggerQte),
       comboStep: this.comboStep || 0,
       comboDelayMs: Math.max(0, Math.round((this.comboDelayUntil || 0) - Date.now())),
       pendingIcicles: this.pendingIcicles || 0,
+      magicCdMs: serializeMagicCooldowns(this.magicCooldowns),
       burnMs: Math.round((this.burnTimeLeft || 0) * 1000),
       teleportCdMs: Math.max(0, Math.round((this.teleportReadyAt || 0) - Date.now())),
       color: this.color,
-      accentColor: this.accentColor
+      accentColor: this.accentColor,
+      costumeDecoration: this.costumeDecoration || null,
+      costumeEffect: this.costumeEffect || null
     };
   }
 
@@ -300,11 +314,15 @@ export class Player {
     this.spearThrown = Boolean(data.spearThrown);
     this.arrowStacks = Math.max(0, Math.floor(data.arrowStacks || 0));
     this.greatswordChargeStart = data.greatswordChargeMs > 0 ? Date.now() - data.greatswordChargeMs : 0;
+    this.katanaChargeStart = data.katanaChargeMs > 0 ? Date.now() - data.katanaChargeMs : 0;
+    this.magicCooldowns = deserializeMagicCooldowns(data.magicCdMs);
     this.daggerQte = deserializeDaggerQte(data.daggerQte);
     this.comboStep = Math.max(0, Math.floor(data.comboStep || 0));
     this.comboDelayUntil = Date.now() + Math.max(0, Math.round(data.comboDelayMs || 0));
     this.color = data.color;
     this.accentColor = data.accentColor;
+    this.costumeDecoration = data.costumeDecoration || null;
+    this.costumeEffect = data.costumeEffect || null;
 
     // Coordinate smoothing can be applied in game loop,
     // but assign directly first
@@ -335,5 +353,21 @@ function deserializeDaggerQte(qte) {
     actionAt: now + Math.max(0, Math.round(qte.actionMs || 0)),
     perfectAt: now + Math.max(0, Math.round(qte.perfectMs || 0)),
     expiresAt: now + Math.max(0, Math.round(qte.expiresMs || 0))
+  };
+}
+
+function serializeMagicCooldowns(cooldowns = {}) {
+  return {
+    fireball: Math.max(0, Math.round((cooldowns.fireball || 0) * 1000)),
+    iceShard: Math.max(0, Math.round((cooldowns.iceShard || 0) * 1000)),
+    lifebound: Math.max(0, Math.round((cooldowns.lifebound || 0) * 1000))
+  };
+}
+
+function deserializeMagicCooldowns(cooldowns = {}) {
+  return {
+    fireball: Math.max(0, (cooldowns.fireball || 0) / 1000),
+    iceShard: Math.max(0, (cooldowns.iceShard || 0) / 1000),
+    lifebound: Math.max(0, (cooldowns.lifebound || 0) / 1000)
   };
 }

@@ -351,7 +351,7 @@ canvas {
   }
 }
 
-@media (pointer: coarse), (max-width: 640px) {
+@media (pointer: coarse), (max-width: 640px), (max-width: 960px) and (orientation: landscape) and (max-height: 520px) {
   #gameHudOverlay {
     left: max(0.5rem, env(safe-area-inset-left));
     right: max(0.5rem, env(safe-area-inset-right));
@@ -426,7 +426,7 @@ canvas {
   }
 
   #hudActionRow {
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     gap: 0.35rem;
     margin: 0;
@@ -520,7 +520,20 @@ canvas {
   }
 }
 
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 520px), (max-width: 960px) and (orientation: landscape) and (max-height: 520px) {
+  #hudActionRow {
+    display: flex !important;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: flex-end;
+    gap: 0.35rem;
+  }
+
+  #hudActionRow button {
+    width: 5.15rem;
+    min-height: 1.9rem;
+  }
+
   #leftJoystickContainer,
   #rightJoystickContainer {
     width: clamp(7.8rem, 34dvh, 9.7rem);

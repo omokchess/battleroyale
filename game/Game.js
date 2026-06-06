@@ -36,6 +36,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
+    this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
@@ -82,6 +83,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
+    this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
@@ -265,7 +267,14 @@ export class Game {
             this._handleSkillReleased(hp, now);
           }
           if (this.input.consumeTeleport()) {
-            this._handleTeleport(hp, now);
+            this._handleAltSkillPressed(hp, now);
+          }
+          if (this.input.consumeTeleportUp()) {
+            this._handleAltSkillReleased(hp, now);
+          }
+          const targetCast = this._consumeTargetCastWorld();
+          if (targetCast) {
+            this._handleTargetCast(hp, targetCast.x, targetCast.y, now);
           }
         }
       }
@@ -304,6 +313,13 @@ export class Game {
         }
         if (this.input.consumeTeleport()) {
           this.networkManager.sendToHost(Protocol.clientAction('teleport'));
+        }
+        if (this.input.consumeTeleportUp()) {
+          this.networkManager.sendToHost(Protocol.clientAction('teleportUp'));
+        }
+        const targetCast = this._consumeTargetCastWorld();
+        if (targetCast) {
+          this.networkManager.sendToHost(Protocol.clientAction('targetCast', 0, 0, targetCast));
         }
 
         // Optimistic local update for zero input latency feel
@@ -360,14 +376,17 @@ export class Game {
       } else if (p.skillCdLeft > 0) {
         p.skillCdLeft = Math.max(0, p.skillCdLeft - deltaTime);
       }
+      this._tickMagicCooldowns(p, deltaTime);
     });
 
     this._releaseDueSwordWaves(now);
     this._releaseDueBowRailguns(now);
+    this._releaseDueMagicShards(now);
     this._releaseDueKatanaSlashes(now);
     this._processSpearThrowQueue(now);
     this._processPendingMeleeHits(now);
     this._processGreatswordCharges(now);
+    this._processKatanaCharges(now);
     this._processDaggerQtes(now);
     this._processHammerSlams(now);
 
@@ -480,6 +499,7 @@ export class Game {
           p.clearCombatTimers(); // drop buffs/dash/skill state on death
           this._clearPendingSwordWavesFor(p.id);
           this._clearPendingRailgunsFor(p.id);
+          this._clearPendingMagicShardsFor(p.id);
           this._clearPendingMeleeHitsFor(p.id);
           this._clearPendingHammerSlamsFor(p.id);
         }
@@ -908,7 +928,11 @@ export class Game {
     } else if (data.action === 'skillUp') {
       this._handleSkillReleased(player, now);
     } else if (data.action === 'teleport') {
-      this._handleTeleport(player, now);
+      this._handleAltSkillPressed(player, now);
+    } else if (data.action === 'teleportUp') {
+      this._handleAltSkillReleased(player, now);
+    } else if (data.action === 'targetCast') {
+      this._handleTargetCast(player, data.x, data.y, now);
     }
   }
 
@@ -918,14 +942,24 @@ export class Game {
     player.startDash(dirX, dirY);
   }
 
+  _consumeTargetCastWorld() {
+    const pointer = this.input?.consumeTargetCast?.();
+    if (!pointer || !this.camera || typeof this.camera.toWorld !== 'function') return null;
+    const world = this.camera.toWorld(pointer.x, pointer.y, this.canvas.width, this.canvas.height);
+    return {
+      x: Math.max(0, Math.min(this.mapWidth, world.x)),
+      y: Math.max(0, Math.min(this.mapHeight, world.y))
+    };
+  }
+
   _handleSkillPressed(player, now) {
     if (!player || player.isDead || player.stunTimeLeft > 0) return;
     if (player.weapon === 'dagger' && player.daggerQte) {
       this._tryDaggerQteInput(player, now);
       return;
     }
-    if (player.weapon === 'magicstaff' && player.pendingIcicles > 0) {
-      this._fireIcicles(player, now);
+    if (player.weapon === 'magicstaff') {
+      this._castMagicFireballSkill(player, now);
       return;
     }
     if (player.weapon === 'greatsword') {
@@ -942,17 +976,66 @@ export class Game {
     }
   }
 
+  _handleAltSkillPressed(player, now) {
+    if (!player || player.isDead || player.stunTimeLeft > 0) return;
+    if (player.weapon === 'sniper') {
+      this._handleTeleport(player, now);
+    } else if (player.weapon === 'magicstaff') {
+      this._castMagicLifeboundSkill(player, now);
+    } else if (player.weapon === 'katana') {
+      this._startKatanaIaijutsuCharge(player, now);
+    }
+  }
+
+  _handleAltSkillReleased(player, now) {
+    if (!player || player.isDead) return;
+    if (player.weapon === 'katana') {
+      this._releaseKatanaIaijutsu(player, now, false);
+    }
+  }
+
+  _handleTargetCast(player, x, y, now) {
+    if (!player || player.isDead || player.stunTimeLeft > 0 || player.weapon !== 'magicstaff') return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const targetX = Math.max(0, Math.min(this.mapWidth, x));
+    const targetY = Math.max(0, Math.min(this.mapHeight, y));
+    this._castMagicIceSkill(player, now, targetX, targetY);
+  }
+
   _canUseSkill(player) {
     if (!player || player.isDead || player.stunTimeLeft > 0 ||
         player.buffTimeLeft > 0 || player.skillCdLeft > 0 || player.spearThrown) {
       return false;
     }
-    if (player.greatswordChargeStart > 0 || player.daggerQte) return false;
+    if (player.greatswordChargeStart > 0 || player.katanaChargeStart > 0 || player.daggerQte) return false;
     if (!SkillConfig[player.weapon]) return false;
     if (player.weapon === 'bow') {
       return (player.arrowStacks || 0) > 0;
     }
     return true;
+  }
+
+  _tickMagicCooldowns(player, deltaTime) {
+    if (!player?.magicCooldowns) return;
+    ['fireball', 'iceShard', 'lifebound'].forEach(key => {
+      if (player.magicCooldowns[key] > 0) {
+        player.magicCooldowns[key] = Math.max(0, player.magicCooldowns[key] - deltaTime);
+      }
+    });
+  }
+
+  _canUseMagic(player, spell) {
+    if (!player || player.isDead || player.stunTimeLeft > 0 || player.weapon !== 'magicstaff') return false;
+    if (!MagicConfig[spell]) return false;
+    const cooldowns = player.magicCooldowns || (player.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 });
+    return !(cooldowns[spell] > 0);
+  }
+
+  _startMagicCooldown(player, spell) {
+    const cfg = MagicConfig[spell];
+    if (!player || !cfg) return;
+    if (!player.magicCooldowns) player.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };
+    player.magicCooldowns[spell] = (cfg.cooldownMs || MagicConfig.cooldownMs || 2000) / 1000;
   }
 
   /**
@@ -1637,12 +1720,133 @@ export class Game {
   }
 
   // --- 마법 지팡이 (magic staff): every auto-cast rolls one of three spells.
+  _startKatanaIaijutsuCharge(player, now) {
+    if (!player || player.isDead || player.weapon !== 'katana' || player.stunTimeLeft > 0) return;
+    if (player.katanaChargeStart > 0 || now < (player.teleportReadyAt || 0)) return;
+    const sk = SkillConfig.katana;
+    player.katanaChargeStart = now;
+    player.katanaChargeAngle = player.angle;
+    player.comboStep = 0;
+    player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, now + (sk.iaijutsuChargeMs || 1000));
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: 'katana',
+      type: 'katana_charge',
+      range: sk.iaijutsuRange,
+      width: sk.iaijutsuWidth,
+      progress: 0,
+      timestamp: now,
+      lifetime: sk.iaijutsuChargeMs || 1000
+    });
+  }
+
+  _processKatanaCharges(now) {
+    const chargeMs = SkillConfig.katana?.iaijutsuChargeMs || 1000;
+    Object.values(this.players).forEach(player => {
+      if (!player || player.isDead || player.weapon !== 'katana') return;
+      if (player.katanaChargeStart > 0 && now - player.katanaChargeStart >= chargeMs) {
+        this._releaseKatanaIaijutsu(player, now, true);
+      }
+    });
+  }
+
+  _releaseKatanaIaijutsu(player, now, forceFull = false) {
+    if (!player || player.katanaChargeStart <= 0) return;
+    const sk = SkillConfig.katana;
+    const heldMs = Math.max(0, now - player.katanaChargeStart);
+    const full = heldMs >= (sk.iaijutsuChargeMs || 1000);
+    const angle = Number.isFinite(player.katanaChargeAngle) ? player.katanaChargeAngle : player.angle;
+    player.katanaChargeStart = 0;
+    player.katanaChargeAngle = 0;
+
+    if (!full && !forceFull) {
+      player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, now + 180);
+      return;
+    }
+
+    const attackConfig = {
+      ...Weapons.katana,
+      type: 'melee_heavy_line',
+      hitMode: null,
+      damage: sk.iaijutsuDamage || 80,
+      range: sk.iaijutsuRange || 150,
+      width: sk.iaijutsuWidth || 40,
+      cooldown: 0,
+      knockback: 58
+    };
+    const attacker = {
+      ...this._snapshotMeleeAttacker(player),
+      angle
+    };
+    this._applyMeleeHits(attacker, attackConfig, now);
+    player.teleportReadyAt = now + (sk.iaijutsuCooldownMs || 3000);
+    player.comboDelayUntil = Math.max(player.comboDelayUntil || 0, now + 520);
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle,
+      weapon: 'katana',
+      type: 'melee_heavy_line',
+      range: attackConfig.range,
+      width: attackConfig.width,
+      isSkill: true,
+      progress: 0,
+      timestamp: now,
+      lifetime: 420
+    });
+  }
+
   _castMagicStaff(player, now) {
     player.lastAttackTime = now;
     const roll = Math.floor(Math.random() * 3);
     if (roll === 0) this._castFireball(player, now);
     else if (roll === 1) this._castIceShards(player, now);
     else this._castLifebound(player, now);
+  }
+
+  _castMagicFireballSkill(player, now) {
+    if (!this._canUseMagic(player, 'fireball')) return;
+    this._castFireball(player, now);
+    this._startMagicCooldown(player, 'fireball');
+  }
+
+  _castMagicLifeboundSkill(player, now) {
+    if (!this._canUseMagic(player, 'lifebound')) return;
+    this._castLifebound(player, now);
+    this._startMagicCooldown(player, 'lifebound');
+  }
+
+  _castMagicIceSkill(player, now, targetX, targetY) {
+    if (!this._canUseMagic(player, 'iceShard')) return;
+    const cfg = MagicConfig.iceShard;
+    const count = Math.max(1, Math.floor(cfg.count || 4));
+    const interval = Math.max(0, cfg.intervalMs || 0);
+    if (!this.pendingMagicShards) this.pendingMagicShards = [];
+    for (let i = 0; i < count; i++) {
+      this.pendingMagicShards.push({
+        playerId: player.id,
+        targetX,
+        targetY,
+        releaseAt: now + interval * i,
+        sequence: i
+      });
+    }
+    this._startMagicCooldown(player, 'iceShard');
+    this.effects.push({
+      attackerId: player.id,
+      x: targetX,
+      y: targetY,
+      weapon: 'magicstaff',
+      type: 'icicle_load',
+      worldAnchored: true,
+      progress: 0,
+      timestamp: now,
+      lifetime: Math.max(260, interval * count)
+    });
   }
 
   _castFireball(player, now) {
@@ -1726,6 +1930,64 @@ export class Game {
       weapon: 'magicstaff', type: 'projectile_shot', projectileKind: 'iceshard',
       progress: 0, timestamp: now, lifetime: 200
     });
+  }
+
+  _releaseDueMagicShards(now) {
+    if (!this.pendingMagicShards?.length) return;
+    const waiting = [];
+    for (const shard of this.pendingMagicShards) {
+      if (shard.releaseAt > now) {
+        waiting.push(shard);
+        continue;
+      }
+
+      const player = this.players[shard.playerId];
+      if (!player || player.isDead || player.weapon !== 'magicstaff') continue;
+      this._spawnMagicShard(player, shard, now);
+    }
+    this.pendingMagicShards = waiting;
+  }
+
+  _spawnMagicShard(player, shard, now) {
+    const cfg = MagicConfig.iceShard;
+    const dx = shard.targetX - player.x;
+    const dy = shard.targetY - player.y;
+    const angle = Math.atan2(dy, dx);
+    const spawnDist = player.radius + 4;
+    const side = (shard.sequence - ((cfg.count || 4) - 1) / 2) * 5;
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    const proj = new Projectile(
+      `${player.id}-iceshard-${now}-${shard.sequence}`,
+      player.id,
+      player.x + ux * spawnDist - uy * side,
+      player.y + uy * spawnDist + ux * side,
+      angle,
+      cfg.speed,
+      Infinity,
+      cfg.damage,
+      'iceshard'
+    );
+    proj.weapon = 'magicstaff';
+    proj.radius = cfg.radius;
+    this.projectiles.push(proj);
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle,
+      weapon: 'magicstaff',
+      type: 'projectile_shot',
+      projectileKind: 'iceshard',
+      progress: 0,
+      timestamp: now,
+      lifetime: 170
+    });
+  }
+
+  _clearPendingMagicShardsFor(playerId) {
+    if (!this.pendingMagicShards?.length) return;
+    this.pendingMagicShards = this.pendingMagicShards.filter(shard => shard.playerId !== playerId);
   }
 
   _applyBurn(target, sourceId, dps, durationMs) {
@@ -2160,6 +2422,7 @@ export class Game {
       if (p.buffTimeLeft > 0) p.buffTimeLeft = Math.max(0, p.buffTimeLeft - deltaTime);
       if (p.stunTimeLeft > 0) p.stunTimeLeft = Math.max(0, p.stunTimeLeft - deltaTime);
       if (p.burnTimeLeft > 0) p.burnTimeLeft = Math.max(0, p.burnTimeLeft - deltaTime);
+      this._tickMagicCooldowns(p, deltaTime);
     });
 
     // Smoothly drag and interpolate positions
@@ -2351,7 +2614,19 @@ export class Game {
     const skillBar = document.getElementById('hudSkillBar');
     if (skillState && skillBar) {
       const sk = SkillConfig[local.weapon];
-      if (local.buffTimeLeft > 0) {
+      if (local.weapon === 'magicstaff') {
+        const fireCd = local.magicCooldowns?.fireball || 0;
+        const total = (MagicConfig.fireball?.cooldownMs || MagicConfig.cooldownMs || 2000) / 1000;
+        if (fireCd > 0) {
+          skillState.textContent = `${fireCd.toFixed(1)}s`;
+          skillBar.style.width = `${clamp01(1 - fireCd / total) * 100}%`;
+          skillBar.style.background = '#4b5563';
+        } else {
+          skillState.textContent = 'FIRE';
+          skillBar.style.width = '100%';
+          skillBar.style.background = weaponColor;
+        }
+      } else if (local.buffTimeLeft > 0) {
         const total = (sk?.buffMs || 1) / 1000;
         skillState.textContent = `버프 ${local.buffTimeLeft.toFixed(1)}s`;
         skillBar.style.width = `${clamp01(local.buffTimeLeft / total) * 100}%`;
@@ -2426,6 +2701,74 @@ export class Game {
         }
       } else {
         teleportRow.classList.add('hidden');
+      }
+    }
+    this._updateExtendedAbilityHud(local);
+  }
+
+  _updateExtendedAbilityHud(local) {
+    const teleportRow = document.getElementById('hudTeleportRow');
+    const teleportState = document.getElementById('hudTeleportState');
+    const teleportBar = document.getElementById('hudTeleportBar');
+    if (teleportRow && teleportState && teleportBar) {
+      const usesRRow = local.weapon === 'sniper' || local.weapon === 'magicstaff' || local.weapon === 'katana';
+      if (usesRRow) {
+        teleportRow.classList.remove('hidden');
+        const label = teleportRow.querySelector('span');
+        if (label) {
+          if (local.weapon === 'magicstaff') label.innerHTML = '<strong class="text-[#a855f7]">R</strong> HEAL';
+          else if (local.weapon === 'katana') label.innerHTML = '<strong class="text-[#f43f5e]">R</strong> IAI';
+          else label.innerHTML = '<strong class="text-[#22c55e]">R</strong> BLINK';
+        }
+
+        const total = local.weapon === 'sniper'
+          ? SkillConfig.sniper?.teleportCooldownMs || 2000
+          : local.weapon === 'katana'
+            ? SkillConfig.katana?.iaijutsuCooldownMs || 3000
+            : MagicConfig.lifebound?.cooldownMs || MagicConfig.cooldownMs || 2000;
+        const leftMs = local.weapon === 'magicstaff'
+          ? Math.max(0, (local.magicCooldowns?.lifebound || 0) * 1000)
+          : Math.max(0, (local.teleportReadyAt || 0) - Date.now());
+
+        if (local.weapon === 'katana' && local.katanaChargeStart > 0) {
+          const chargeTotal = SkillConfig.katana?.iaijutsuChargeMs || 1000;
+          const chargedMs = Date.now() - local.katanaChargeStart;
+          teleportState.textContent = `${(Math.min(chargeTotal, chargedMs) / 1000).toFixed(1)}s`;
+          teleportBar.style.width = `${clamp01(chargedMs / chargeTotal) * 100}%`;
+          teleportBar.style.background = '#f43f5e';
+        } else if (leftMs > 0) {
+          teleportState.textContent = `${(leftMs / 1000).toFixed(1)}s`;
+          teleportBar.style.width = `${clamp01(1 - leftMs / total) * 100}%`;
+          teleportBar.style.background = '#4b5563';
+        } else {
+          teleportState.textContent = local.weapon === 'katana' ? 'HOLD' : 'READY';
+          teleportBar.style.width = '100%';
+          teleportBar.style.background = local.weapon === 'magicstaff' ? '#a855f7' : local.weapon === 'katana' ? '#f43f5e' : '#22c55e';
+        }
+      } else {
+        teleportRow.classList.add('hidden');
+      }
+    }
+
+    const clickSkillRow = document.getElementById('hudClickSkillRow');
+    const clickSkillState = document.getElementById('hudClickSkillState');
+    const clickSkillBar = document.getElementById('hudClickSkillBar');
+    if (clickSkillRow && clickSkillState && clickSkillBar) {
+      if (local.weapon === 'magicstaff') {
+        clickSkillRow.classList.remove('hidden');
+        const iceCd = local.magicCooldowns?.iceShard || 0;
+        const total = (MagicConfig.iceShard?.cooldownMs || MagicConfig.cooldownMs || 2000) / 1000;
+        if (iceCd > 0) {
+          clickSkillState.textContent = `${iceCd.toFixed(1)}s`;
+          clickSkillBar.style.width = `${clamp01(1 - iceCd / total) * 100}%`;
+          clickSkillBar.style.background = '#4b5563';
+        } else {
+          clickSkillState.textContent = 'READY';
+          clickSkillBar.style.width = '100%';
+          clickSkillBar.style.background = '#93c5fd';
+        }
+      } else {
+        clickSkillRow.classList.add('hidden');
       }
     }
   }
@@ -2547,6 +2890,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
+    this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
@@ -2700,6 +3044,7 @@ export class Game {
             p.spearThrown = Boolean(snap.spearThrown);
             p.arrowStacks = Math.max(0, Math.floor(snap.arrowStacks || 0));
             p.greatswordChargeStart = snap.greatswordChargeMs > 0 ? Date.now() - snap.greatswordChargeMs : 0;
+            p.katanaChargeStart = snap.katanaChargeMs > 0 ? Date.now() - snap.katanaChargeMs : 0;
             p.daggerQte = snap.daggerQte ? {
               targetId: snap.daggerQte.targetId,
               phase: snap.daggerQte.phase || 'lock',
@@ -2710,10 +3055,13 @@ export class Game {
             p.comboStep = Math.max(0, Math.floor(snap.comboStep || 0));
             p.comboDelayUntil = Date.now() + Math.max(0, Math.round(snap.comboDelayMs || 0));
             p.pendingIcicles = Math.max(0, Math.floor(snap.pendingIcicles || 0));
+            p.magicCooldowns = deserializeMagicCooldowns(snap.magicCdMs);
             p.burnTimeLeft = Math.max(0, (snap.burnMs || 0) / 1000);
             p.teleportReadyAt = Date.now() + Math.max(0, Math.round(snap.teleportCdMs || 0));
             p.color = snap.color;
             p.accentColor = snap.accentColor;
+            p.costumeDecoration = snap.costumeDecoration || null;
+            p.costumeEffect = snap.costumeEffect || null;
 
             if (id !== this.localPlayerId) {
               // Soft buffer coordinates for smooth client interpolation
@@ -2876,7 +3224,19 @@ function sanitizeCostume(costume) {
   };
   const color = safe(costume.color);
   if (!color) return null;
-  return { color, accentColor: safe(costume.accentColor) || color };
+  const safeToken = (value, allowed) => {
+    if (typeof value !== 'string') return null;
+    const token = value.trim().slice(0, 24);
+    return allowed.has(token) ? token : null;
+  };
+  const decorations = new Set(['crest', 'wings', 'crown', 'halo', 'cape']);
+  const effects = new Set(['embers', 'leaves', 'sparkles', 'runes', 'shade']);
+  return {
+    color,
+    accentColor: safe(costume.accentColor) || color,
+    decoration: safeToken(costume.decoration, decorations),
+    effect: safeToken(costume.effect, effects)
+  };
 }
 
 function sanitizeInputKeys(keys = {}) {
@@ -2914,6 +3274,14 @@ function angleDistance(a, b) {
 
 function positiveFinite(value) {
   return Number.isFinite(value) && value > 0;
+}
+
+function deserializeMagicCooldowns(cooldowns = {}) {
+  return {
+    fireball: Math.max(0, (cooldowns.fireball || 0) / 1000),
+    iceShard: Math.max(0, (cooldowns.iceShard || 0) / 1000),
+    lifebound: Math.max(0, (cooldowns.lifebound || 0) / 1000)
+  };
 }
 
 function clamp01(value) {

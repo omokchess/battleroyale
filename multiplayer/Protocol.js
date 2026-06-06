@@ -54,11 +54,14 @@ export const Protocol = {
 
   // Discrete one-shot commands (dash / skill). Dash carries the intended
   // movement direction so the host reproduces the client's burst direction.
-  clientAction(action, dx = 0, dy = 0) {
+  clientAction(action, dx = 0, dy = 0, extra = null) {
     const msg = { type: MsgType.PLAYER_ACTION, action };
     if (action === 'dash') {
       msg.dx = dx;
       msg.dy = dy;
+    }
+    if (extra && typeof extra === 'object') {
+      Object.assign(msg, extra);
     }
     return msg;
   },

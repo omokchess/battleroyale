@@ -40,6 +40,18 @@ function escapeHtml(value) {
   ));
 }
 
+const COSTUME_EXTRAS = {
+  crimson: { decoration: 'crest', effect: 'embers', label: 'Crest + embers' },
+  emerald: { decoration: 'wings', effect: 'leaves', label: 'Wings + motes' },
+  gold: { decoration: 'crown', effect: 'sparkles', label: 'Crown + shine' },
+  violet: { decoration: 'halo', effect: 'runes', label: 'Halo + runes' },
+  shadow: { decoration: 'cape', effect: 'shade', label: 'Cape + shade' }
+};
+
+function costumeExtras(id) {
+  return COSTUME_EXTRAS[id] || { decoration: null, effect: null, label: 'Color only' };
+}
+
 // ── 공개 API ────────────────────────────────────────────────
 
 /** 현재 로그인 프로필(없으면 null) */
@@ -52,7 +64,13 @@ export function getEquippedCostume() {
   if (!profile) return null;
   const c = costumeCatalog.find((x) => x.id === profile.equipped_costume);
   if (!c || c.id === 'default') return null;
-  return { color: c.color, accentColor: c.accent_color };
+  const extras = costumeExtras(c.id);
+  return {
+    color: c.color,
+    accentColor: c.accent_color,
+    decoration: extras.decoration,
+    effect: extras.effect
+  };
 }
 
 /** 로비 닉네임 입력 기본값 */
@@ -290,6 +308,7 @@ function renderShop() {
   body.innerHTML = costumeCatalog.map((c) => {
     const owned = ownedIds.has(c.id);
     const equipped = profile?.equipped_costume === c.id;
+    const extras = costumeExtras(c.id);
     let btn;
     if (equipped) {
       btn = `<button disabled class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-[#45f3ff] text-[#45f3ff] bg-[#0b3038] cursor-default">착용 중</button>`;
@@ -302,6 +321,7 @@ function renderShop() {
       <div class="bg-[#0b0c10] border-2 border-gray-700 p-3 flex flex-col items-center">
         <div class="w-12 h-12 rounded-full mb-2 border-2" style="background:${c.color}; border-color:${c.accent_color}"></div>
         <div class="font-mono text-xs text-white font-bold">${escapeHtml(c.name)}</div>
+        <div class="font-mono text-[9px] text-[#66fcf1] mt-1">${escapeHtml(extras.label)}</div>
         <div class="font-mono text-[10px] text-gray-400">${c.price === 0 ? '무료' : c.price + ' 코인'}</div>
         ${btn}
       </div>`;

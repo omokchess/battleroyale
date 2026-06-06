@@ -37,6 +37,18 @@ const refreshRoomsBtn = document.getElementById('refreshRoomsBtn');
 let netManager = null;
 let activeGame = null;
 
+function registerPwa() {
+  if (!('serviceWorker' in navigator)) return;
+  const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (!window.isSecureContext && !isLocalhost) return;
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(err => {
+      console.warn('PWA service worker registration failed', err);
+    });
+  });
+}
+
 // Cross-device room presence (broker-backed, localStorage fallback).
 const roomRegistry = new RoomRegistry();
 
@@ -445,6 +457,7 @@ async function handleMatchEnd(stats) {
 }
 
 // Run Setup on page launch
+registerPwa();
 setupWeaponSelector();
 buildWeaponSwitchPanel();
 

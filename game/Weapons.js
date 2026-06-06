@@ -185,7 +185,8 @@ export const Weapons = {
     name: '마법 지팡이',
     damage: 40,             // fireball direct (display)
     maxHp: 95,
-    cooldown: 3000,         // 3s between random casts
+    cooldown: 2000,
+    automaticAttack: false,
     moveSpeed: 0.9,
     range: Infinity,
     speed: 540,             // shown as cast speed
@@ -198,7 +199,7 @@ export const Weapons = {
     name: '스나이퍼',
     damage: Infinity,       // 즉사 (actual shot resolves as a 9999 hitscan)
     maxHp: 90,
-    cooldown: 3000,
+    cooldown: 2000,
     automaticAttack: false, // F fires; 걷기 불가(이동속도 0)지만 대시는 가능
     moveSpeed: 0,           // cannot walk — moves only by dashing
     range: Infinity,
@@ -228,6 +229,19 @@ Object.assign(Weapons.greatsword, {
 Object.assign(Weapons.dagger, {
   description: '레이피어처럼 얇은 직선 판정으로 빠르게 찌르는 암살 무기입니다.',
   skill: 'F 스킬: 가장 가까운 적과 0.7초간 사슬을 잇고, 원 타이밍에 F를 누르면 배후 공격으로 70 피해를 줍니다.'
+});
+
+Object.assign(Weapons.magicstaff, {
+  description: 'Three separate spells: F fireball, left-click ice shards, R lifebound.',
+  skill: 'F fireball / left-click ice shards to target / R heal. Each spell has its own 2s cooldown.'
+});
+
+Object.assign(Weapons.sniper, {
+  skill: 'F shot cooldown 2s / R teleport cooldown 2s.'
+});
+
+Object.assign(Weapons.katana, {
+  skill: 'F double slash remains available. Hold R to charge iaijutsu for 1s, then cut a 40px-wide forward line for 80 damage.'
 });
 
 // --- Dash (Spacebar) tuning --------------------------------------------------
@@ -366,11 +380,16 @@ export const SkillConfig = {
     directAngle: 130,
     waveDamage: 30,
     waveSpeed: 832,         // 화살(640)의 1.3배
-    attackLockMs: 250
+    attackLockMs: 250,
+    iaijutsuCooldownMs: 3000,
+    iaijutsuChargeMs: 1000,
+    iaijutsuDamage: 80,
+    iaijutsuRange: 150,
+    iaijutsuWidth: 40
   },
   sniper: {
-    cooldownMs: 4000,         // F: instakill shot cooldown
-    teleportCooldownMs: 4000  // R: random teleport cooldown
+    cooldownMs: 2000,         // F: instakill shot cooldown
+    teleportCooldownMs: 2000  // R: random teleport cooldown
   }
 };
 
@@ -484,12 +503,12 @@ export const ComboConfig = {
   }
 };
 
-// --- Magic staff spell tuning (random auto-cast every cooldownMs) -------------
+// --- Magic staff spell tuning ------------------------------------------------
 export const MagicConfig = {
-  cooldownMs: 3000,
-  fireball:  { damage: 40, speed: 540, radius: 9, burnDps: 2, burnDurationMs: 4000 }, // 화살(640)보다 약간 느리게
-  iceShard:  { count: 4, damage: 12, speed: 740, radius: 6, spreadDeg: 9 },            // 화살보다 약간 빠르게
-  lifebound: { heal: 30 }
+  cooldownMs: 2000,
+  fireball:  { cooldownMs: 2000, damage: 40, speed: 540, radius: 9, burnDps: 2, burnDurationMs: 4000 },
+  iceShard:  { cooldownMs: 2000, count: 4, damage: 12, speed: 740, radius: 6, intervalMs: 120 },
+  lifebound: { cooldownMs: 2000, heal: 30 }
 };
 
 /**
