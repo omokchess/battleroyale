@@ -447,6 +447,68 @@ function buildWeaponSwitchPanel() {
 }
 
 /**
+ * Mobile lobby tabs. The lobby stacks vertically and is painful to scroll on
+ * phones, so on mobile we show one section at a time via a bottom tab bar.
+ * Desktop is unaffected: `.lobby-tab-hidden` only does anything below `lg`
+ * (see styles.css), so all sections stay visible side-by-side on desktop.
+ *
+ * IMPORTANT: this only toggles a presentation class on existing sections — no
+ * account/login element is moved, renamed, or rewired, so the Supabase auth
+ * flow (account-ui.js) is completely untouched.
+ */
+function setupLobbyTabs() {
+  const tabs = document.querySelectorAll('.lobby-tab');
+  if (!tabs.length) return;
+
+  // tab -> which LEFT-panel children are visible (the RIGHT panel is the join browser)
+  const TAB_MAP = {
+    weapon: { left: true,  show: ['lobbyWeapon'] },
+    create: { left: true,  show: ['lobbyCreate', 'lobbyGuide'] },
+    mypage: { left: true,  show: ['accountBar', 'lobbyNickname', 'lobbyPerfWrap'] },
+    join:   { left: false, show: [] }
+  };
+  const LEFT_CHILDREN = ['lobbyWeapon', 'lobbyCreate', 'lobbyGuide', 'accountBar', 'lobbyNickname', 'lobbyPerfWrap'];
+  const setHidden = (id, on) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('lobby-tab-hidden', on);
+  };
+
+  function setTab(tab) {
+    const cfg = TAB_MAP[tab] || TAB_MAP.weapon;
+    setHidden('lobbyLeft', !cfg.left);
+    setHidden('lobbyRight', tab !== 'join');
+    LEFT_CHILDREN.forEach(id => setHidden(id, !cfg.show.includes(id)));
+    tabs.forEach(b => b.classList.toggle('lobby-tab-active', b.dataset.lobbyTab === tab));
+  }
+
+  tabs.forEach(b => b.addEventListener('click', () => setTab(b.dataset.lobbyTab)));
+  setTab('weapon'); // default landing tab on mobile
+}
+
+/**
+ * Low Detail (performance mode) toggle surfaced in the lobby's 내 페이지 tab so
+ * mobile players can enable it without entering a match first. Persists to the
+ * same localStorage key the in-game Renderer reads on start.
+ */
+function setupLobbyPerfToggle() {
+  const box = document.getElementById('lobbyPerfMode');
+  if (!box) return;
+  const KEY = 'battle_visual_settings_v1';
+  const read = () => {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; }
+  };
+  box.checked = Boolean(read().performanceMode);
+  box.addEventListener('change', () => {
+    const s = read();
+    s.performanceMode = box.checked;
+    try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* storage blocked */ }
+    // Keep the in-game settings checkbox in sync if it's already in the DOM.
+    const inGame = document.getElementById('settingPerformanceMode');
+    if (inGame) inGame.checked = box.checked;
+  });
+}
+
+/**
  * Match end: record this session's kills (→ coins) for the logged-in player,
  * then return to the lobby. `stats.kills` is passed by Game.quit().
  */
@@ -466,6 +528,8 @@ async function handleMatchEnd(stats) {
 registerPwa();
 setupWeaponSelector();
 buildWeaponSwitchPanel();
+setupLobbyTabs();
+setupLobbyPerfToggle();
 
 // Auth gate: account-ui resolves the session and tells us which screen to show.
 accountUI.init({

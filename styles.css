@@ -593,3 +593,24 @@ canvas {
     height: clamp(3.15rem, 12dvh, 3.55rem);
   }
 }
+
+/* ============================================================
+   Lobby mobile tabs (bottom bar) — desktop is unaffected
+   ============================================================ */
+.lobby-tab {
+  border-right: 1px solid rgba(168, 132, 44, 0.35);
+  letter-spacing: 0.02em;
+}
+.lobby-tab:last-child { border-right: 0; }
+.lobby-tab-active {
+  color: #e6c75a !important;
+  background: rgba(201, 162, 39, 0.10);
+  box-shadow: inset 0 3px 0 #c9a227;
+}
+
+@media (max-width: 1023px) {
+  /* On mobile the bottom tab bar drives which lobby section is visible. */
+  .lobby-tab-hidden { display: none !important; }
+  /* Keep content clear of the fixed bottom tab bar. */
+  #lobbyMenu { padding-bottom: 4.5rem; }
+}
