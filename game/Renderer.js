@@ -453,6 +453,39 @@ export class Renderer {
     for (let x = 0; x <= mapWidth; x += gridSize * 3) vline(x, neon, 1);
     for (let y = 0; y <= mapHeight; y += gridSize * 3) hline(y, neon, 1);
 
+    // Center heraldic emblem (crossed swords on a stone medallion).
+    const ec = camera.toScreen(mapWidth / 2, mapHeight / 2, cw, ch);
+    this._drawArenaEmblem(ctx, ec.x, ec.y, camera.zoom || 1);
+
+    ctx.restore();
+  }
+
+  // A faint floor crest: a square stone medallion with brass crossed swords.
+  _drawArenaEmblem(ctx, cx, cy, zoom) {
+    ctx.save();
+    const r = 40 * zoom;
+    ctx.fillStyle = 'rgba(15, 12, 22, 0.55)';
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.strokeStyle = this._hexToRGB('#3a3447', 0.8);
+    ctx.lineWidth = 3;
+    ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.strokeStyle = this._hexToRGB('#c9a227', 0.4);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - r + 6, cy - r + 6, r * 2 - 12, r * 2 - 12);
+
+    ctx.shadowBlur = this._glow * 6;
+    ctx.shadowColor = '#c9a227';
+    ctx.lineCap = 'round';
+    const s = r * 0.58;
+    // Two blades.
+    ctx.strokeStyle = this._hexToRGB('#d4af37', 0.5);
+    ctx.lineWidth = 4 * zoom;
+    ctx.beginPath(); ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s); ctx.stroke();
+    // Small crossguards near each pommel.
+    ctx.lineWidth = 2.4 * zoom;
+    ctx.beginPath(); ctx.moveTo(cx - s - 5, cy - s + 5); ctx.lineTo(cx - s + 5, cy - s - 5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + s - 5, cy - s - 5); ctx.lineTo(cx + s + 5, cy - s + 5); ctx.stroke();
     ctx.restore();
   }
 
@@ -489,12 +522,17 @@ export class Renderer {
     ctx.strokeRect(tl.x + 4, tl.y + 4, w - 8, h - 8);
     ctx.shadowBlur = 0;
 
-    // Flickering torches at the four corners (medieval + glow).
+    // Flickering torches: four corners + the middle of each wall (medieval + glow).
     const now = Date.now();
+    const mx = (tl.x + br.x) / 2, my = (tl.y + br.y) / 2;
     this._drawTorch(ctx, tl.x, tl.y, now);
     this._drawTorch(ctx, br.x, tl.y, now);
     this._drawTorch(ctx, tl.x, br.y, now);
     this._drawTorch(ctx, br.x, br.y, now);
+    this._drawTorch(ctx, mx, tl.y, now);
+    this._drawTorch(ctx, mx, br.y, now);
+    this._drawTorch(ctx, tl.x, my, now);
+    this._drawTorch(ctx, br.x, my, now);
 
     ctx.restore();
   }

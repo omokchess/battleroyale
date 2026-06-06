@@ -107,16 +107,25 @@ body,
     linear-gradient(160deg, #16121d, #0a0810) !important;
 }
 
-/* Stone panels: warm the slate and carve in some depth. */
+/* Stone panels: warm the slate, framed with an ornate brass inner border. */
 .bg-\[\#1f2833\] {
   background-color: #1b1622 !important;
-  box-shadow: inset 0 0 0 1px rgba(251, 146, 60, 0.07), inset 0 2px 14px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    inset 0 0 0 2px rgba(201, 162, 39, 0.30),
+    inset 0 0 0 3px rgba(10, 8, 16, 0.9),
+    inset 0 3px 16px rgba(0, 0, 0, 0.55) !important;
 }
 
-/* Torchlight warmth on titles + primary actions (neon cyan trim stays = the modern layer). */
-h1 { text-shadow: 0 0 14px rgba(251, 146, 60, 0.4), 0 2px 5px rgba(0, 0, 0, 0.85); }
-#hostBtn, #joinBtn { box-shadow: 0 0 16px rgba(251, 146, 60, 0.3) !important; }
-::selection { background: rgba(251, 146, 60, 0.4); color: #fff; }
+/* Antique brass replaces the neon-cyan borders (the medieval metal layer). */
+.border-\[\#45f3ff\] { border-color: #a8842c !important; }
+
+/* Gilded titles + torch-amber warmth on primary actions. Cyan text accents remain = modern hint. */
+h1 {
+  color: #f0c34d !important;
+  text-shadow: 0 0 14px rgba(240, 195, 77, 0.45), 0 2px 5px rgba(0, 0, 0, 0.85);
+}
+#hostBtn, #joinBtn { box-shadow: 0 0 16px rgba(201, 162, 39, 0.32) !important; }
+::selection { background: rgba(201, 162, 39, 0.45); color: #fff; }
 
 /* Base style setups */
 html, body {
