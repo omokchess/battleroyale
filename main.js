@@ -83,11 +83,15 @@ function setupWeaponSelector() {
     });
   });
 
-  // Tint each weapon card's icon with that weapon's own color (matches the swap list).
+  // Show the real PNG weapon art in each lobby card (replaces the placeholder SVGs).
   weaponCards.forEach(card => {
-    const svg = card.querySelector('svg');
-    const cfg = Weapons[card.dataset.weapon];
-    if (svg && cfg) svg.style.stroke = cfg.color;
+    const w = card.dataset.weapon;
+    const iconBox = card.querySelector('div');
+    if (iconBox && w) {
+      iconBox.innerHTML =
+        `<img src="/assets/weapons/${w}.png" alt="${w}" draggable="false" ` +
+        `class="w-9 h-9 object-contain" style="image-rendering:pixelated" />`;
+    }
   });
 
   // Pre-select default sword
