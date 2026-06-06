@@ -5,6 +5,24 @@
 
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
 
+const WEAPON_SPRITE_META = {
+  sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
+  axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0 },
+  bow: { src: '/assets/weapons/bow.png', scale: 0.58, anchorX: 0.32, anchorY: 0.5, angleOffset: 0 },
+  spear: { src: '/assets/weapons/spear.png', scale: 0.68, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
+  gauntlet: { src: '/assets/weapons/gauntlet.png', scale: 0.56, anchorX: 0.36, anchorY: 0.52, angleOffset: 0 },
+  greatsword: { src: '/assets/weapons/greatsword.png', scale: 0.78, anchorX: 0.2, anchorY: 0.54, angleOffset: 0 },
+  scythe: { src: '/assets/weapons/scythe.png', scale: 0.82, anchorX: 0.18, anchorY: 0.72, angleOffset: -0.2 },
+  dagger: { src: '/assets/weapons/dagger.png', scale: 0.44, anchorX: 0.26, anchorY: 0.5, angleOffset: 0 },
+  rapier: { src: '/assets/weapons/rapier.png', scale: 0.56, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 },
+  hammer: { src: '/assets/weapons/hammer.png', scale: 0.68, anchorX: 0.22, anchorY: 0.56, angleOffset: 0 },
+  matchlock: { src: '/assets/weapons/matchlock.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
+  katana: { src: '/assets/weapons/katana.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
+  magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
+  sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
+};
+const WEAPON_ASSET_VERSION = '20260606a';
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -12,8 +30,23 @@ export class Renderer {
     this.particles = [];
     this.lastTime = Date.now();
     this.lastPlayersInfo = {};
+    this.weaponSprites = {};
     this._glow = 1;     // shadowBlur multiplier — set to 0 by performance mode
     this._perf = false; // performance mode: glows + particles disabled
+    this._initWeaponSprites();
+  }
+
+  _initWeaponSprites() {
+    if (typeof Image === 'undefined') return;
+    Object.entries(WEAPON_SPRITE_META).forEach(([key, meta]) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = `${meta.src}?v=${WEAPON_ASSET_VERSION}`;
+      this.weaponSprites[key] = { image, meta, ready: false };
+      image.onload = () => {
+        this.weaponSprites[key].ready = true;
+      };
+    });
   }
 
   /**
@@ -854,6 +887,8 @@ export class Renderer {
         this._drawHeavyCleave(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'greatsword_charge') {
         this._drawGreatswordCharge(ctx, scr, anchoredEffect, weapon, alpha);
+      } else if (e.type === 'katana_charge') {
+        this._drawKatanaCharge(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_sweet_arc') {
         this._drawScytheSweep(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_backstab') {
@@ -1234,6 +1269,44 @@ export class Renderer {
       ctx.lineTo(scr.x + Math.cos(a) * radius, scr.y + Math.sin(a) * radius);
       ctx.stroke();
     });
+    ctx.restore();
+  }
+
+  _drawKatanaCharge(ctx, scr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    const range = weapon.range || 150;
+    const width = Math.max(8, weapon.width || 40);
+    const fill = 0.25 + 0.75 * progress;
+    const x = scr.x + Math.cos(e.angle) * 16;
+    const y = scr.y + Math.sin(e.angle) * 16;
+
+    ctx.save();
+    ctx.shadowBlur = this._glow * 12 * alpha;
+    ctx.shadowColor = weapon.color;
+    this._drawAttackLane(
+      ctx,
+      x,
+      y,
+      e.angle,
+      range * fill,
+      width,
+      this._hexToRGB(weapon.color, 0.08 * alpha)
+    );
+
+    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.42 * alpha);
+    ctx.lineWidth = 2 * alpha;
+    ctx.setLineDash([7, 7]);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(e.angle) * range, y + Math.sin(e.angle) * range);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.82 * alpha);
+    ctx.lineWidth = 3 * alpha;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, 19 + 4 * progress, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -1790,6 +1863,7 @@ export class Renderer {
       effect.type === 'melee_heavy_line' ||
       effect.type === 'melee_slam' ||
       effect.type === 'greatsword_charge' ||
+      effect.type === 'katana_charge' ||
       effect.type === 'dagger_qte_lock' ||
       effect.type === 'dagger_qte_window' ||
       effect.type === 'dagger_qte_hit' ||
@@ -2246,6 +2320,13 @@ export class Renderer {
       weaponAngle = angle - 1.95 * chargeT;
       bodyScale = 2.1 * chargeT;
 
+    } else if (effect.type === 'katana_charge') {
+      const chargeT = progress * progress * (3 - 2 * progress);
+      lunge = -4 * chargeT;
+      weaponReach = -11 * chargeT;
+      weaponAngle = angle - 1.05 * chargeT;
+      bodyScale = 0.9 * chargeT;
+
     } else if (effect.type === 'hammer_windup') {
       const chargeT = easeOutCubic(progress);
       lunge = -4 * chargeT;
@@ -2420,6 +2501,7 @@ export class Renderer {
           : p.accentColor;
         this._drawSustainedBuffBurst(ctx, bodyScr, p.buffType, auraColor, 0.72, camera.zoom || 1, Date.now());
       }
+      this._drawCostumeEffect(ctx, bodyScr, p, radius, Date.now());
 
       // Draw Main Player Chassis Circle
       ctx.beginPath();
@@ -2511,6 +2593,7 @@ export class Renderer {
 
       // Draw Weapon Frame
       this._drawPlayerWeapon(ctx, bodyScr, p, motion);
+      this._drawCostumeDecoration(ctx, bodyScr, p, radius, Date.now());
 
       // Restore style frame before text elements
       ctx.restore();
@@ -2562,6 +2645,134 @@ export class Renderer {
     });
   }
 
+  _drawCostumeEffect(ctx, scr, player, radius, now) {
+    const effect = player.costumeEffect;
+    if (!effect) return;
+    const t = now / 1000;
+    ctx.save();
+    ctx.shadowBlur = this._glow * 8;
+    ctx.shadowColor = player.accentColor;
+
+    if (effect === 'embers' || effect === 'sparkles' || effect === 'leaves') {
+      const color = effect === 'embers' ? '#fb923c' : effect === 'leaves' ? '#86efac' : '#fde68a';
+      const count = effect === 'sparkles' ? 5 : 4;
+      for (let i = 0; i < count; i++) {
+        const a = t * (effect === 'leaves' ? -1.4 : 1.7) + i * Math.PI * 2 / count;
+        const d = radius + 6 + Math.sin(t * 2 + i) * 2;
+        const x = scr.x + Math.cos(a) * d;
+        const y = scr.y + Math.sin(a) * d;
+        ctx.fillStyle = this._hexToRGB(color, 0.68);
+        if (effect === 'sparkles') {
+          ctx.strokeStyle = this._hexToRGB(color, 0.78);
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(x - 3, y);
+          ctx.lineTo(x + 3, y);
+          ctx.moveTo(x, y - 3);
+          ctx.lineTo(x, y + 3);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, y, effect === 'embers' ? 2 : 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (effect === 'runes') {
+      ctx.strokeStyle = this._hexToRGB('#c084fc', 0.48);
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, radius + 8, t * 1.4, t * 1.4 + Math.PI * 1.4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (effect === 'shade') {
+      const back = player.angle + Math.PI;
+      ctx.fillStyle = this._hexToRGB('#020617', 0.32);
+      ctx.beginPath();
+      ctx.ellipse(
+        scr.x + Math.cos(back) * 7,
+        scr.y + Math.sin(back) * 7,
+        radius + 8,
+        radius * 0.58,
+        back,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  _drawCostumeDecoration(ctx, scr, player, radius, now) {
+    const decoration = player.costumeDecoration;
+    if (!decoration) return;
+    const upX = scr.x;
+    const upY = scr.y - radius - 4;
+    const accent = player.accentColor || '#66fcf1';
+
+    ctx.save();
+    ctx.shadowBlur = this._glow * 7;
+    ctx.shadowColor = accent;
+    ctx.strokeStyle = accent;
+    ctx.fillStyle = this._hexToRGB(accent, 0.86);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (decoration === 'crown') {
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(upX - 8, upY + 1);
+      ctx.lineTo(upX - 5, upY - 7);
+      ctx.lineTo(upX, upY - 2);
+      ctx.lineTo(upX + 5, upY - 7);
+      ctx.lineTo(upX + 8, upY + 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    } else if (decoration === 'crest') {
+      ctx.beginPath();
+      ctx.moveTo(upX, upY - 9);
+      ctx.lineTo(upX - 6, upY + 2);
+      ctx.lineTo(upX + 6, upY + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else if (decoration === 'halo') {
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(upX, upY - 4 + Math.sin(now / 220) * 1.5, 9, 3.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (decoration === 'wings') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = this._hexToRGB(accent, 0.78);
+      [-1, 1].forEach(side => {
+        ctx.beginPath();
+        ctx.moveTo(scr.x - Math.cos(player.angle) * 3, scr.y);
+        ctx.quadraticCurveTo(scr.x + side * 17, scr.y - 11, scr.x + side * 24, scr.y + 2);
+        ctx.quadraticCurveTo(scr.x + side * 12, scr.y + 3, scr.x + side * 8, scr.y + 11);
+        ctx.stroke();
+      });
+    } else if (decoration === 'cape') {
+      const back = player.angle + Math.PI;
+      const side = back + Math.PI / 2;
+      const bx = scr.x + Math.cos(back) * 7;
+      const by = scr.y + Math.sin(back) * 7;
+      ctx.fillStyle = this._hexToRGB(accent, 0.34);
+      ctx.beginPath();
+      ctx.moveTo(bx + Math.cos(side) * 6, by + Math.sin(side) * 6);
+      ctx.lineTo(bx - Math.cos(side) * 6, by - Math.sin(side) * 6);
+      ctx.lineTo(bx + Math.cos(back) * 20, by + Math.sin(back) * 20);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
   /**
    * Draw miniature weapon icons on player circle boundary
    */
@@ -2585,6 +2796,10 @@ export class Renderer {
     ctx.shadowColor = player.accentColor;
 
     const weaponType = player.weapon;
+    if (this._drawWeaponSprite(ctx, scr, player, motion, radius, weaponAngle, reach, active)) {
+      ctx.restore();
+      return;
+    }
 
     if (weaponType === 'sword') {
       const isFinisherSpin = motion.isFinisher && active;
@@ -3106,6 +3321,61 @@ export class Renderer {
     }
 
     ctx.restore();
+  }
+
+  _drawWeaponSprite(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
+    const weaponType = player.weapon;
+    const sprite = this.weaponSprites?.[weaponType];
+    if (!sprite?.ready || !sprite.image?.naturalWidth) return false;
+
+    const meta = sprite.meta;
+    const rageActive = weaponType === 'axe' && player.buffType === 'axe_rage';
+    let drawAngle = weaponAngle;
+    if (weaponType === 'axe' && !active) {
+      drawAngle = rageActive ? player.angle : -Math.PI / 4;
+    } else if (weaponType === 'bow') {
+      drawAngle = player.angle;
+    } else if (weaponType === 'scythe') {
+      drawAngle = active ? weaponAngle + 0.35 : player.angle + 0.12;
+    }
+
+    const spriteScale = meta.scale * (active ? 1.06 : 1);
+    const size = Math.max(18, 64 * spriteScale + Math.max(0, reach) * 0.08);
+    const handDist = Math.max(radius - 3, radius + 6 + reach * 0.2);
+    const handX = scr.x + Math.cos(drawAngle) * handDist;
+    const handY = scr.y + Math.sin(drawAngle) * handDist;
+
+    const drawSingle = (offsetAngle = 0, offsetDist = 0, flipY = 1) => {
+      const a = drawAngle + offsetAngle;
+      const x = handX + Math.cos(drawAngle + Math.PI / 2) * offsetDist;
+      const y = handY + Math.sin(drawAngle + Math.PI / 2) * offsetDist;
+      ctx.save();
+      const smoothing = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;
+      ctx.translate(x, y);
+      ctx.rotate(a + (meta.angleOffset || 0));
+      ctx.scale(1, flipY);
+      ctx.globalAlpha = active ? 1 : 0.94;
+      ctx.shadowBlur = this._glow * (active ? 8 : 2);
+      ctx.shadowColor = player.accentColor;
+      ctx.drawImage(
+        sprite.image,
+        -size * meta.anchorX,
+        -size * meta.anchorY,
+        size,
+        size
+      );
+      ctx.imageSmoothingEnabled = smoothing;
+      ctx.restore();
+    };
+
+    if (weaponType === 'gauntlet') {
+      drawSingle(0.05, -5, 1);
+      drawSingle(-0.05, 5, -1);
+    } else {
+      drawSingle(0, 0, 1);
+    }
+    return true;
   }
 
   /**

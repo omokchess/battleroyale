@@ -644,6 +644,38 @@ test('katana skill queues two slashes and launches a blade wave per slash', () =
   assert.equal(game.projectiles.filter(p => p.weapon === 'katana').length, 2);
 });
 
+test('katana R iaijutsu charges for one second before cutting a 40px line', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const ninja = new Player('kat-r', 'Iaido', 'katana', 100, 100);
+  ninja.angle = 0;
+  const target = new Player('kat-r-target', 'Target', 'sword', 210, 112);
+  const safe = new Player('kat-r-safe', 'Safe', 'sword', 210, 150);
+  game.players[ninja.id] = ninja;
+  game.players[target.id] = target;
+  game.players[safe.id] = safe;
+
+  game._startKatanaIaijutsuCharge(ninja, 1000);
+  assert.equal(ninja.katanaChargeStart, 1000);
+  assert.equal(game.effects.some(e => e.type === 'katana_charge'), true);
+
+  game._releaseKatanaIaijutsu(ninja, 1400, false);
+  assert.equal(target.hp, target.maxHp);
+  assert.equal(ninja.teleportReadyAt, 0);
+
+  game._startKatanaIaijutsuCharge(ninja, 2000);
+  game._releaseKatanaIaijutsu(ninja, 2000 + SkillConfig.katana.iaijutsuChargeMs, false);
+  assert.equal(target.hp, target.maxHp - SkillConfig.katana.iaijutsuDamage);
+  assert.equal(safe.hp, safe.maxHp);
+  assert.equal(ninja.teleportReadyAt, 2000 + SkillConfig.katana.iaijutsuChargeMs + SkillConfig.katana.iaijutsuCooldownMs);
+  assert.equal(game.effects.some(e => e.type === 'melee_heavy_line' && e.width === SkillConfig.katana.iaijutsuWidth), true);
+});
+
 test('magic staff fireball deals direct damage then a burn that ticks 2/sec for 4s', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
@@ -678,29 +710,46 @@ test('magic staff fireball deals direct damage then a burn that ticks 2/sec for 
   assert.equal(target.burnTimeLeft, 0);
 });
 
-test('magic staff ice shards load, pause auto-cast, and fire a volley on F', () => {
+test('magic staff spells use separate 2s cooldowns and targeted ice shards', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
   game.projectiles = [];
+  game.pendingMagicShards = [];
   game.mapWidth = 700;
   game.mapHeight = 700;
 
   const mage = new Player('mage', 'Mage', 'magicstaff', 100, 100);
   mage.angle = 0;
-  mage.lastAttackTime = -99999;
   game.players[mage.id] = mage;
 
-  assert.equal(mage.canAttack(5000), true);                 // free to cast
-  game._castIceShards(mage, 5000);
-  assert.equal(mage.pendingIcicles, MagicConfig.iceShard.count);
-  assert.equal(mage.canAttack(99999), false);               // auto-cast paused while loaded
+  assert.equal(Weapons.magicstaff.automaticAttack, false);
+  assert.equal(mage.canAttack(5000), false);
 
-  game._fireIcicles(mage, 6000);
-  assert.equal(mage.pendingIcicles, 0);
+  game._castMagicFireballSkill(mage, 5000);
+  assert.equal(game.projectiles.filter(p => p.kind === 'fireball').length, 1);
+  assert.equal(mage.magicCooldowns.fireball, MagicConfig.fireball.cooldownMs / 1000);
+  assert.equal(mage.magicCooldowns.iceShard, 0);
+  assert.equal(mage.magicCooldowns.lifebound, 0);
+
+  game._castMagicIceSkill(mage, 5100, 250, 170);
+  assert.equal(game.pendingMagicShards.length, MagicConfig.iceShard.count);
+  assert.equal(mage.magicCooldowns.iceShard, MagicConfig.iceShard.cooldownMs / 1000);
+  assert.equal(mage.magicCooldowns.lifebound, 0);
+
+  game._releaseDueMagicShards(5100);
+  assert.equal(game.projectiles.filter(p => p.kind === 'iceshard').length, 1);
+  const firstShard = game.projectiles.find(p => p.kind === 'iceshard');
+  assert.ok(Math.abs(firstShard.angle - Math.atan2(70, 150)) < 1e-6);
+
+  game._releaseDueMagicShards(5100 + MagicConfig.iceShard.intervalMs * (MagicConfig.iceShard.count - 1));
   assert.equal(game.projectiles.filter(p => p.kind === 'iceshard').length, MagicConfig.iceShard.count);
-  assert.equal(mage.canAttack(6000), false);                            // cooldown restarts from firing
-  assert.equal(mage.canAttack(6000 + MagicConfig.cooldownMs), true);
+  assert.equal(game.pendingMagicShards.length, 0);
+
+  mage.hp = 50;
+  game._castMagicLifeboundSkill(mage, 5200);
+  assert.equal(mage.hp, 50 + MagicConfig.lifebound.heal);
+  assert.equal(mage.magicCooldowns.lifebound, MagicConfig.lifebound.cooldownMs / 1000);
 });
 
 test('magic staff lifebound heals the caster, capped at max hp', () => {
@@ -737,11 +786,11 @@ test('sniper: F instakills on the aim line (own cooldown); R teleports in-bounds
 
   game._fireSniperShot(sniper, 1000);                         // F = shot
   assert.ok(victim.hp <= 0);                                  // instakill hitscan
-  assert.ok(sniper.skillCdLeft > 3.9);                        // F shot's own ~4s cooldown
+  assert.ok(sniper.skillCdLeft > 1.9);                        // F shot's own ~2s cooldown
   assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'sniper'), true);
 
   game._handleTeleport(sniper, 2000);                         // R = teleport
-  assert.ok(sniper.teleportReadyAt > 2000);                   // separate teleport cooldown
+  assert.equal(sniper.teleportReadyAt, 2000 + SkillConfig.sniper.teleportCooldownMs);
   assert.ok(sniper.x >= 0 && sniper.x <= 700 && sniper.y >= 0 && sniper.y <= 700); // in-bounds
   assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 2);
   game._handleTeleport(sniper, 2500);                         // still on cooldown → no-op
