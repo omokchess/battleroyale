@@ -84,10 +84,13 @@
 .weapon-switch.weapon-pending::after { content: "대기"; background: #fbbf24; }
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-display: "Space Grotesk", sans-serif;
+  --font-sans: "Galmuri11", "Galmuri9", ui-monospace, monospace;
+  --font-mono: "GalmuriMono9", "Galmuri11", ui-monospace, monospace;
+  --font-display: "Galmuri11", "Galmuri14", monospace;
 }
+
+/* Pixel theme: square every corner off (네모네모). */
+*, *::before, *::after { border-radius: 0 !important; }
 
 /* Base style setups */
 html, body {

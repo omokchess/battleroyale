@@ -2421,16 +2421,15 @@ export class Renderer {
         this._drawSustainedBuffBurst(ctx, bodyScr, p.buffType, auraColor, 0.72, camera.zoom || 1, Date.now());
       }
 
-      // Draw Main Player Chassis Circle
-      ctx.beginPath();
-      ctx.arc(bodyScr.x, bodyScr.y, radius + motion.bodyScale, 0, Math.PI * 2);
-      ctx.fill();
+      // Draw Main Player Chassis (square — pixel theme)
+      const bodyR = radius + motion.bodyScale;
+      ctx.fillRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
 
       // Outline
       ctx.shadowBlur = this._glow *0;
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = isLocal ? '#ef4444' : '#0b0c10';
-      ctx.stroke();
+      ctx.strokeRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
 
       // Magic staff status overlays: fire DoT flames + loaded ice shards orbiting.
       if (p.burnTimeLeft > 0) this._drawBurnFlames(ctx, bodyScr, radius, camera.zoom || 1);
@@ -2444,14 +2443,12 @@ export class Renderer {
         ctx.shadowBlur = this._glow *16 * iAlpha;
         ctx.shadowColor = '#ffffff';
         ctx.fillStyle = this._hexToRGB('#ffffff', 0.85 * iAlpha);
-        ctx.beginPath();
-        ctx.arc(bodyScr.x, bodyScr.y, radius + motion.bodyScale, 0, Math.PI * 2);
-        ctx.fill();
+        const ir = radius + motion.bodyScale;
+        ctx.fillRect(bodyScr.x - ir, bodyScr.y - ir, ir * 2, ir * 2);
         ctx.strokeStyle = this._hexToRGB('#ffffff', iAlpha);
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(bodyScr.x, bodyScr.y, radius + motion.bodyScale + 3 + 5 * (1 - iAlpha), 0, Math.PI * 2);
-        ctx.stroke();
+        const ir2 = ir + 3 + 5 * (1 - iAlpha);
+        ctx.strokeRect(bodyScr.x - ir2, bodyScr.y - ir2, ir2 * 2, ir2 * 2);
         ctx.restore();
       }
 
@@ -2465,9 +2462,8 @@ export class Renderer {
         ctx.lineWidth = 3;
         ctx.shadowColor = '#ef4444';
         ctx.shadowBlur = this._glow *12;
-        ctx.beginPath();
-        ctx.arc(bodyScr.x, bodyScr.y, radius + pulse, 0, Math.PI * 2);
-        ctx.stroke();
+        const lr = radius + pulse;
+        ctx.strokeRect(bodyScr.x - lr, bodyScr.y - lr, lr * 2, lr * 2);
         ctx.restore();
 
         // High intensity floating indicator arrow pointing directly to player
@@ -2517,7 +2513,7 @@ export class Renderer {
 
       // Floating Username Indicator
       ctx.save();
-      ctx.font = 'bold 11px "JetBrains Mono", Courier, monospace';
+      ctx.font = '11px "Galmuri11", monospace';
       ctx.textAlign = 'center';
       
       // Calculate text background padding sizes
@@ -3448,7 +3444,7 @@ export class Renderer {
 
     // Faded nickname hovering under
     ctx.fillStyle = 'rgba(160, 174, 192, 0.5)';
-    ctx.font = '9px "JetBrains Mono", Courier, monospace';
+    ctx.font = '9px "Galmuri9", "Galmuri11", monospace';
     ctx.textAlign = 'center';
     ctx.fillText(`${player.nickname} [RIP]`, scr.x, scr.y + 20);
 
