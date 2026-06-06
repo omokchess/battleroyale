@@ -4,7 +4,6 @@
  */
 
 import {
-  signInWithGoogle,
   signUpWithId,
   signInWithId,
   signOut,
@@ -198,15 +197,6 @@ function wireStaticButtons() {
   // Enter 키로 로그인
   $('authPw')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') $('loginBtn')?.click();
-  });
-
-  // Google 로그인 (Supabase에 Google 프로바이더를 설정한 경우에만 동작)
-  $('googleLoginBtn')?.addEventListener('click', async () => {
-    try {
-      await signInWithGoogle();
-    } catch (e) {
-      showAuthNote('Google 로그인은 아직 설정되지 않았어요. 아이디/비밀번호를 사용하세요. (' + (e?.message || e) + ')');
-    }
   });
 
   $('logoutBtn')?.addEventListener('click', async () => {
