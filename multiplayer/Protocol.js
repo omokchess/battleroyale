@@ -26,9 +26,10 @@ export const MsgType = {
  * Clean serialization wrappers
  */
 export const Protocol = {
-  // Client registration frame
-  joinRoom(nickname, weapon) {
-    return { type: MsgType.JOIN_ROOM, nickname, weapon };
+  // Client registration frame. `costume` (optional) carries the purchased
+  // skin colors { color, accentColor } so the host paints this player for everyone.
+  joinRoom(nickname, weapon, costume = null) {
+    return { type: MsgType.JOIN_ROOM, nickname, weapon, costume };
   },
 
   // Handshake registration acceptance frame
