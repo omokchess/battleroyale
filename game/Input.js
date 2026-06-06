@@ -285,6 +285,32 @@ export class Input {
       skillBtn.addEventListener('click', this._skillBtnClickHandler);
     }
 
+    // Mobile alt-skill (R) button: down/up for charge-and-release abilities.
+    const altSkillBtn = document.getElementById('altSkillBtn');
+    if (altSkillBtn) {
+      this._altSkillDownHandler = (e) => { if (e.cancelable) e.preventDefault(); this.teleportRequested = true; };
+      this._altSkillUpHandler = (e) => { if (e.cancelable) e.preventDefault(); this.teleportUpRequested = true; };
+      altSkillBtn.addEventListener('pointerdown', this._altSkillDownHandler);
+      altSkillBtn.addEventListener('pointerup', this._altSkillUpHandler);
+      altSkillBtn.addEventListener('pointercancel', this._altSkillUpHandler);
+      altSkillBtn.addEventListener('pointerleave', this._altSkillUpHandler);
+    }
+
+    // Mobile cast (LMB) button: target-cast toward the current aim direction.
+    const lmbBtn = document.getElementById('lmbBtn');
+    if (lmbBtn) {
+      this._lmbHandler = (e) => {
+        if (e.cancelable) e.preventDefault();
+        const d = canvas.width * 0.16;
+        this.targetCastPointer = {
+          x: canvas.width / 2 + Math.cos(this.aimAngle) * d,
+          y: canvas.height / 2 + Math.sin(this.aimAngle) * d
+        };
+        this.targetCastRequested = true;
+      };
+      lmbBtn.addEventListener('pointerdown', this._lmbHandler);
+    }
+
     if (leftContainer && leftKnob && rightContainer && rightKnob) {
       let leftTouchId = null;
       let leftCenter = null;
@@ -570,6 +596,18 @@ export class Input {
       }
       if (this._skillBtnClickHandler) skillBtn.removeEventListener('click', this._skillBtnClickHandler);
     }
+
+    const altSkillBtn = document.getElementById('altSkillBtn');
+    if (altSkillBtn) {
+      if (this._altSkillDownHandler) altSkillBtn.removeEventListener('pointerdown', this._altSkillDownHandler);
+      if (this._altSkillUpHandler) {
+        altSkillBtn.removeEventListener('pointerup', this._altSkillUpHandler);
+        altSkillBtn.removeEventListener('pointercancel', this._altSkillUpHandler);
+        altSkillBtn.removeEventListener('pointerleave', this._altSkillUpHandler);
+      }
+    }
+    const lmbBtn = document.getElementById('lmbBtn');
+    if (lmbBtn && this._lmbHandler) lmbBtn.removeEventListener('pointerdown', this._lmbHandler);
 
     this.dashRequested = false;
     this.teleportRequested = false;
