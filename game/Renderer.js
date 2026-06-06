@@ -76,8 +76,8 @@ export class Renderer {
       this._updateParticles(dt);
     }
 
-    // Clear Screen
-    ctx.fillStyle = '#0f1015';
+    // Clear Screen (dark beyond the arena walls)
+    ctx.fillStyle = '#0a0910';
     ctx.fillRect(0, 0, cw, ch);
 
     const shake = typeof camera.getShakeOffset === 'function'
@@ -409,38 +409,49 @@ export class Renderer {
   /**
    * Draw modular pixelated grid background
    */
+  // Arena floor: cobblestone tiles (medieval) laced with neon energy seams (modern).
   _drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight) {
     ctx.save();
-    ctx.strokeStyle = '#1d212b';
-    ctx.lineWidth = 1;
-
     const gridSize = 60;
-    
-    // Calculate first visible line from camera coords
-    const startX = Math.floor((camera.x - cw / 2) / gridSize) * gridSize;
-    const endX = Math.ceil((camera.x + cw / 2) / gridSize) * gridSize;
-    const startY = Math.floor((camera.y - ch / 2) / gridSize) * gridSize;
-    const endY = Math.ceil((camera.y + ch / 2) / gridSize) * gridSize;
+    const cell = gridSize * (camera.zoom || 1);
+    const tl = camera.toScreen(0, 0, cw, ch);
+    const br = camera.toScreen(mapWidth, mapHeight, cw, ch);
 
-    // Vertical grid lines
-    for (let x = startX; x <= endX; x++) {
-      if (x < 0 || x > mapWidth) continue;
-      const screenPos = camera.toScreen(x, 0, cw, ch);
-      ctx.beginPath();
-      ctx.moveTo(screenPos.x, Math.max(0, camera.toScreen(0, 0, cw, ch).y));
-      ctx.lineTo(screenPos.x, Math.min(ch, camera.toScreen(0, mapHeight, cw, ch).y));
-      ctx.stroke();
+    // Stone floor base.
+    ctx.fillStyle = '#1e1b26';
+    ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
+    // Cobblestone tiles (checker-shaded), skipping off-screen ones.
+    const cols = Math.ceil(mapWidth / gridSize);
+    const rows = Math.ceil(mapHeight / gridSize);
+    for (let gy = 0; gy < rows; gy++) {
+      for (let gx = 0; gx < cols; gx++) {
+        const p = camera.toScreen(gx * gridSize, gy * gridSize, cw, ch);
+        if (p.x > cw || p.x + cell < 0 || p.y > ch || p.y + cell < 0) continue;
+        ctx.fillStyle = (gx + gy) % 2 === 0 ? '#232029' : '#1a1822';
+        ctx.fillRect(p.x, p.y, cell + 1, cell + 1);
+      }
     }
 
-    // Horizontal grid lines
-    for (let y = startY; y <= endY; y++) {
-      if (y < 0 || y > mapHeight) continue;
-      const screenPos = camera.toScreen(0, y, cw, ch);
-      ctx.beginPath();
-      ctx.moveTo(Math.max(0, camera.toScreen(0, 0, cw, ch).x), screenPos.y);
-      ctx.lineTo(Math.min(cw, camera.toScreen(mapWidth, 0, cw, ch).x), screenPos.y);
-      ctx.stroke();
-    }
+    const vline = (x, color, lw) => {
+      const a = camera.toScreen(x, 0, cw, ch), b = camera.toScreen(x, mapHeight, cw, ch);
+      ctx.strokeStyle = color; ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    };
+    const hline = (y, color, lw) => {
+      const a = camera.toScreen(0, y, cw, ch), b = camera.toScreen(mapWidth, y, cw, ch);
+      ctx.strokeStyle = color; ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    };
+
+    // Dark mortar seams between stones.
+    for (let x = 0; x <= mapWidth; x += gridSize) vline(x, '#141119', 2);
+    for (let y = 0; y <= mapHeight; y += gridSize) hline(y, '#141119', 2);
+
+    // Glowing neon energy veins every 3rd seam (the modern layer).
+    const neon = this._hexToRGB('#45f3ff', 0.14);
+    for (let x = 0; x <= mapWidth; x += gridSize * 3) vline(x, neon, 1);
+    for (let y = 0; y <= mapHeight; y += gridSize * 3) hline(y, neon, 1);
 
     ctx.restore();
   }
@@ -450,31 +461,67 @@ export class Renderer {
    */
   _drawBorders(ctx, camera, cw, ch, mapWidth, mapHeight) {
     ctx.save();
-    
-    const topLeft = camera.toScreen(0, 0, cw, ch);
-    const bottomRight = camera.toScreen(mapWidth, mapHeight, cw, ch);
+    const tl = camera.toScreen(0, 0, cw, ch);
+    const br = camera.toScreen(mapWidth, mapHeight, cw, ch);
+    const w = br.x - tl.x, h = br.y - tl.y;
 
-    // Glowing Neon Border shadow
-    ctx.shadowBlur = this._glow *15;
+    // Darken everything beyond the arena walls.
+    ctx.fillStyle = '#07060b';
+    if (tl.y > 0) ctx.fillRect(0, 0, cw, tl.y);
+    if (tl.x > 0) ctx.fillRect(0, tl.y, tl.x, ch - tl.y);
+    if (br.x < cw) ctx.fillRect(br.x, tl.y, cw - br.x, ch - tl.y);
+    if (br.y < ch) ctx.fillRect(0, br.y, cw, ch - br.y);
+
+    // Stone wall (thick) + lighter capstone edge.
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#3a3447';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(tl.x, tl.y, w, h);
+    ctx.strokeStyle = '#4b4359';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(tl.x - 3, tl.y - 3, w + 6, h + 6);
+
+    // Neon containment trim on the inner edge (the modern layer).
+    ctx.shadowBlur = this._glow * 12;
     ctx.shadowColor = '#45f3ff';
     ctx.strokeStyle = '#45f3ff';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(tl.x + 4, tl.y + 4, w - 8, h - 8);
+    ctx.shadowBlur = 0;
 
-    ctx.strokeRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+    // Flickering torches at the four corners (medieval + glow).
+    const now = Date.now();
+    this._drawTorch(ctx, tl.x, tl.y, now);
+    this._drawTorch(ctx, br.x, tl.y, now);
+    this._drawTorch(ctx, tl.x, br.y, now);
+    this._drawTorch(ctx, br.x, br.y, now);
 
-    // Subtly darken outside of boundary
-    ctx.shadowBlur = this._glow *0;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    
-    // Top outside
-    if (topLeft.y > 0) ctx.fillRect(0, 0, cw, topLeft.y);
-    // Left outside
-    if (topLeft.x > 0) ctx.fillRect(0, topLeft.y, topLeft.x, ch - topLeft.y);
-    // Right outside
-    if (bottomRight.x < cw) ctx.fillRect(bottomRight.x, topLeft.y, cw - bottomRight.x, ch - topLeft.y);
-    // Bottom outside
-    if (bottomRight.y < ch) ctx.fillRect(0, bottomRight.y, cw, ch - bottomRight.y);
+    ctx.restore();
+  }
 
+  // A corner wall torch: iron sconce + flickering amber flame with neon-style glow.
+  _drawTorch(ctx, x, y, now) {
+    ctx.save();
+    ctx.fillStyle = '#2b2730';
+    ctx.fillRect(x - 4, y - 4, 8, 8);
+    ctx.strokeStyle = '#5b5468';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x - 4, y - 4, 8, 8);
+    const flick = Math.sin(now / 90 + x * 0.5) * 2 + Math.sin(now / 47 + y) * 1;
+    ctx.shadowBlur = this._glow * 14;
+    ctx.shadowColor = '#fb923c';
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 14 - flick);
+    ctx.quadraticCurveTo(x + 5, y - 2, x, y + 3);
+    ctx.quadraticCurveTo(x - 5, y - 2, x, y - 14 - flick);
+    ctx.fill();
+    ctx.fillStyle = '#fde68a';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 8 - flick);
+    ctx.quadraticCurveTo(x + 2.5, y - 1, x, y + 1);
+    ctx.quadraticCurveTo(x - 2.5, y - 1, x, y - 8 - flick);
+    ctx.fill();
     ctx.restore();
   }
 
