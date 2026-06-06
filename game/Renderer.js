@@ -3336,7 +3336,7 @@ export class Renderer {
     }
 
     const spriteScale = meta.scale * (active ? 1.06 : 1);
-    const size = Math.max(18, 64 * spriteScale + Math.max(0, reach) * 0.08);
+    const size = Math.max(24, 92 * spriteScale + Math.max(0, reach) * 0.08); // base bumped 64→92 for bigger weapons
     const handDist = Math.max(radius - 3, radius + 6 + reach * 0.2);
     const handX = scr.x + Math.cos(drawAngle) * handDist;
     const handY = scr.y + Math.sin(drawAngle) * handDist;
