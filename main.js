@@ -460,24 +460,20 @@ function setupLobbyTabs() {
   const tabs = document.querySelectorAll('.lobby-tab');
   if (!tabs.length) return;
 
-  // tab -> which LEFT-panel children are visible (the RIGHT panel is the join browser)
-  const TAB_MAP = {
-    weapon: { left: true,  show: ['lobbyWeapon'] },
-    create: { left: true,  show: ['lobbyCreate', 'lobbyGuide'] },
-    mypage: { left: true,  show: ['accountBar', 'lobbyNickname', 'lobbyPerfWrap'] },
-    join:   { left: false, show: [] }
-  };
-  const LEFT_CHILDREN = ['lobbyWeapon', 'lobbyCreate', 'lobbyGuide', 'accountBar', 'lobbyNickname', 'lobbyPerfWrap'];
   const setHidden = (id, on) => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('lobby-tab-hidden', on);
   };
 
+  // Desktop shows all three columns at once; on mobile each tab reveals exactly
+  // one. Weapon + create share the middle column, so they also toggle inside it.
   function setTab(tab) {
-    const cfg = TAB_MAP[tab] || TAB_MAP.weapon;
-    setHidden('lobbyLeft', !cfg.left);
-    setHidden('lobbyRight', tab !== 'join');
-    LEFT_CHILDREN.forEach(id => setHidden(id, !cfg.show.includes(id)));
+    setHidden('lobbyAccount', tab !== 'mypage');                         // col 1
+    setHidden('lobbyLeft', tab !== 'weapon' && tab !== 'create');        // col 2
+    setHidden('lobbyRight', tab !== 'join');                             // col 3
+    setHidden('lobbyWeapon', tab !== 'weapon');                          // inside col 2
+    setHidden('lobbyCreate', tab !== 'create');
+    setHidden('lobbyGuide', tab !== 'create');
     tabs.forEach(b => b.classList.toggle('lobby-tab-active', b.dataset.lobbyTab === tab));
   }
 

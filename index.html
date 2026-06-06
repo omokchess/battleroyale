@@ -50,9 +50,44 @@
 
     <!-- MAIN LOBBY/START MENU -->
     <div id="lobbyMenu" class="absolute inset-0 z-50 flex items-center justify-center bg-[#0b0c10] bg-opacity-95 transition-all duration-300 p-3 sm:p-4 overflow-y-auto">
-      <div class="w-full max-w-5xl flex flex-col lg:flex-row gap-4 items-stretch my-auto">
+      <div class="w-full max-w-6xl flex flex-col lg:flex-row gap-4 items-stretch my-auto">
 
-        <!-- LEFT: Player setup + Create Room -->
+        <!-- COLUMN 1: Account / My Page (sits left of weapon + create on desktop) -->
+        <div id="lobbyAccount" class="w-full lg:w-64 lg:shrink-0 flex flex-col p-5 sm:p-6 bg-[#1f2833] border-4 border-[#45f3ff] rounded-none shadow-[0_0_20px_rgba(69,243,255,0.3)] overflow-y-auto max-h-[92vh]">
+          <span class="hidden lg:block font-mono text-xs text-[#66fcf1] uppercase font-bold mb-3">내 페이지</span>
+
+          <!-- Account bar: username, coins, ranking/shop/logout (filled by account-ui) -->
+          <div id="accountBar" class="hidden items-center justify-between gap-2 mb-5 p-2.5 bg-[#0b0c10] border-2 border-gray-700">
+            <div class="min-w-0">
+              <div class="font-mono text-[9px] text-gray-400 uppercase">플레이어</div>
+              <div id="accountName" class="font-mono text-sm text-white font-bold truncate max-w-[110px]">-</div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span class="font-mono text-xs text-yellow-300 font-bold mr-1 inline-flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M9.5 10.5h3a1.5 1.5 0 0 1 0 3h-3"/></svg>
+                <span id="accountCoins">0</span>
+              </span>
+              <button id="rankBtn" class="bg-[#1f2833] border border-[#45f3ff] text-[#45f3ff] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">랭킹</button>
+              <button id="shopBtn" class="bg-[#1f2833] border border-[#66fcf1] text-[#66fcf1] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">상점</button>
+              <button id="logoutBtn" class="bg-[#1f2833] border border-gray-600 text-gray-400 font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">로그아웃</button>
+            </div>
+          </div>
+
+          <!-- Nickname -->
+          <div id="lobbyNickname" class="mb-4">
+            <label class="block font-mono text-xs text-[#66fcf1] uppercase mb-1">닉네임 설정</label>
+            <input type="text" id="nicknameInput" maxlength="12" placeholder="플레이어"
+              class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-4 py-2 rounded-none font-mono text-sm focus:outline-none transition-transform active:scale-[0.99]" />
+          </div>
+
+          <!-- Low Detail (performance mode) — accessible from the lobby on mobile too -->
+          <label id="lobbyPerfWrap" class="flex items-center justify-between gap-3 p-2.5 bg-[#0b0c10] border-2 border-gray-700 cursor-pointer">
+            <span class="font-mono text-[11px] text-gray-300">저사양 모드 (Low Detail · 렉 감소)</span>
+            <input id="lobbyPerfMode" type="checkbox" class="visual-setting-toggle" />
+          </label>
+        </div>
+
+        <!-- COLUMN 2: Weapon select + Create Room -->
         <div id="lobbyLeft" class="flex-1 p-6 sm:p-8 bg-[#1f2833] border-4 border-[#45f3ff] rounded-none shadow-[0_0_20px_rgba(69,243,255,0.3)] relative overflow-y-auto max-h-[92vh]">
 
         <!-- Retro Header Decoration -->
@@ -64,37 +99,8 @@
           <div class="h-1 bg-gradient-to-r from-transparent via-[#45f3ff] to-transparent mt-3"></div>
         </div>
 
-        <!-- Account bar: username, coins, ranking/shop/logout (filled by account-ui) -->
-        <div id="accountBar" class="hidden items-center justify-between gap-2 mb-5 p-2.5 bg-[#0b0c10] border-2 border-gray-700">
-          <div class="min-w-0">
-            <div class="font-mono text-[9px] text-gray-400 uppercase">플레이어</div>
-            <div id="accountName" class="font-mono text-sm text-white font-bold truncate max-w-[110px]">-</div>
-          </div>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <span class="font-mono text-xs text-yellow-300 font-bold mr-1 inline-flex items-center gap-1">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M9.5 10.5h3a1.5 1.5 0 0 1 0 3h-3"/></svg>
-              <span id="accountCoins">0</span>
-            </span>
-            <button id="rankBtn" class="bg-[#1f2833] border border-[#45f3ff] text-[#45f3ff] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">랭킹</button>
-            <button id="shopBtn" class="bg-[#1f2833] border border-[#66fcf1] text-[#66fcf1] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">상점</button>
-            <button id="logoutBtn" class="bg-[#1f2833] border border-gray-600 text-gray-400 font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">로그아웃</button>
-          </div>
-        </div>
-
-        <!-- 1. Nickname & Weapon Selection -->
+        <!-- 1. Weapon Selection -->
         <div class="space-y-4 mb-6">
-          <div id="lobbyNickname">
-            <label class="block font-mono text-xs text-[#66fcf1] uppercase mb-1">닉네임 설정</label>
-            <input type="text" id="nicknameInput" maxlength="12" placeholder="플레이어" 
-              class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-4 py-2 rounded-none font-mono text-sm focus:outline-none transition-transform active:scale-[0.99]" />
-          </div>
-
-          <!-- Low Detail (performance mode) — accessible from the lobby on mobile too -->
-          <label id="lobbyPerfWrap" class="flex items-center justify-between gap-3 p-2.5 bg-[#0b0c10] border-2 border-gray-700 cursor-pointer">
-            <span class="font-mono text-[11px] text-gray-300">저사양 모드 (Low Detail · 렉 감소)</span>
-            <input id="lobbyPerfMode" type="checkbox" class="visual-setting-toggle" />
-          </label>
-
           <!-- Weapon Selection -->
           <div id="lobbyWeapon">
             <label class="block font-mono text-xs text-[#66fcf1] uppercase mb-2">무기 선택</label>
