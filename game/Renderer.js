@@ -3008,6 +3008,102 @@ export class Renderer {
       ctx.arc(len - 2, 0, 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
+    else if (weaponType === 'matchlock') {
+      // 화승총: short musket — wood stock + steel barrel + red muzzle.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.fillStyle = '#5b3b1a';
+      ctx.fillRect(-11, -2.6, 9, 5.2);              // stock
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-3, -0.4);
+      ctx.lineTo(19, -0.4);                          // barrel
+      ctx.stroke();
+      ctx.fillStyle = '#9a3412';
+      ctx.fillRect(-3, 1.4, 6, 2.4);                 // lock/trigger block
+      ctx.shadowBlur = this._glow * 6;
+      ctx.shadowColor = '#ef4444';
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(19, -0.4, 2.3, 0, Math.PI * 2);        // muzzle
+      ctx.fill();
+    }
+    else if (weaponType === 'katana') {
+      // 카타나: long slim blade, rose guard + dark wrapped handle.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      const len = 25 + Math.max(0, reach * 0.5);
+      ctx.fillStyle = this._hexToRGB('#ffe4e6', 0.92);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-1, 1.5);
+      ctx.lineTo(len, -0.2);
+      ctx.lineTo(len - 3, -1.9);
+      ctx.lineTo(-1, -1.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#f43f5e';                   // tsuba (guard)
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-1, -3.6);
+      ctx.lineTo(-1, 3.6);
+      ctx.stroke();
+      ctx.strokeStyle = '#9f1239';                   // handle
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(-1, 0);
+      ctx.lineTo(-9, 0);
+      ctx.stroke();
+    }
+    else if (weaponType === 'magicstaff') {
+      // 마법 지팡이: wooden shaft with a glowing purple orb at the tip.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.strokeStyle = '#7c4d2a';
+      ctx.lineWidth = 2.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-9, 0);
+      ctx.lineTo(15, 0);                             // shaft
+      ctx.stroke();
+      ctx.shadowBlur = this._glow * 9;
+      ctx.shadowColor = '#a855f7';
+      ctx.fillStyle = '#c084fc';
+      ctx.beginPath();
+      ctx.arc(17, 0, 4, 0, Math.PI * 2);             // orb
+      ctx.fill();
+      ctx.fillStyle = '#f3e8ff';
+      ctx.beginPath();
+      ctx.arc(17, 0, 1.8, 0, Math.PI * 2);           // orb core
+      ctx.fill();
+    }
+    else if (weaponType === 'sniper') {
+      // 스나이퍼: long rifle with a green scope.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.fillStyle = '#3f3f46';
+      ctx.fillRect(-13, -2.6, 7, 5.2);               // stock
+      ctx.strokeStyle = '#374151';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-7, 0);
+      ctx.lineTo(24, 0);                             // long barrel
+      ctx.stroke();
+      ctx.fillStyle = '#111216';                     // scope body
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(1, -5.5, 9, 3.2);
+      ctx.strokeRect(1, -5.5, 9, 3.2);
+      ctx.shadowBlur = this._glow * 6;
+      ctx.shadowColor = '#22c55e';
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.arc(24, 0, 2, 0, Math.PI * 2);             // muzzle
+      ctx.fill();
+    }
 
     ctx.restore();
   }
