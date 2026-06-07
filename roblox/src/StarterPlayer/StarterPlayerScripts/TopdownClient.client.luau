@@ -2,14 +2,19 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Debris = game:GetService("Debris")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 local PixelRoyale = ReplicatedStorage:WaitForChild("PixelRoyale")
 local WeaponConfig = require(PixelRoyale:WaitForChild("WeaponConfig"))
+local EffectsClient = require(PixelRoyale:WaitForChild("EffectsClient"))
 local CombatRemote = PixelRoyale:WaitForChild("Remotes"):WaitForChild("Combat")
+
+local CAMERA_POSITION = Vector3.new(0, 165, 0)
+local CAMERA_TARGET = Vector3.new(0, 0, 0)
+local CAMERA_UP = Vector3.new(0, 0, -1)
+local AIM_PLANE_Y = 0.55
 
 local aimDirection = Vector3.new(0, 0, -1)
 local lastAimSent = 0
@@ -204,7 +209,7 @@ local function computeAim(root)
 		return aimDirection
 	end
 
-	local t = (root.Position.Y - ray.Origin.Y) / ray.Direction.Y
+	local t = (AIM_PLANE_Y - ray.Origin.Y) / ray.Direction.Y
 	if t <= 0 then
 		return aimDirection
 	end
@@ -233,70 +238,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
-local function makePart(startPoint: Vector3, endPoint: Vector3, width: number, color: Color3, life: number)
-	local offset = endPoint - startPoint
-	local length = offset.Magnitude
-	if length <= 0.05 then
-		return
-	end
-
-	local part = Instance.new("Part")
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.Material = Enum.Material.Neon
-	part.Color = color
-	part.Transparency = 0.35
-	part.Size = Vector3.new(width, 0.14, length)
-	part.CFrame = CFrame.lookAt((startPoint + endPoint) * 0.5, endPoint)
-	part.Parent = workspace
-	Debris:AddItem(part, life)
-end
-
-local function rotateFlat(direction: Vector3, radians: number): Vector3
-	local cos = math.cos(radians)
-	local sin = math.sin(radians)
-	return Vector3.new(
-		direction.X * cos - direction.Z * sin,
-		0,
-		direction.X * sin + direction.Z * cos
-	).Unit
-end
-
-local function drawAttackEffect(payload)
-	local origin = payload.origin
-	local direction = payload.direction
-	local range = payload.range or 6
-	local color = payload.color or Color3.fromRGB(69, 243, 255)
-	local hitType = payload.hitType
-	local life = 0.13
-
-	if hitType == "circle" then
-		local segments = 16
-		for i = 1, segments do
-			local a0 = (i - 1) / segments * math.pi * 2
-			local a1 = i / segments * math.pi * 2
-			local p0 = origin + Vector3.new(math.cos(a0) * range, 0.2, math.sin(a0) * range)
-			local p1 = origin + Vector3.new(math.cos(a1) * range, 0.2, math.sin(a1) * range)
-			makePart(p0, p1, 0.18, color, life)
-		end
-	elseif hitType == "line" then
-		makePart(origin + Vector3.new(0, 0.2, 0), origin + direction * range + Vector3.new(0, 0.2, 0), payload.width or 0.3, color, life)
-	else
-		local angle = math.rad(payload.angle or 100)
-		local rays = 9
-		for i = 0, rays - 1 do
-			local t = if rays == 1 then 0 else i / (rays - 1)
-			local offset = (t - 0.5) * angle
-			local dir = rotateFlat(direction, offset)
-			makePart(origin + Vector3.new(0, 0.2, 0), origin + dir * range + Vector3.new(0, 0.2, 0), 0.12, color, life)
-		end
-	end
-end
-
 CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 	if action == "AttackEffect" and typeof(payload) == "table" then
-		drawAttackEffect(payload)
+		EffectsClient.drawAttackEffect(payload)
 	end
 end)
 
@@ -307,7 +251,8 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	camera.CameraType = Enum.CameraType.Scriptable
-	camera.CFrame = CFrame.lookAt(root.Position + Vector3.new(0, 72, 0), root.Position)
+	camera.FieldOfView = 50
+	camera.CFrame = CFrame.lookAt(CAMERA_POSITION, CAMERA_TARGET, CAMERA_UP)
 
 	aimDirection = computeAim(root)
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + aimDirection)
@@ -320,4 +265,3 @@ RunService.RenderStepped:Connect(function()
 
 	updateHealth()
 end)
-

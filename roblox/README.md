@@ -5,6 +5,7 @@ This folder is the first Roblox remake scaffold for PIXELROYALE.
 It is intentionally small:
 
 - top-down camera
+- fixed arena camera with square combatant tokens instead of visible Roblox avatars
 - Roblox server-authoritative melee hit checks
 - weapon stat module
 - RemoteEvent-based attack requests
