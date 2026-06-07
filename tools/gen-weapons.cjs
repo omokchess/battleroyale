@@ -123,6 +123,9 @@ const C = {
   leather: [60, 43, 28, 255], leatherHi: [92, 66, 40, 255],
   gem: [96, 156, 255, 255], gemHi: [206, 228, 255, 255], gemCore: [240, 250, 255, 255],
   brass: [183, 138, 58, 255],
+  bronze: [150, 116, 64, 255], bronzeHi: [196, 158, 92, 255], bronzeSh: [92, 68, 34, 255],
+  blue: [58, 86, 156, 255], blueHi: [98, 132, 206, 255], blueSh: [34, 50, 102, 255],
+  olive: [92, 100, 58, 255], oliveHi: [124, 132, 84, 255], oliveSh: [56, 62, 34, 255],
 };
 
 // ---- weapons (point right; grip ~x26, centerline y64) ------------------------
@@ -137,31 +140,47 @@ const weapons = {
     line(c, 49, 64, 110, 64, C.steelSh, 1);
   },
   greatsword(c) {
-    rect(c, 15, 60, 40, 68, C.leather); rect(c, 15, 60, 40, 61, C.leatherHi);
-    disc(c, 11, 64, 6, C.gold); disc(c, 10, 63, 3, C.goldHi);
-    rect(c, 39, 42, 47, 86, C.gold); rect(c, 39, 42, 41, 86, C.goldHi); rect(c, 46, 42, 47, 86, C.goldSh);
-    disc(c, 43, 46, 2, C.goldHi); disc(c, 43, 82, 2, C.goldSh);
-    poly(c, [[47, 51], [110, 51], [125, 64], [110, 77], [47, 77]], C.steel);
-    line(c, 49, 53, 109, 53, C.steelHi, 1);
-    line(c, 49, 75, 109, 75, C.steelSh, 1);
-    line(c, 51, 64, 112, 64, C.steelSh, 2);
+    // blue-wrapped two-handed grip
+    rect(c, 14, 60, 39, 68, C.blue); rect(c, 14, 60, 39, 61, C.blueHi); rect(c, 14, 67, 39, 68, C.blueSh);
+    for (let x = 16; x < 39; x += 4) px(c, x, 64, C.blueSh);
+    // ornate pommel
+    disc(c, 10, 64, 6, C.gold); disc(c, 9, 63, 3, C.goldHi); disc(c, 11, 66, 2, C.goldSh);
+    // wide ornate gold guard with flared tips + central boss
+    rect(c, 39, 44, 48, 84, C.gold); rect(c, 39, 44, 41, 84, C.goldHi); rect(c, 47, 44, 48, 84, C.goldSh);
+    poly(c, [[37, 40], [48, 44], [48, 48], [37, 52]], C.gold);
+    poly(c, [[37, 76], [48, 80], [48, 84], [37, 88]], C.gold);
+    disc(c, 43, 64, 3, C.goldHi);
+    // wide ornate blade
+    poly(c, [[48, 50], [110, 50], [126, 64], [110, 78], [48, 78]], C.steel);
+    rect(c, 50, 52, 109, 55, C.steelHi);
+    rect(c, 50, 73, 109, 76, C.steelSh);
+    line(c, 52, 64, 118, 64, C.steelSh, 2); // fuller
   },
   katana(c) {
-    rect(c, 21, 61, 43, 67, C.leather);
-    for (let x = 24; x < 42; x += 4) { px(c, x, 62, C.gold); px(c, x + 1, 66, C.gold); }
-    disc(c, 45, 64, 6, C.iron); disc(c, 45, 64, 3, C.ironHi);
-    // single-edged, gently up-curved blade
-    poly(c, [[47, 61], [96, 56], [116, 55], [124, 58], [114, 62], [96, 63], [47, 66]], C.steel);
-    curve(c, [48, 60], [96, 55], [122, 57], C.steelHi, 1); // bright cutting edge
-    curve(c, [48, 65], [96, 62], [114, 61], C.steelSh, 1); // spine shadow
+    // black grip with gold diamond (ito) wrap
+    rect(c, 18, 61, 44, 67, C.leather);
+    for (let x = 21; x < 44; x += 4) {
+      px(c, x, 62, C.gold); px(c, x + 1, 63, C.goldHi); px(c, x + 2, 64, C.gold);
+      px(c, x + 1, 65, C.goldHi); px(c, x, 66, C.gold);
+    }
+    // round tsuba
+    disc(c, 46, 64, 7, C.iron); disc(c, 46, 64, 4, C.ironSh); ring(c, 46, 64, 7, C.ironHi);
+    // long, gently curved single-edged blade
+    poly(c, [[48, 61], [90, 55], [114, 51], [125, 53], [121, 58], [100, 61], [48, 66]], C.steel);
+    curve(c, [49, 60], [94, 54], [123, 54], C.steelHi, 1); // bright cutting edge
+    curve(c, [49, 65], [94, 60], [118, 58], C.steelSh, 1); // spine
   },
   dagger(c) {
-    rect(c, 25, 61, 39, 67, C.leather); rect(c, 25, 61, 39, 62, C.leatherHi);
-    disc(c, 21, 64, 4, C.gold); disc(c, 20, 63, 1, C.goldHi);
-    rect(c, 38, 55, 43, 73, C.gold); rect(c, 38, 55, 39, 73, C.goldHi);
-    poly(c, [[43, 59], [74, 59], [88, 64], [74, 69], [43, 69]], C.steel);
-    line(c, 45, 60, 73, 60, C.steelHi, 1);
-    line(c, 45, 68, 73, 68, C.steelSh, 1);
+    rect(c, 24, 61, 38, 67, C.leather); rect(c, 24, 61, 38, 62, C.leatherHi);
+    disc(c, 20, 64, 4, C.steel); disc(c, 19, 63, 1, C.steelHi); // pommel
+    // ornate guard
+    rect(c, 37, 55, 43, 73, C.steel); rect(c, 37, 55, 39, 73, C.steelHi); rect(c, 42, 55, 43, 73, C.steelSh);
+    disc(c, 40, 64, 2, C.steelHi);
+    // broad leaf-shaped blade
+    poly(c, [[43, 58], [62, 55], [80, 60], [94, 64], [80, 68], [62, 73], [43, 70]], C.steel);
+    rect(c, 46, 59, 78, 61, C.steelHi);
+    line(c, 47, 64, 84, 64, C.steelSh, 1); // fuller
+    rect(c, 46, 68, 78, 70, C.steelSh);
   },
   rapier(c) {
     rect(c, 23, 61, 40, 67, C.leather);
@@ -181,14 +200,16 @@ const weapons = {
     line(c, 107, 67, 122, 64, C.steelSh, 1);
   },
   axe(c) {
-    rect(c, 10, 61, 104, 67, C.wood); rect(c, 10, 61, 104, 62, C.woodHi); rect(c, 10, 66, 104, 67, C.woodSh);
-    rect(c, 116, 58, 120, 70, C.wood); // haft horn poking past the head
-    // bold single-bit head: sharp upper horn, deep bearded lower edge, wide cutting arc
-    poly(c, [[94, 38], [110, 42], [122, 56], [124, 64], [121, 74], [110, 88], [92, 92], [97, 74], [101, 64], [97, 54]], C.iron);
-    rect(c, 96, 56, 106, 72, C.ironSh); // socket cheek over the haft
-    rect(c, 99, 44, 114, 48, C.ironHi); // top bevel sheen
-    curve(c, [108, 43], [124, 64], [108, 89], C.steelHi, 3); // bright forged cutting edge
-    curve(c, [106, 50], [118, 64], [106, 80], C.steel, 1);
+    // shorter haft so the big crescent head dominates
+    rect(c, 8, 60, 82, 68, C.wood); rect(c, 8, 60, 82, 61, C.woodHi); rect(c, 8, 67, 82, 68, C.woodSh);
+    disc(c, 10, 64, 4, C.bronze); disc(c, 9, 63, 1, C.bronzeHi); // pommel cap
+    // big crescent half-moon blade, convex cutting edge facing right
+    poly(c, [[96, 20], [112, 34], [122, 52], [125, 64], [122, 76], [112, 94], [96, 108],
+             [92, 86], [85, 64], [92, 42]], C.bronze);
+    rect(c, 80, 57, 94, 71, C.bronzeSh); // socket over the haft
+    curve(c, [96, 24], [122, 64], [96, 104], C.bronzeHi, 2); // engraved face sheen
+    curve(c, [96, 21], [125, 64], [96, 107], C.steelHi, 2);  // bright forged cutting edge
+    curve(c, [96, 30], [88, 64], [96, 98], C.bronzeSh, 1);   // concave inner shadow
   },
   hammer(c) {
     rect(c, 12, 60, 100, 68, C.wood); rect(c, 12, 60, 100, 61, C.woodHi); rect(c, 12, 67, 100, 68, C.woodSh);
@@ -210,27 +231,32 @@ const weapons = {
     poly(c, [[60, 78], [74, 78], [70, 88], [60, 86]], C.iron);
   },
   matchlock(c) {
-    // wooden stock / butt
-    poly(c, [[8, 56], [10, 74], [30, 71], [48, 67], [48, 60], [30, 57]], C.wood);
-    rect(c, 14, 60, 46, 62, C.woodHi); rect(c, 14, 69, 44, 71, C.woodSh);
-    // barrel
-    rect(c, 44, 58, 122, 64, C.gun); rect(c, 44, 58, 122, 59, C.gunHi); rect(c, 44, 64, 122, 64, C.gunSh);
-    ring(c, 121, 61, 3, C.gunHi); // muzzle
-    // serpentine lock + pan
-    rect(c, 52, 54, 58, 58, C.iron); disc(c, 55, 53, 2, C.ironHi);
-    // trigger guard
-    curve(c, [54, 65], [55, 73], [62, 71], C.iron, 2);
+    // short wooden stock angling down at the butt (tanegashima)
+    poly(c, [[6, 58], [8, 78], [22, 74], [38, 68], [40, 60], [24, 57]], C.wood);
+    rect(c, 12, 61, 38, 63, C.woodHi); rect(c, 12, 70, 24, 72, C.woodSh);
+    // long thin barrel
+    rect(c, 36, 60, 126, 64, C.gun); rect(c, 36, 60, 126, 60, C.gunHi); rect(c, 36, 64, 126, 64, C.gunSh);
+    ring(c, 124, 62, 2, C.gunHi); // muzzle
+    // brass lockwork: pan, serpentine, trigger, band
+    rect(c, 36, 58, 54, 59, C.gold); // barrel band
+    rect(c, 42, 55, 50, 60, C.gold); disc(c, 46, 53, 2, C.goldHi); // serpentine cock
+    curve(c, [44, 64], [45, 73], [53, 71], C.gold, 2); // trigger guard
   },
   sniper(c) {
-    poly(c, [[8, 58], [10, 74], [30, 71], [46, 67], [46, 61], [30, 58]], C.wood);
-    rect(c, 14, 61, 44, 63, C.woodHi);
-    rect(c, 40, 60, 124, 65, C.gun); rect(c, 40, 60, 124, 61, C.gunHi); rect(c, 40, 65, 124, 65, C.gunSh);
-    ring(c, 123, 62, 3, C.gunHi);
+    // olive-green stock (L96/AWP style): butt + cheek riser + body + fore-end
+    poly(c, [[6, 56], [8, 74], [30, 72], [44, 68], [44, 58], [30, 54]], C.olive);
+    rect(c, 30, 50, 56, 56, C.olive); // raised cheek piece
+    rect(c, 44, 58, 100, 70, C.olive);
+    rect(c, 6, 56, 100, 58, C.oliveHi); rect(c, 44, 68, 100, 70, C.oliveSh);
+    poly(c, [[46, 70], [62, 70], [58, 84], [48, 82]], C.olive); // pistol grip
+    // barrel
+    rect(c, 96, 61, 127, 65, C.gun); rect(c, 96, 61, 127, 61, C.gunHi); rect(c, 96, 65, 127, 65, C.gunSh);
+    ring(c, 125, 63, 2, C.gunHi);
     // scope
-    rect(c, 62, 48, 92, 56, C.iron); rect(c, 62, 48, 92, 49, C.ironHi);
-    disc(c, 63, 52, 3, C.gem); disc(c, 91, 52, 3, C.gemHi);
-    rect(c, 66, 56, 69, 60, C.ironSh); rect(c, 84, 56, 87, 60, C.ironSh); // mounts
-    curve(c, [52, 66], [53, 74], [60, 72], C.iron, 2); // trigger guard
+    rect(c, 58, 44, 92, 52, C.gun); rect(c, 58, 44, 92, 45, C.gunHi); rect(c, 58, 51, 92, 52, C.gunSh);
+    disc(c, 59, 48, 3, C.gem); disc(c, 91, 48, 3, C.gemHi); // lenses
+    rect(c, 64, 52, 67, 58, C.gunSh); rect(c, 84, 52, 87, 58, C.gunSh); // scope rings
+    rect(c, 100, 66, 114, 72, C.olive); rect(c, 100, 66, 114, 67, C.oliveHi); // magazine
   },
   magicstaff(c) {
     rect(c, 18, 60, 96, 68, C.wood); rect(c, 18, 60, 96, 61, C.woodHi); rect(c, 18, 67, 96, 68, C.woodSh);
@@ -244,15 +270,15 @@ const weapons = {
     ring(c, 107, 64, 12, C.gold);
   },
   scythe(c) {
-    // Grip sits LOW (anchorY 0.72); a long thin crescent blade sweeps up-left.
-    rect(c, 16, 86, 104, 92, C.wood); rect(c, 16, 86, 104, 87, C.woodHi); rect(c, 16, 91, 104, 92, C.woodSh);
+    // Grip sits LOW (anchorY 0.72); a long, thin reaper blade sweeps up-left.
+    rect(c, 16, 86, 100, 92, C.wood); rect(c, 16, 86, 100, 87, C.woodHi); rect(c, 16, 91, 100, 92, C.woodSh);
     rect(c, 24, 83, 31, 95, C.leather); rect(c, 24, 83, 25, 95, C.leatherHi); // grip wrap
-    disc(c, 102, 89, 5, C.gold); disc(c, 101, 88, 2, C.goldHi);                // collar / snath ring
-    // long, thin, dramatic blade
-    poly(c, [[104, 88], [90, 62], [70, 42], [46, 30], [32, 27],
-             [39, 36], [58, 47], [78, 63], [95, 82]], C.steel);
-    curve(c, [32, 27], [76, 38], [104, 87], C.steelHi, 2); // bright back edge
-    curve(c, [39, 36], [70, 52], [95, 80], C.steelSh, 1);  // inner cutting shadow
+    disc(c, 99, 89, 4, C.iron); disc(c, 98, 88, 1, C.ironHi);                  // snath collar
+    // long, thin, strongly-curved blade tapering to a fine point
+    poly(c, [[100, 88], [86, 60], [64, 38], [40, 26], [22, 22],
+             [30, 31], [52, 43], [74, 60], [92, 80]], C.steel);
+    curve(c, [22, 22], [70, 32], [100, 87], C.steelHi, 1); // bright back
+    curve(c, [30, 31], [64, 46], [92, 78], C.steelSh, 1);  // cutting-edge shadow
   },
   bow(c) {
     // VERTICAL: wooden limbs bulging right, string straight on the left.
