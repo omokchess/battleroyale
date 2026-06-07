@@ -4,21 +4,26 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "PixelRoyale": {
-        "$path": "src/ReplicatedStorage/PixelRoyale"
+        "$path": "src/ReplicatedStorage/PixelRoyale",
+        "Remotes": {
+          "$className": "Folder",
+          "Combat": {
+            "$className": "RemoteEvent"
+          }
+        }
       }
     },
     "ServerScriptService": {
-      "PixelRoyaleServer": {
-        "$path": "src/ServerScriptService"
+      "CombatServer": {
+        "$path": "src/ServerScriptService/CombatServer.server.luau"
       }
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "PixelRoyaleClient": {
-          "$path": "src/StarterPlayer/StarterPlayerScripts"
+        "TopdownClient": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/TopdownClient.client.luau"
         }
       }
     }
   }
 }
-

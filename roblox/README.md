@@ -31,8 +31,8 @@ Recommended workflow:
 If you do not want to use Rojo yet, copy the scripts from `src` into the matching Studio services manually:
 
 - `src/ReplicatedStorage/PixelRoyale` -> `ReplicatedStorage/PixelRoyale`
-- `src/ServerScriptService` -> `ServerScriptService`
-- `src/StarterPlayer/StarterPlayerScripts` -> `StarterPlayer/StarterPlayerScripts`
+- `src/ServerScriptService/CombatServer.server.luau` -> `ServerScriptService/CombatServer`
+- `src/StarterPlayer/StarterPlayerScripts/TopdownClient.client.luau` -> `StarterPlayer/StarterPlayerScripts/TopdownClient`
 
 ## Current Prototype Controls
 
@@ -42,4 +42,3 @@ If you do not want to use Rojo yet, copy the scripts from `src` into the matchin
 - Weapon switch: UI buttons on the left
 
 The server owns damage, cooldown checks, and hit testing.
-
