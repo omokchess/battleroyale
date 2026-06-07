@@ -113,7 +113,7 @@ hintLabel.TextXAlignment = Enum.TextXAlignment.Left
 hintLabel.Font = Enum.Font.Gotham
 hintLabel.TextSize = 12
 hintLabel.TextColor3 = Color3.fromRGB(156, 163, 175)
-hintLabel.Text = "WASD move | Mouse aim | LMB attack | Space dash"
+hintLabel.Text = "WASD | Mouse aim | LMB attack | Space dash | F skill"
 hintLabel.Parent = statusFrame
 
 local attackButton = Instance.new("TextButton")
@@ -342,6 +342,13 @@ ContextActionService:BindActionAtPriority("PixelRoyaleDash", function(_, inputSt
 	return Enum.ContextActionResult.Sink
 end, false, 3000, Enum.KeyCode.Space)
 
+ContextActionService:BindActionAtPriority("PixelRoyaleSkill", function(_, inputState)
+	if inputState == Enum.UserInputState.Begin then
+		CombatRemote:FireServer("Skill")
+	end
+	return Enum.ContextActionResult.Sink
+end, false, 3000, Enum.KeyCode.F)
+
 attackButton.MouseButton1Click:Connect(attack)
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -357,6 +364,11 @@ end)
 CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 	if action == "AttackEffect" and typeof(payload) == "table" then
 		EffectsClient.drawAttackEffect(payload)
+	elseif action == "SkillEffect" and typeof(payload) == "table" then
+		-- Instant skills (e.g. scythe sweep) reuse the attack visual; buffs have no flash yet.
+		if payload.kind == "sweep" then
+			EffectsClient.drawAttackEffect(payload)
+		end
 	end
 end)
 

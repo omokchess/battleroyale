@@ -4,7 +4,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PixelRoyale = ReplicatedStorage:WaitForChild("PixelRoyale")
 local WeaponConfig = require(PixelRoyale:WaitForChild("WeaponConfig"))
 local HitboxUtil = require(PixelRoyale:WaitForChild("HitboxUtil"))
+local RunService = game:GetService("RunService")
 local Dash = WeaponConfig.Dash
+
+-- F-skill buffs that change the basic attack while active (resolved by getEffectiveWeapon).
+local BUFF_BY_WEAPON = { axe = "axe_rage", gauntlet = "gauntlet_lance", rapier = "rapier_riposte" }
 
 local Remotes = PixelRoyale:FindFirstChild("Remotes")
 if not Remotes then
@@ -29,6 +33,9 @@ type PlayerState = {
 	comboExpire: number,
 	lastDash: number,
 	invulnUntil: number,
+	buffType: string?,
+	buffExpire: number,
+	skillReadyAt: number,
 }
 
 local states: { [Player]: PlayerState } = {}
@@ -121,6 +128,9 @@ local function getState(player: Player): PlayerState
 		comboExpire = 0,
 		lastDash = 0,
 		invulnUntil = 0,
+		buffType = nil,
+		buffExpire = 0,
+		skillReadyAt = 0,
 	}
 	states[player] = state
 	player:SetAttribute("Weapon", state.weaponId)
@@ -157,7 +167,9 @@ local function applyWeaponStats(player: Player)
 	if humanoid.Health <= 0 then
 		humanoid.Health = humanoid.MaxHealth
 	end
-	humanoid.WalkSpeed = WeaponConfig.BaseWalkSpeed * weapon.moveSpeed
+	-- Axe rage roots the wielder in place while active.
+	local moveSpeed = if state.buffType == "axe_rage" then 0 else weapon.moveSpeed
+	humanoid.WalkSpeed = WeaponConfig.BaseWalkSpeed * moveSpeed
 	humanoid.JumpPower = 0
 	player:SetAttribute("Weapon", state.weaponId)
 	player:SetAttribute("WeaponName", weapon.displayName)
@@ -210,7 +222,9 @@ end
 
 local function attack(player: Player)
 	local state = getState(player)
-	local weapon = WeaponConfig.getWeapon(state.weaponId)
+	-- While an F-skill buff is up (axe rage / gauntlet lance / rapier riposte),
+	-- the basic attack uses the buffed stats and does not combo.
+	local weapon = WeaponConfig.getEffectiveWeapon(state.weaponId, state.buffType)
 	local _, humanoid, root = getCharacterParts(player)
 	if not humanoid or not root then
 		return
@@ -222,7 +236,7 @@ local function attack(player: Player)
 	end
 
 	-- Combo: every `cycle`-th swing becomes the finisher (own shape/damage/cooldown).
-	local combo = WeaponConfig.Combo[state.weaponId]
+	local combo = if state.buffType then nil else WeaponConfig.Combo[state.weaponId]
 	local swing = weapon
 	local isFinisher = false
 	if combo then
@@ -274,6 +288,88 @@ local function attack(player: Player)
 	})
 end
 
+local function clearBuff(player: Player, state: PlayerState)
+	if state.buffType then
+		state.buffType = nil
+		applyWeaponStats(player)
+	end
+end
+
+local function performSkill(player: Player)
+	local state = getState(player)
+	local sk = WeaponConfig.Skill[state.weaponId]
+	if not sk then
+		return
+	end
+	local now = os.clock()
+	if now < state.skillReadyAt then
+		return
+	end
+	local _, humanoid, root = getCharacterParts(player)
+	if not humanoid or not root then
+		return
+	end
+
+	-- Buff skills (axe rage / gauntlet lance / rapier riposte): enable the buff;
+	-- its cooldown starts AFTER the buff ends.
+	local buff = BUFF_BY_WEAPON[state.weaponId]
+	if buff then
+		state.buffType = buff
+		state.buffExpire = now + sk.buff
+		state.skillReadyAt = now + sk.buff + sk.cooldown
+		applyWeaponStats(player)
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId,
+			weaponId = state.weaponId,
+			kind = "buff",
+			buff = buff,
+			duration = sk.buff,
+			color = WeaponConfig.getWeapon(state.weaponId).color,
+		})
+		return
+	end
+
+	-- Scythe F: one instant wide harvest sweep (outer edge hits harder).
+	if state.weaponId == "scythe" then
+		state.skillReadyAt = now + sk.cooldown
+		local origin = root.Position
+		local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
+		local shape = { hitType = sk.hitType, range = sk.range, angle = sk.angle }
+		local hitCount = 0
+		for _, other in ipairs(Players:GetPlayers()) do
+			if other ~= player then
+				local otherState = states[other]
+				if otherState and now < otherState.invulnUntil then
+					continue
+				end
+				local _, otherHumanoid, otherRoot = getCharacterParts(other)
+				if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, shape) then
+					local dist = HitboxUtil.flat(otherRoot.Position - origin).Magnitude
+					local dmg = if dist > (sk.innerRange or 0) then sk.sweetDamage else sk.damage
+					hitCount += 1
+					damageVictim(player, otherHumanoid, dmg)
+				end
+			end
+		end
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId,
+			weaponId = state.weaponId,
+			kind = "sweep",
+			hitType = sk.hitType,
+			origin = origin,
+			direction = direction,
+			range = sk.range,
+			angle = sk.angle or 0,
+			color = WeaponConfig.getWeapon(state.weaponId).color,
+			hitCount = hitCount,
+		})
+		return
+	end
+
+	-- TODO: remaining skills — sword waves, bow railgun, spear throw, greatsword
+	-- charge, dagger QTE, hammer slam, katana dash, projectiles, and R abilities.
+end
+
 CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payload)
 	local state = getState(player)
 
@@ -286,6 +382,8 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 		state.lastAttack = 0
 		state.attackCooldown = 0
 		state.comboStep = 0
+		state.buffType = nil
+		state.skillReadyAt = 0
 		applyWeaponStats(player)
 	elseif action == "Attack" then
 		attack(player)
@@ -298,6 +396,18 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 				userId = player.UserId,
 				iframe = Dash.iframe,
 			})
+		end
+	elseif action == "Skill" then
+		performSkill(player)
+	end
+end)
+
+-- Expire F-skill buffs (restores walkspeed when rage / lance / riposte ends).
+RunService.Heartbeat:Connect(function()
+	local now = os.clock()
+	for player, state in pairs(states) do
+		if state.buffType and now > state.buffExpire then
+			clearBuff(player, state)
 		end
 	end
 end)
