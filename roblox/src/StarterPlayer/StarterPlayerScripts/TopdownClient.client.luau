@@ -49,6 +49,7 @@ local katanaChargeStart = 0
 local qteState = nil
 
 local BUFF_WEAPONS = { axe = true, gauntlet = true, rapier = true }
+local NO_BASIC_ATTACK = { greatsword = true, matchlock = true, sniper = true }
 
 local MOVE_KEYS = {
 	[Enum.KeyCode.W] = Vector3.new(0, 0, -1),
@@ -238,21 +239,6 @@ wheader.TextColor3 = GRAY
 wheader.Text = "WEAPONS"
 wheader.Parent = weaponPanel
 
-local attackButton = Instance.new("TextButton")
-attackButton.Name = "AttackButton"
-attackButton.Size = UDim2.fromOffset(96, 96)
-attackButton.AnchorPoint = Vector2.new(1, 1)
-attackButton.Position = UDim2.new(1, -24, 1, -24)
-attackButton.BackgroundColor3 = STONE
-attackButton.BackgroundTransparency = 0.1
-attackButton.BorderColor3 = BRASS
-attackButton.BorderSizePixel = 2
-attackButton.Font = HUD_FONT
-attackButton.TextSize = 16
-attackButton.TextColor3 = GOLD
-attackButton.Text = "ATTACK"
-attackButton.Parent = screenGui
-
 local lobbyPanel = Instance.new("Frame")
 lobbyPanel.Name = "MainLobby"
 lobbyPanel.Size = UDim2.fromScale(1, 1)
@@ -288,7 +274,6 @@ local function setGameplayVisible(visible: boolean)
 	playerPanel.Visible = visible
 	abilityPanel.Visible = visible
 	weaponPanel.Visible = visible
-	attackButton.Visible = visible
 end
 
 setGameplayVisible(false)
@@ -452,7 +437,12 @@ local function computeAim(root)
 	if t <= 0 then
 		return aimDirection, aimPoint
 	end
-	local hit = ray.Origin + ray.Direction * t
+	local rawHit = ray.Origin + ray.Direction * t
+	local hit = Vector3.new(
+		math.clamp(rawHit.X, -ARENA_HALF_SIZE, ARENA_HALF_SIZE),
+		AIM_PLANE_Y,
+		math.clamp(rawHit.Z, -ARENA_HALF_SIZE, ARENA_HALF_SIZE)
+	)
 	local flat = Vector3.new(hit.X - root.Position.X, 0, hit.Z - root.Position.Z)
 	if flat.Magnitude <= 0.01 then
 		return aimDirection, hit
@@ -483,7 +473,7 @@ local function clampRootToArena(root: BasePart)
 end
 
 local function attack()
-	if not inGame or selectedWeapon == "greatsword" then
+	if not inGame or NO_BASIC_ATTACK[selectedWeapon] then
 		return
 	end
 	CombatRemote:FireServer("Attack", { target = aimPoint })
@@ -618,8 +608,6 @@ ContextActionService:BindActionAtPriority("PixelRoyaleAltSkill", function(_, inp
 	return Enum.ContextActionResult.Sink
 end, false, 3000, Enum.KeyCode.R)
 
-attackButton.MouseButton1Click:Connect(attack)
-
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then
 		return
@@ -683,18 +671,21 @@ RunService.RenderStepped:Connect(function(dt)
 
 	local humanoid = getHumanoid()
 	if not inGame then
+		UserInputService.MouseIconEnabled = true
 		if humanoid then
 			humanoid.AutoRotate = false
 			humanoid:Move(Vector3.zero, false)
 		end
 		EffectsClient.clearPreview()
 		EffectsClient.clearChargePreview()
+		EffectsClient.clearAimCrosshair()
 		EffectsClient.clearQTE()
 		CombatantTokenClient.updateAll(aimDirection)
 		updateHud()
 		return
 	end
 
+	UserInputService.MouseIconEnabled = false
 	if humanoid then
 		humanoid.AutoRotate = false
 		if os.clock() < dashUntil then
@@ -709,7 +700,8 @@ RunService.RenderStepped:Connect(function(dt)
 	CombatantTokenClient.updateAll(aimDirection)
 
 	local weapon = WeaponConfig.getEffectiveWeapon(selectedWeapon, nil)
-	if selectedWeapon ~= "greatsword" and not chargingKatana then
+	EffectsClient.updateAimCrosshair(aimPoint, weapon.color)
+	if not NO_BASIC_ATTACK[selectedWeapon] and not chargingKatana then
 		EffectsClient.updateAttackPreview(root.Position, aimDirection, weapon, aimPoint)
 	else
 		EffectsClient.clearPreview()

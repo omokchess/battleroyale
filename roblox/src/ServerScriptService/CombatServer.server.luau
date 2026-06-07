@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PixelRoyale = ReplicatedStorage:WaitForChild("PixelRoyale")
@@ -48,6 +49,7 @@ type PlayerState = {
 local states: { [Player]: PlayerState } = {}
 local projectiles = {} -- live server-simulated projectiles (waves, fireballs, …)
 local PROJ_TARGET_RADIUS = 2 -- studs; combatant body half-size for projectile contact
+local NO_BASIC_ATTACK = { greatsword = true, matchlock = true, sniper = true }
 local GOLD_EDGE = Color3.fromRGB(216, 178, 74)
 
 local function hideAvatar(character: Model, humanoid: Humanoid?)
@@ -65,8 +67,55 @@ local function hideAvatar(character: Model, humanoid: Humanoid?)
 	end
 end
 
+local function configureWorldLighting()
+	Lighting.Brightness = 0.65
+	Lighting.ClockTime = 0
+	Lighting.GlobalShadows = false
+	Lighting.Ambient = Color3.fromRGB(18, 18, 24)
+	Lighting.OutdoorAmbient = Color3.fromRGB(4, 4, 8)
+	Lighting.EnvironmentDiffuseScale = 0
+	Lighting.EnvironmentSpecularScale = 0
+	Lighting.FogColor = Color3.fromRGB(0, 0, 0)
+	Lighting.FogEnd = 260
+end
+
+local function ensureVoidBackdrop(parent: Instance)
+	if parent:FindFirstChild("VoidBackdrop") then
+		return
+	end
+
+	local part = Instance.new("Part")
+	part.Name = "VoidBackdrop"
+	part.Anchored = true
+	part.Size = Vector3.new(420, 1, 420)
+	part.Position = Vector3.new(0, -1.15, 0)
+	part.Color = Color3.fromRGB(0, 0, 0)
+	part.Material = Enum.Material.SmoothPlastic
+	part.Transparency = 0
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CastShadow = false
+	part.Reflectance = 0
+	part.Parent = parent
+end
+
 local function ensureArena()
-	if workspace:FindFirstChild("PixelRoyaleArena") then
+	configureWorldLighting()
+
+	local existingArena = workspace:FindFirstChild("PixelRoyaleArena")
+	if existingArena then
+		ensureVoidBackdrop(existingArena)
+		for _, descendant in ipairs(existingArena:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.Reflectance = 0
+				if descendant.Name:find("Wall") or descendant.Name:find("NeonEdge") then
+					descendant.Color = GOLD_EDGE
+				elseif descendant.Name == "ArenaFloor" then
+					descendant.Material = Enum.Material.Slate
+					descendant.Color = Color3.fromRGB(18, 24, 33)
+				end
+			end
+		end
 		return
 	end
 
@@ -93,9 +142,12 @@ local function ensureArena()
 		part.CanCollide = canCollide
 		part.CanQuery = canCollide
 		part.CastShadow = false
+		part.Reflectance = 0
 		part.Parent = arena
 		return part
 	end
+
+	ensureVoidBackdrop(arena)
 
 	local floor = Instance.new("Part")
 	floor.Name = "ArenaFloor"
@@ -103,8 +155,9 @@ local function ensureArena()
 	floor.Size = Vector3.new(140, 1, 140)
 	floor.Position = Vector3.new(0, -0.45, 0)
 	floor.Color = Color3.fromRGB(18, 24, 33)
-	floor.Material = Enum.Material.SmoothPlastic
+	floor.Material = Enum.Material.Slate
 	floor.CastShadow = false
+	floor.Reflectance = 0
 	floor.Parent = arena
 
 	for offset = -63, 63, 7 do
@@ -374,7 +427,7 @@ local function attack(player: Player, payload)
 		return
 	end
 
-	if state.weaponId == "greatsword" then
+	if NO_BASIC_ATTACK[state.weaponId] then
 		return
 	end
 
@@ -393,6 +446,22 @@ local function attack(player: Player, payload)
 
 	local now = os.clock()
 	if now - state.lastAttack < state.attackCooldown then
+		return
+	end
+
+	local origin = root.Position
+	local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
+	if state.weaponId == "bow" then
+		state.lastAttack = now
+		state.attackCooldown = weapon.cooldown
+		spawnProjectile(player, origin, direction, {
+			kind = "bow_arrow",
+			speed = weapon.projectileSpeed or 64,
+			range = WeaponConfig.REACH,
+			damage = weapon.damage,
+			radius = math.max(weapon.width or 0.6, 0.55),
+			color = weapon.color,
+		})
 		return
 	end
 
@@ -416,8 +485,6 @@ local function attack(player: Player, payload)
 	state.lastAttack = now
 	state.attackCooldown = swing.cooldown or weapon.cooldown
 
-	local origin = root.Position
-	local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
 	local hitCount = 0
 	local hitPoints = {}
 
@@ -589,6 +656,7 @@ local function performSkill(player: Player)
 				local _, hum, rt = getCharacterParts(player)
 				if rt and hum then
 					spawnProjectile(player, rt.Position, direction, {
+						kind = "sword_wave",
 						speed = sk.waveSpeed,
 						range = WeaponConfig.REACH,
 						damage = sk.directDamage,
@@ -610,6 +678,7 @@ local function performSkill(player: Player)
 			weaponId = "hammer",
 			hitType = "circle",
 			follow = true,
+			grow = true,
 			origin = root.Position,
 			range = maxRange,
 			duration = sk.preview,
@@ -721,7 +790,8 @@ local function performSkill(player: Player)
 					vfx = sk.vfx, follow = true, hits = hits,
 				})
 				spawnProjectile(player, rt.Position, slashAim, {
-					speed = sk.waveSpeed, range = WeaponConfig.REACH, damage = sk.waveDamage, radius = 0.8, color = weaponColor,
+					kind = "sword_wave", speed = sk.waveSpeed, range = WeaponConfig.REACH,
+					damage = sk.waveDamage, radius = 0.8, color = weaponColor,
 				})
 			end)
 		end

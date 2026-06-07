@@ -10,11 +10,13 @@ local FOLDER_NAME = "_PixelRoyaleEffects"
 local PREVIEW_FOLDER_NAME = "_PixelRoyalePreview"
 local CHARGE_FOLDER_NAME = "_PixelRoyaleChargePreview"
 local QTE_FOLDER_NAME = "_PixelRoyaleQTE"
+local AIM_FOLDER_NAME = "_PixelRoyaleAimCrosshair"
 
 local folder: Folder? = nil
 local previewFolder: Folder? = nil
 local chargeFolder: Folder? = nil
 local qteFolder: Folder? = nil
+local aimFolder: Folder? = nil
 
 local function rootOfUser(userId: number?): BasePart?
 	local player = userId and Players:GetPlayerByUserId(userId)
@@ -137,6 +139,21 @@ local function makeBlock(position: Vector3, size: Vector3, color: Color3, life: 
 	configure(part, color, transparency)
 	part.Size = size
 	part.CFrame = CFrame.new(withHeight(position))
+	fade(part, life)
+end
+
+local function makeMovingLine(startPoint: Vector3, endPoint: Vector3, width: number, color: Color3, life: number, transparency: number, move: Vector3)
+	local offset = endPoint - startPoint
+	local length = offset.Magnitude
+	if length <= 0.05 then
+		return
+	end
+
+	local part = Instance.new("Part")
+	configure(part, color, transparency)
+	part.Size = Vector3.new(width, 0.14, length)
+	part.CFrame = CFrame.lookAt((startPoint + endPoint) * 0.5, endPoint)
+	TweenService:Create(part, TweenInfo.new(life, Enum.EasingStyle.Linear), { CFrame = part.CFrame + move }):Play()
 	fade(part, life)
 end
 
@@ -278,44 +295,60 @@ function EffectsClient.drawPunch(payload)
 	end
 end
 
--- Web-style slash: a faint cone + a bright crescent that sweeps edge-to-edge
--- with a glowing white leading tip.
+-- Layered slash: translucent fan fill + white blade paths + a bright crescent.
 function EffectsClient.drawArc(payload)
 	local origin = payload.origin
 	local direction = payload.direction or Vector3.new(0, 0, -1)
 	local range = payload.range or 6
 	local color = payload.color or Color3.fromRGB(69, 243, 255)
 	local half = math.rad(payload.angle or 100) * 0.5
-	local life = payload.life or 0.22
+	local life = payload.life or 0.24
 	local aim = math.atan2(direction.Z, direction.X)
 	local swing = if payload.swingDirection == -1 then -1 else 1
 
-	-- faint cone fill (radial slices)
-	local coneSegs = 8
+	local coneSegs = 10
 	for i = 0, coneSegs - 1 do
 		local mid = aim - half + (2 * half) * ((i + 0.5) / coneSegs)
+		local dir = Vector3.new(math.cos(mid), 0, math.sin(mid))
+		local inner = origin + dir * (range * 0.18)
 		makePart(
-			withHeight(origin),
+			withHeight(inner),
 			withHeight(origin + Vector3.new(math.cos(mid), 0, math.sin(mid)) * range),
-			(2 * half * range) / coneSegs + 0.1, color, life * 0.7, 0.82
+			(2 * half * range) / coneSegs + 0.16, color, life * 0.62, 0.86
 		)
 	end
 
-	-- bright crescent at the outer edge, lit up segment-by-segment to sweep
-	local segs = 12
-	local r = range * 0.92
 	local function angAt(t)
 		return if swing > 0 then aim - half + 2 * half * t else aim + half - 2 * half * t
 	end
+
+	for lane = 0, 4 do
+		local t = lane / 4
+		local a = angAt(0.12 + 0.76 * t)
+		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+		local startPoint = withHeight(origin + dir * (range * (0.12 + 0.05 * lane)))
+		local endPoint = withHeight(origin + dir * (range * (0.9 - 0.03 * lane)))
+		task.delay(lane * 0.012, function()
+			makePart(startPoint, endPoint, 0.2, Color3.fromRGB(255, 255, 255), life * 0.62, 0.08)
+			makePart(startPoint, endPoint, 0.42, color, life * 0.78, 0.34)
+		end)
+	end
+
+	local segs = 16
+	local r = range * 0.94
 	for i = 0, segs - 1 do
 		local a0, a1 = angAt(i / segs), angAt((i + 1) / segs)
 		local p0 = withHeight(origin + Vector3.new(math.cos(a0), 0, math.sin(a0)) * r)
 		local p1 = withHeight(origin + Vector3.new(math.cos(a1), 0, math.sin(a1)) * r)
-		task.delay(i * 0.012, function()
-			makePart(p0, p1, 0.55, color, life * 0.85, 0.12)
-			makePart(p0, p1, 0.22, Color3.fromRGB(255, 255, 255), life * 0.55, 0.04)
+		task.delay(i * 0.006, function()
+			makePart(p0, p1, 0.62, color, life * 0.9, 0.14)
+			makePart(p0, p1, 0.24, Color3.fromRGB(255, 255, 255), life * 0.62, 0.03)
 		end)
 	end
+
+	local tipAngle = angAt(1)
+	local tip = origin + Vector3.new(math.cos(tipAngle), 0, math.sin(tipAngle)) * r
+	makeBlock(tip, Vector3.new(1.2, 0.14, 1.2), Color3.fromRGB(255, 255, 255), life * 0.8, 0.08)
 end
 
 -- Map every weapon hitType onto the matching visual (mirrors HitboxUtil).
@@ -386,40 +419,94 @@ function EffectsClient.drawBuff(root: BasePart?, color: Color3?, duration: numbe
 	Debris:AddItem(pad, life + 0.1)
 end
 
--- A neon ball flying along the shot trajectory (visual only; server owns hits).
-function EffectsClient.drawProjectile(payload)
-	if typeof(payload) ~= "table" or typeof(payload.origin) ~= "Vector3" then
-		return
+local function drawMovingNeedle(origin: Vector3, dir: Vector3, range: number, speed: number, color: Color3, width: number, length: number)
+	local life = math.clamp(range / math.max(speed, 1), 0.12, 2.2)
+	local move = dir * range
+	local startPoint = origin + dir * 0.8
+	local endPoint = origin + dir * length
+	makeMovingLine(startPoint, endPoint, width * 1.8, color, life, 0.3, move)
+	makeMovingLine(startPoint, endPoint, width * 0.52, Color3.fromRGB(255, 255, 255), life, 0.04, move)
+
+	local side = rotateFlat(dir, math.rad(90))
+	makeMovingLine(origin - side * width * 1.3, origin - side * width * 0.15 + dir * 1.4, width * 0.35, color, life * 0.82, 0.42, move)
+	makeMovingLine(origin + side * width * 1.3, origin + side * width * 0.15 + dir * 1.4, width * 0.35, color, life * 0.82, 0.42, move)
+end
+
+local function drawMovingBladeWave(origin: Vector3, dir: Vector3, range: number, speed: number, color: Color3)
+	local life = math.clamp(range / math.max(speed, 1), 0.16, 2.2)
+	local side = rotateFlat(dir, math.rad(90))
+	local move = dir * range
+	local bladeWidth = 4.4
+	local points = {}
+
+	for i = 0, 8 do
+		local t = -1 + (i / 8) * 2
+		local curve = 1.1 + (1 - math.abs(t)) * 1.75
+		table.insert(points, origin + dir * curve + side * (t * bladeWidth))
 	end
-	local speed = payload.speed or 60
-	local range = payload.range or 30
+
+	for i = 1, #points - 1 do
+		local p0 = withHeight(points[i])
+		local p1 = withHeight(points[i + 1])
+		makeMovingLine(p0, p1, 0.78, color, life, 0.2, move)
+		makeMovingLine(p0, p1, 0.24, Color3.fromRGB(255, 255, 255), life * 0.85, 0.03, move)
+	end
+
+	makeMovingLine(withHeight(origin - side * 2.4), withHeight(origin + side * 2.4), 0.18, Color3.fromRGB(255, 255, 255), life * 0.55, 0.08, move)
+end
+
+local function drawMovingOrb(origin: Vector3, dir: Vector3, range: number, speed: number, color: Color3, radius: number)
 	local life = math.clamp(range / math.max(speed, 1), 0.1, 2.2)
-	local origin = withHeight(payload.origin)
-	local dir = (payload.direction or Vector3.new(0, 0, -1))
-	local color = payload.color or Color3.fromRGB(120, 220, 255)
-	local d = (payload.radius or 0.6) * 2 + 0.7
+	local d = radius * 2 + 0.7
 	local ball = Instance.new("Part")
 	ball.Shape = Enum.PartType.Ball
 	configure(ball, color, 0.05)
 	ball.Size = Vector3.new(d, d, d)
 	ball.CFrame = CFrame.lookAt(origin, origin + dir)
 
-	-- neon trail (attachments offset along RightVector so it reads from top-down)
-	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0.5, 0, 0); a0.Parent = ball
-	local a1 = Instance.new("Attachment"); a1.Position = Vector3.new(-0.5, 0, 0); a1.Parent = ball
+	local a0 = Instance.new("Attachment")
+	a0.Position = Vector3.new(0.5, 0, 0)
+	a0.Parent = ball
+	local a1 = Instance.new("Attachment")
+	a1.Position = Vector3.new(-0.5, 0, 0)
+	a1.Parent = ball
 	local trail = Instance.new("Trail")
 	trail.Attachment0 = a0
 	trail.Attachment1 = a1
-	trail.Lifetime = 0.2
+	trail.Lifetime = 0.22
 	trail.LightEmission = 1
 	trail.Color = ColorSequence.new(color)
-	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.06), NumberSequenceKeypoint.new(1, 1) })
 	trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
 	trail.Parent = ball
 
 	local endPos = origin + dir * range
 	TweenService:Create(ball, TweenInfo.new(life, Enum.EasingStyle.Linear), { CFrame = CFrame.lookAt(endPos, endPos + dir) }):Play()
 	Debris:AddItem(ball, life + 0.05)
+end
+
+-- Moving projectile visuals only; server owns hits.
+function EffectsClient.drawProjectile(payload)
+	if typeof(payload) ~= "table" or typeof(payload.origin) ~= "Vector3" then
+		return
+	end
+	local speed = payload.speed or 60
+	local range = payload.range or 30
+	local origin = withHeight(payload.origin)
+	local dir = (payload.direction or Vector3.new(0, 0, -1))
+	local color = payload.color or Color3.fromRGB(120, 220, 255)
+
+	if payload.kind == "sword_wave" then
+		drawMovingBladeWave(origin, dir, range, speed, color)
+	elseif payload.kind == "bow_arrow" then
+		drawMovingNeedle(origin, dir, range, speed, color, 0.28, 3.8)
+	elseif payload.kind == "ice_shard" then
+		drawMovingNeedle(origin, dir, range, speed, color, 0.34, 2.7)
+	elseif payload.kind == "matchlock_shot" then
+		drawMovingNeedle(origin, dir, range, speed, color, 0.2, 2.2)
+	else
+		drawMovingOrb(origin, dir, range, speed, color, payload.radius or 0.6)
+	end
 end
 
 function EffectsClient.updateAttackPreview(origin: Vector3, direction: Vector3, weapon, targetPoint: Vector3?)
@@ -493,6 +580,28 @@ function EffectsClient.clearChargePreview()
 	end
 end
 
+function EffectsClient.updateAimCrosshair(position: Vector3, color: Color3?)
+	aimFolder = getNamedFolder(AIM_FOLDER_NAME, aimFolder)
+	clearFolder(aimFolder)
+
+	local crossColor = color or Color3.fromRGB(255, 255, 255)
+	local p = withHeight(position)
+	local xAxis = Vector3.new(1, 0, 0)
+	local zAxis = Vector3.new(0, 0, 1)
+	makeStaticLine(aimFolder, p - xAxis * 1.4, p - xAxis * 0.32, 0.11, crossColor, 0.08)
+	makeStaticLine(aimFolder, p + xAxis * 0.32, p + xAxis * 1.4, 0.11, crossColor, 0.08)
+	makeStaticLine(aimFolder, p - zAxis * 1.4, p - zAxis * 0.32, 0.11, crossColor, 0.08)
+	makeStaticLine(aimFolder, p + zAxis * 0.32, p + zAxis * 1.4, 0.11, crossColor, 0.08)
+	drawPreviewCircle(aimFolder, position, 0.52, Color3.fromRGB(255, 255, 255), 0.28)
+	drawPreviewCircle(aimFolder, position, 1.75, crossColor, 0.62)
+end
+
+function EffectsClient.clearAimCrosshair()
+	if aimFolder then
+		clearFolder(aimFolder)
+	end
+end
+
 function EffectsClient.drawTelegraph(payload)
 	if typeof(payload) ~= "table" or typeof(payload.origin) ~= "Vector3" then
 		return
@@ -506,7 +615,7 @@ function EffectsClient.drawTelegraph(payload)
 	telegraphFolder.Parent = getFolder()
 	Debris:AddItem(telegraphFolder, duration + 0.35)
 
-	local function drawOnce()
+	local function drawOnce(progress: number?)
 		clearFolder(telegraphFolder)
 		local drawOrigin = origin
 		local drawDirection = payload.direction or Vector3.new(0, 0, -1)
@@ -522,7 +631,11 @@ function EffectsClient.drawTelegraph(payload)
 			return
 		end
 		if payload.hitType == "circle" then
-			drawPreviewCircle(telegraphFolder, drawOrigin, payload.range or 10, color, 0.28)
+			local range = payload.range or 10
+			if payload.grow then
+				range *= math.clamp(progress or 1, 0.18, 1)
+			end
+			drawPreviewCircle(telegraphFolder, drawOrigin, range, color, 0.28)
 		elseif payload.hitType == "line" then
 			drawPreviewLine(telegraphFolder, drawOrigin, drawDirection, payload.range or 12, payload.width or 1, color, 0.35)
 		elseif payload.hitType == "arc" or payload.hitType == "blade_sweep" then
@@ -534,15 +647,16 @@ function EffectsClient.drawTelegraph(payload)
 		local started = os.clock()
 		local connection
 		connection = RunService.RenderStepped:Connect(function()
-			if not telegraphFolder.Parent or os.clock() - started > duration then
+			local elapsed = os.clock() - started
+			if not telegraphFolder.Parent or elapsed > duration then
 				if connection then
 					connection:Disconnect()
 				end
 				return
 			end
-			drawOnce()
+			drawOnce(math.clamp(elapsed / math.max(duration, 0.01), 0, 1))
 		end)
-		drawOnce()
+		drawOnce(0)
 		return
 	end
 
@@ -625,28 +739,11 @@ function EffectsClient.drawAttackEffect(payload)
 		if not root then
 			return
 		end
-		local started = os.clock()
-		local duration = payload.life or 0.18
-		local lastDraw = 0
-		local connection
-		connection = RunService.RenderStepped:Connect(function()
-			local now = os.clock()
-			if not root.Parent or now - started > duration then
-				if connection then
-					connection:Disconnect()
-				end
-				return
-			end
-			if now - lastDraw >= 0.045 then
-				lastDraw = now
-				local copy = table.clone(payload)
-				copy.follow = false
-				copy.origin = root.Position
-				copy.direction = aimOfUser(payload.userId, payload.direction)
-				copy.life = 0.08
-				EffectsClient.drawAttackEffect(copy)
-			end
-		end)
+		local copy = table.clone(payload)
+		copy.follow = false
+		copy.origin = root.Position
+		copy.direction = aimOfUser(payload.userId, payload.direction)
+		EffectsClient.drawAttackEffect(copy)
 		return
 	end
 
