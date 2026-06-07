@@ -319,6 +319,25 @@ local function spawnProjectile(owner: Player, origin: Vector3, direction: Vector
 	})
 end
 
+-- Damage every valid target inside a hit shape; returns the contact points.
+local function damageInShape(attacker: Player, origin: Vector3, direction: Vector3, shape, damage: number)
+	local hits = {}
+	local now = os.clock()
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= attacker then
+			local otherState = states[other]
+			if not (otherState and now < otherState.invulnUntil) then
+				local _, otherHumanoid, otherRoot = getCharacterParts(other)
+				if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, shape) then
+					table.insert(hits, otherRoot.Position)
+					damageVictim(attacker, otherHumanoid, damage)
+				end
+			end
+		end
+	end
+	return hits
+end
+
 local function clearBuff(player: Player, state: PlayerState)
 	if state.buffType then
 		state.buffType = nil
@@ -456,8 +475,113 @@ local function performSkill(player: Player)
 		return
 	end
 
-	-- TODO: remaining skills — bow railgun, spear throw, greatsword charge,
-	-- dagger QTE, katana dash-waves, magicstaff spells.
+	local aim = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
+	local weaponColor = WeaponConfig.getWeapon(state.weaponId).color
+
+	-- Bow F: instant piercing railgun beam.
+	if state.weaponId == "bow" then
+		state.skillReadyAt = now + sk.cooldown
+		local shape = { hitType = "line", range = WeaponConfig.REACH, width = 0.9 }
+		local hits = damageInShape(player, root.Position, aim, shape, sk.damage)
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId, kind = "sweep", hitType = "line", origin = root.Position,
+			direction = aim, range = WeaponConfig.REACH, width = 0.9, color = weaponColor, hits = hits,
+		})
+		return
+	end
+
+	-- Spear F: instant throw line, then a return line after a short delay.
+	if state.weaponId == "spear" then
+		state.skillReadyAt = now + sk.cooldown
+		local shape = { hitType = "line", range = WeaponConfig.REACH, width = 1.6 }
+		local hits = damageInShape(player, root.Position, aim, shape, sk.damage)
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId, kind = "sweep", hitType = "line", origin = root.Position,
+			direction = aim, range = WeaponConfig.REACH, width = 1.6, color = weaponColor, hits = hits,
+		})
+		task.delay(0.5, function()
+			local _, hum, rt = getCharacterParts(player)
+			if rt and hum then
+				local h2 = damageInShape(player, rt.Position, aim, shape, sk.returnDamage)
+				CombatRemote:FireAllClients("SkillEffect", {
+					userId = player.UserId, kind = "sweep", hitType = "line", origin = rt.Position,
+					direction = aim, range = WeaponConfig.REACH, width = 1.6, color = weaponColor, hits = h2,
+				})
+			end
+		end)
+		return
+	end
+
+	-- Katana F: two quick arc slashes, each launching a blade-wave projectile.
+	if state.weaponId == "katana" then
+		state.skillReadyAt = now + sk.cooldown
+		for i = 1, sk.slashCount do
+			task.delay((i - 1) * sk.slashInterval, function()
+				local _, hum, rt = getCharacterParts(player)
+				if not (rt and hum) then
+					return
+				end
+				local arc = { hitType = "arc", range = sk.directRange, angle = sk.directAngle }
+				local hits = damageInShape(player, rt.Position, aim, arc, sk.directDamage)
+				CombatRemote:FireAllClients("SkillEffect", {
+					userId = player.UserId, kind = "sweep", hitType = "arc", origin = rt.Position,
+					direction = aim, range = sk.directRange, angle = sk.directAngle, color = weaponColor, hits = hits,
+				})
+				spawnProjectile(player, rt.Position, aim, {
+					speed = sk.waveSpeed, range = WeaponConfig.REACH, damage = sk.waveDamage, radius = 0.8, color = weaponColor,
+				})
+			end)
+		end
+		return
+	end
+
+	-- Greatsword F: instant heavy cleave (charge windup comes later).
+	if state.weaponId == "greatsword" then
+		state.skillReadyAt = now + sk.cooldown
+		local shape = { hitType = sk.hitType, range = sk.range, angle = sk.angle }
+		local hits = damageInShape(player, root.Position, aim, shape, sk.damage)
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId, kind = "sweep", hitType = sk.hitType, origin = root.Position,
+			direction = aim, range = sk.range, angle = sk.angle, color = weaponColor, hits = hits,
+		})
+		return
+	end
+
+	-- Dagger F: backstab the nearest enemy in reach (QTE timing comes later).
+	if state.weaponId == "dagger" then
+		state.skillReadyAt = now + sk.cooldown
+		local best, bestRoot, bestDist
+		for _, other in ipairs(Players:GetPlayers()) do
+			if other ~= player then
+				local otherState = states[other]
+				if not (otherState and now < otherState.invulnUntil) then
+					local _, oh, orh = getCharacterParts(other)
+					if oh and orh then
+						local d = HitboxUtil.flat(orh.Position - root.Position).Magnitude
+						if d <= 12 and (not bestDist or d < bestDist) then
+							best, bestRoot, bestDist = oh, orh, d
+						end
+					end
+				end
+			end
+		end
+		if best and bestRoot then
+			damageVictim(player, best, sk.damage)
+			CombatRemote:FireAllClients("Spark", { pos = bestRoot.Position, color = weaponColor })
+		end
+		return
+	end
+
+	-- Magic staff F: launch a fireball projectile (burn/ice-shard come later).
+	if state.weaponId == "magicstaff" then
+		local fb = WeaponConfig.Magic.fireball
+		state.skillReadyAt = now + fb.cooldown
+		spawnProjectile(player, root.Position, aim, {
+			speed = fb.speed, range = WeaponConfig.REACH, damage = fb.damage,
+			radius = math.max(fb.radius, 1), color = weaponColor,
+		})
+		return
+	end
 end
 
 -- R abilities (alt-skill): sniper random teleport, magicstaff self-heal,
