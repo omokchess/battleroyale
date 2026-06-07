@@ -1,0 +1,24 @@
+{
+  "name": "PixelRoyaleRoblox",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "PixelRoyale": {
+        "$path": "src/ReplicatedStorage/PixelRoyale"
+      }
+    },
+    "ServerScriptService": {
+      "PixelRoyaleServer": {
+        "$path": "src/ServerScriptService"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "PixelRoyaleClient": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts"
+        }
+      }
+    }
+  }
+}
+
