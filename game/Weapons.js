@@ -67,6 +67,7 @@ export const Weapons = {
     moveSpeed: 1.3,
     range: 58,
     width: 24,
+    punchAngleMin: 6,
     punchAngleJitter: 15,
     type: 'melee_line',
     description: '쉴 새 없는 연속 펀치 공격입니다. 사거리는 극도로 짧지만 공격 속도가 무시무시합니다.',

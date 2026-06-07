@@ -672,17 +672,19 @@ export class Game {
   }
 
   _resolveDirectionalAttack(player, attackConfig) {
-    if (player.weapon !== 'gauntlet' || player.buffType === 'gauntlet_lance') {
+    if (player.weapon !== 'gauntlet') {
       return attackConfig;
     }
 
     const side = player.gauntletPunchSide === 1 ? -1 : 1;
     player.gauntletPunchSide = side;
     const jitterDeg = Number.isFinite(attackConfig.punchAngleJitter) ? attackConfig.punchAngleJitter : 15;
-    const amount = Math.random() * (jitterDeg * Math.PI / 180);
+    const minDeg = Number.isFinite(attackConfig.punchAngleMin) ? attackConfig.punchAngleMin : Math.min(6, jitterDeg);
+    const amountDeg = minDeg + Math.random() * Math.max(0, jitterDeg - minDeg);
+    const amount = amountDeg * Math.PI / 180;
     return {
       ...attackConfig,
-      angleOffset: side * amount,
+      angleOffset: -side * amount,
       punchSide: side
     };
   }

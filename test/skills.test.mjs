@@ -196,7 +196,7 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   assert.equal(hit.knockback, Weapons.hammer.knockback);
 });
 
-test('gauntlet basic punch alternates fists with a 15 degree offset hitbox', () => {
+test('gauntlet basic punch alternates fists with an inward 15 degree hitbox', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.mapWidth = 700;
@@ -207,7 +207,7 @@ test('gauntlet basic punch alternates fists with a 15 degree offset hitbox', () 
   const owner = new Player('gauntlet-owner', 'Knuckle', 'gauntlet', 100, 100);
   owner.angle = 0;
   const offsetAngle = 15 * Math.PI / 180;
-  const aligned = new Player('gauntlet-aligned', 'Aligned', 'sword', 100 + Math.cos(offsetAngle) * 52, 100 + Math.sin(offsetAngle) * 52);
+  const aligned = new Player('gauntlet-aligned', 'Aligned', 'sword', 100 + Math.cos(-offsetAngle) * 52, 100 + Math.sin(-offsetAngle) * 52);
   const center = new Player('gauntlet-center', 'Center', 'sword', 152, 100);
   aligned.radius = 1;
   center.radius = 1;
@@ -220,18 +220,42 @@ test('gauntlet basic punch alternates fists with a 15 degree offset hitbox', () 
   try {
     const attack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
     assert.equal(attack.punchSide, 1);
-    assert.ok(Math.abs(attack.angleOffset - offsetAngle) < 1e-12);
+    assert.ok(Math.abs(attack.angleOffset + offsetAngle) < 1e-12);
     assert.equal(game._queueOrApplyMeleeHit(owner, attack, 1000), 1);
 
     const nextAttack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
     assert.equal(nextAttack.punchSide, -1);
-    assert.ok(Math.abs(nextAttack.angleOffset + offsetAngle) < 1e-12);
+    assert.ok(Math.abs(nextAttack.angleOffset - offsetAngle) < 1e-12);
   } finally {
     Math.random = originalRandom;
   }
 
   assert.equal(aligned.hp, aligned.maxHp - Weapons.gauntlet.damage);
   assert.equal(center.hp, center.maxHp);
+});
+
+test('gauntlet lance skill also alternates the active punching fist', () => {
+  const game = Object.create(Game.prototype);
+  const owner = new Player('gauntlet-lance-owner', 'Knuckle', 'gauntlet', 100, 100);
+  owner.buffType = 'gauntlet_lance';
+  owner.angle = 0;
+
+  const originalRandom = Math.random;
+  Math.random = () => 1;
+  try {
+    const weapon = getEffectiveWeapon(owner.weapon, owner.buffType);
+    const first = game._resolveDirectionalAttack(owner, weapon);
+    assert.equal(first.type, 'melee_line');
+    assert.equal(first.range, SkillConfig.gauntlet.range);
+    assert.equal(first.punchSide, 1);
+    assert.ok(Math.abs(first.angleOffset + 15 * Math.PI / 180) < 1e-12);
+
+    const second = game._resolveDirectionalAttack(owner, weapon);
+    assert.equal(second.punchSide, -1);
+    assert.ok(Math.abs(second.angleOffset - 15 * Math.PI / 180) < 1e-12);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
