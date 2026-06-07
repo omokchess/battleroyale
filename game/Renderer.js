@@ -676,7 +676,7 @@ export class Renderer {
   // 마법 지팡이 — 파이어볼: orange orb with a trailing chain of hexagons.
   _drawFireball(ctx, scr, angle, zoom) {
     ctx.save();
-    const r = 9 * (0.7 + zoom * 0.4);
+    const r = 9 * zoom;
     const t = Date.now();
     for (let i = 3; i >= 1; i--) {
       const tx = scr.x - Math.cos(angle) * (i * 9);
@@ -702,7 +702,7 @@ export class Renderer {
   // 마법 지팡이 — 아이스 샤드: light-blue icicle with a dotted trail.
   _drawIceShard(ctx, scr, angle, zoom) {
     ctx.save();
-    const s = 7 * (0.7 + zoom * 0.4);
+    const s = 7 * zoom;
     for (let i = 3; i >= 1; i--) {
       const tx = scr.x - Math.cos(angle) * (i * 7);
       const ty = scr.y - Math.sin(angle) * (i * 7);
@@ -849,7 +849,7 @@ export class Renderer {
   }
 
   _drawThrownSpear(ctx, scr, angle, zoom) {
-    const len = 30 * Math.max(0.6, zoom);
+    const len = 30 * zoom;
     const tailX = scr.x - Math.cos(angle) * len;
     const tailY = scr.y - Math.sin(angle) * len;
 
@@ -890,7 +890,7 @@ export class Renderer {
   }
 
   _drawSwordWave(ctx, scr, angle, zoom) {
-    const radius = Math.max(26, Weapons.sword.range * 0.56) * Math.max(0.7, zoom);
+    const radius = Math.max(26, Weapons.sword.range * 0.56) * zoom;
     const halfAngle = ((Weapons.sword.angle || 110) * Math.PI) / 360;
     const apexX = -radius;
 
@@ -1234,7 +1234,7 @@ export class Renderer {
   }
 
   _drawGreatswordWave(ctx, scr, angle, zoom) {
-    const radius = Math.max(34, Weapons.greatsword.range * 0.62) * Math.max(0.7, zoom);
+    const radius = Math.max(34, Weapons.greatsword.range * 0.62) * zoom;
     const halfAngle = ((Weapons.greatsword.angle || 100) * Math.PI) / 360;
     const apexX = -radius;
 
@@ -2185,7 +2185,7 @@ export class Renderer {
 
   _drawSustainedBuffBurst(ctx, scr, buffType, color, alpha = 1, zoom = 1, timeMs = Date.now()) {
     const isAxe = buffType === 'axe_rage';
-    const baseRadius = (isAxe ? 42 : 34) * (0.7 + zoom * 0.3);
+    const baseRadius = (isAxe ? 42 : 34) * zoom;
     const spin = timeMs / (isAxe ? 520 : 460);
     const counterSpin = -timeMs / (isAxe ? 760 : 640);
     const pulse = 0.5 + 0.5 * Math.sin(timeMs / 150);
@@ -2563,7 +2563,11 @@ export class Renderer {
    * Draw Players with beautiful pixel graphics
    */
   _drawPlayers(ctx, camera, cw, ch, players, localPlayerId, activeEffects = [], mapWidth = 0, mapHeight = 0, visualSettings = {}) {
-    const radius = 14;
+    const zoom = camera.zoom || 1;
+    // The world collision radius is 14 units, so the body must be drawn at
+    // 14 * zoom px to match the hitbox at every device zoom (fixes small-screen
+    // devices showing the character/hits larger than where they actually land).
+    const radius = 14 * zoom;
     const activeAttacks = this._getActiveAttacks(activeEffects);
 
     Object.keys(players).forEach(id => {
@@ -2686,8 +2690,15 @@ export class Renderer {
         ctx.stroke();
       }
 
-      // Draw Weapon Frame
+      // Draw Weapon Frame — scaled about the body center by zoom so the weapon
+      // (sprite + vector fallbacks) stays proportional to the body/hitbox on
+      // every device instead of a fixed pixel size that looks huge when zoomed out.
+      ctx.save();
+      ctx.translate(bodyScr.x, bodyScr.y);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-bodyScr.x, -bodyScr.y);
       this._drawPlayerWeapon(ctx, bodyScr, p, motion);
+      ctx.restore();
       this._drawCostumeDecoration(ctx, bodyScr, p, radius, Date.now());
 
       // Restore style frame before text elements

@@ -29,3 +29,32 @@ export function isMobileDevice() {
 
   return uaMobile || iPadOS || coarse;
 }
+
+/**
+ * Narrower than isMobileDevice(): true only for phones, NOT tablets.
+ *
+ * Tablets are excluded so we can, e.g., portrait-lock the lobby on phones while
+ * leaving pads free. Heuristics: explicit tablet UAs and iPadOS are out; an
+ * Android UA without the "Mobile" token is a tablet; iPhone/Android-Mobile are
+ * phones; otherwise fall back to the device's smaller physical edge.
+ */
+export function isPhoneDevice() {
+  if (!isMobileDevice()) return false;
+
+  const ua = navigator.userAgent || navigator.vendor || '';
+
+  // Tablets → not a phone.
+  if (/iPad|Tablet|PlayBook|Silk|Kindle|Nexus 7|Nexus 9|SM-T/i.test(ua)) return false;
+  if (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1) return false; // iPadOS
+  if (/Android/i.test(ua) && !/Mobile/i.test(ua)) return false; // Android tablets omit "Mobile"
+
+  // Clear phone signals.
+  if (/iPhone|iPod/i.test(ua)) return true;
+  if (/Android/i.test(ua) && /Mobile/i.test(ua)) return true;
+  if (/Windows Phone|BlackBerry|IEMobile|Opera Mini/i.test(ua)) return true;
+
+  // Fallback: phones have a small shorter edge (~ < 540 CSS px).
+  const w = (typeof screen !== 'undefined' && screen.width) || window.innerWidth || 9999;
+  const h = (typeof screen !== 'undefined' && screen.height) || window.innerHeight || 9999;
+  return Math.min(w, h) <= 540;
+}
