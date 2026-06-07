@@ -194,6 +194,9 @@ end
 local function drawPreviewCircle(parent: Folder, origin: Vector3, range: number, color: Color3, transparency: number)
 	local segments = 42
 	for i = 1, segments do
+		if i % 2 == 0 then
+			continue
+		end
 		local a0 = (i - 1) / segments * math.pi * 2
 		local a1 = i / segments * math.pi * 2
 		local p0 = withHeight(origin + Vector3.new(math.cos(a0) * range, 0, math.sin(a0) * range))
@@ -205,8 +208,15 @@ end
 local function drawPreviewLine(parent: Folder, origin: Vector3, direction: Vector3, range: number, width: number, color: Color3, transparency: number)
 	local startPoint = withHeight(origin)
 	local endPoint = withHeight(origin + direction * range)
-	makeStaticLine(parent, startPoint, endPoint, math.max(width, 0.12), color, transparency)
-	makeStaticLine(parent, startPoint, endPoint, 0.05, Color3.fromRGB(255, 255, 255), math.clamp(transparency - 0.08, 0, 1))
+	local dashCount = math.max(6, math.floor(range / 2.4))
+	for i = 0, dashCount - 1 do
+		if i % 2 == 0 then
+			local t0 = i / dashCount
+			local t1 = math.min((i + 0.62) / dashCount, 1)
+			makeStaticLine(parent, startPoint:Lerp(endPoint, t0), startPoint:Lerp(endPoint, t1), math.max(width, 0.12), color, transparency)
+		end
+	end
+	makeStaticBlock(parent, origin + direction * range, Vector3.new(0.6, 0.08, 0.6), color, math.min(transparency + 0.08, 0.9))
 end
 
 local function drawPreviewArc(parent: Folder, origin: Vector3, direction: Vector3, range: number, angle: number, color: Color3, transparency: number)
@@ -218,6 +228,9 @@ local function drawPreviewArc(parent: Folder, origin: Vector3, direction: Vector
 	makeStaticLine(parent, withHeight(origin), withHeight(origin + endEdge * range), 0.08, color, transparency + 0.08)
 
 	for i = 1, segments do
+		if i % 2 == 0 then
+			continue
+		end
 		local t0 = (i - 1) / segments
 		local t1 = i / segments
 		local a0 = -half + t0 * half * 2
@@ -228,6 +241,9 @@ local function drawPreviewArc(parent: Folder, origin: Vector3, direction: Vector
 	end
 
 	for i = 0, 6 do
+		if i % 2 == 1 then
+			continue
+		end
 		local t = i / 6
 		local a = -half + t * half * 2
 		local dir = rotateFlat(direction, a)
@@ -295,60 +311,64 @@ function EffectsClient.drawPunch(payload)
 	end
 end
 
--- Layered slash: translucent fan fill + white blade paths + a bright crescent.
+-- Web-style slash: faint fan fill + bright blade route + white leading edge.
 function EffectsClient.drawArc(payload)
 	local origin = payload.origin
 	local direction = payload.direction or Vector3.new(0, 0, -1)
 	local range = payload.range or 6
 	local color = payload.color or Color3.fromRGB(69, 243, 255)
 	local half = math.rad(payload.angle or 100) * 0.5
-	local life = payload.life or 0.24
+	local life = payload.life or 0.22
 	local aim = math.atan2(direction.Z, direction.X)
 	local swing = if payload.swingDirection == -1 then -1 else 1
+	local fullCircle = (payload.angle or 0) >= 359
+	local startAngle = if fullCircle and payload.weaponId == "sword" then aim - math.pi * 0.75 else aim - half
+	local endAngle = if fullCircle then startAngle + math.pi * 2 else aim + half
+	local arcSize = endAngle - startAngle
+	local function angAt(t)
+		return if swing > 0 then startAngle + arcSize * t else endAngle - arcSize * t
+	end
 
 	local coneSegs = 10
 	for i = 0, coneSegs - 1 do
-		local mid = aim - half + (2 * half) * ((i + 0.5) / coneSegs)
+		local mid = startAngle + arcSize * ((i + 0.5) / coneSegs)
 		local dir = Vector3.new(math.cos(mid), 0, math.sin(mid))
-		local inner = origin + dir * (range * 0.18)
 		makePart(
-			withHeight(inner),
-			withHeight(origin + Vector3.new(math.cos(mid), 0, math.sin(mid)) * range),
-			(2 * half * range) / coneSegs + 0.16, color, life * 0.62, 0.86
+			withHeight(origin + dir * (range * 0.08)),
+			withHeight(origin + dir * range),
+			(math.abs(arcSize) * range) / coneSegs + 0.08,
+			color,
+			life * 0.72,
+			0.88
 		)
 	end
 
-	local function angAt(t)
-		return if swing > 0 then aim - half + 2 * half * t else aim + half - 2 * half * t
-	end
-
-	for lane = 0, 4 do
-		local t = lane / 4
-		local a = angAt(0.12 + 0.76 * t)
-		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
-		local startPoint = withHeight(origin + dir * (range * (0.12 + 0.05 * lane)))
-		local endPoint = withHeight(origin + dir * (range * (0.9 - 0.03 * lane)))
-		task.delay(lane * 0.012, function()
-			makePart(startPoint, endPoint, 0.2, Color3.fromRGB(255, 255, 255), life * 0.62, 0.08)
-			makePart(startPoint, endPoint, 0.42, color, life * 0.78, 0.34)
-		end)
-	end
-
-	local segs = 16
-	local r = range * 0.94
-	for i = 0, segs - 1 do
-		local a0, a1 = angAt(i / segs), angAt((i + 1) / segs)
-		local p0 = withHeight(origin + Vector3.new(math.cos(a0), 0, math.sin(a0)) * r)
-		local p1 = withHeight(origin + Vector3.new(math.cos(a1), 0, math.sin(a1)) * r)
-		task.delay(i * 0.006, function()
-			makePart(p0, p1, 0.62, color, life * 0.9, 0.14)
-			makePart(p0, p1, 0.24, Color3.fromRGB(255, 255, 255), life * 0.62, 0.03)
-		end)
+	local segs = if fullCircle then 28 else 16
+	for band = 0, 4 do
+		local bandRadius = range * (0.18 + band * 0.18)
+		local bandColor = if band == 4 then Color3.fromRGB(255, 255, 255) else color
+		local bandWidth = if band == 4 then 0.32 else 0.2 + band * 0.05
+		local bandAlpha = if band == 4 then 0.06 else 0.22 + band * 0.04
+		for i = 0, segs - 1 do
+			local t0 = i / segs
+			local t1 = (i + 0.78) / segs
+			local a0 = angAt(t0)
+			local a1 = angAt(math.min(t1, 1))
+			local p0 = withHeight(origin + Vector3.new(math.cos(a0), 0, math.sin(a0)) * bandRadius)
+			local p1 = withHeight(origin + Vector3.new(math.cos(a1), 0, math.sin(a1)) * bandRadius)
+			makePart(p0, p1, bandWidth, bandColor, life, bandAlpha)
+		end
 	end
 
 	local tipAngle = angAt(1)
-	local tip = origin + Vector3.new(math.cos(tipAngle), 0, math.sin(tipAngle)) * r
-	makeBlock(tip, Vector3.new(1.2, 0.14, 1.2), Color3.fromRGB(255, 255, 255), life * 0.8, 0.08)
+	local normal = rotateFlat(Vector3.new(math.cos(tipAngle), 0, math.sin(tipAngle)), math.rad(90) * swing)
+	local edgeDir = Vector3.new(math.cos(tipAngle), 0, math.sin(tipAngle))
+	local bladeStart = withHeight(origin + edgeDir * math.max(0.7, range * 0.08))
+	local bladeEnd = withHeight(origin + edgeDir * range)
+	makePart(bladeStart, bladeEnd, 1.0, color, life, 0.3)
+	makePart(bladeStart, bladeEnd, 0.42, Color3.fromRGB(255, 255, 255), life * 0.86, 0.04)
+	makePart(bladeEnd - normal * 0.7, bladeEnd + normal * 0.7, 0.22, Color3.fromRGB(255, 255, 255), life * 0.72, 0.08)
+	makeBlock(origin + edgeDir * range, Vector3.new(0.95, 0.14, 0.95), Color3.fromRGB(255, 255, 255), life * 0.72, 0.08)
 end
 
 -- Map every weapon hitType onto the matching visual (mirrors HitboxUtil).
@@ -367,7 +387,7 @@ function EffectsClient.drawHitSpark(position: Vector3, color: Color3?)
 	for i = 0, 5 do
 		local a = i / 6 * math.pi * 2
 		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
-		makePart(withHeight(position + dir * 0.2), withHeight(position + dir * 1.7), 0.16, color or Color3.fromRGB(255, 220, 120), 0.22, 0.18)
+		makePart(withHeight(position + dir * 0.2), withHeight(position + dir * 1.7), 0.16, color or Color3.fromRGB(69, 243, 255), 0.22, 0.18)
 	end
 end
 
@@ -403,7 +423,7 @@ function EffectsClient.drawBuff(root: BasePart?, color: Color3?, duration: numbe
 	pad.CanTouch = false
 	pad.CastShadow = false
 	pad.Material = Enum.Material.Neon
-	pad.Color = color or Color3.fromRGB(255, 220, 120)
+	pad.Color = color or Color3.fromRGB(69, 243, 255)
 	pad.Transparency = 0.58
 	pad.CFrame = root.CFrame * CFrame.new(0, -2.4, 0)
 	pad.Parent = getFolder()
@@ -517,10 +537,10 @@ function EffectsClient.updateAttackPreview(origin: Vector3, direction: Vector3, 
 		return
 	end
 
-	local color = weapon.color or Color3.fromRGB(69, 243, 255)
+	local color = Color3.fromRGB(209, 213, 219)
 	local hitType = weapon.hitType
 	local range = math.min(weapon.range or 7, 70)
-	local alpha = 0.72
+	local alpha = 0.8
 
 	if hitType == "circle" or hitType == "slam" then
 		drawPreviewCircle(previewFolder, origin, range, color, alpha)
@@ -584,16 +604,20 @@ function EffectsClient.updateAimCrosshair(position: Vector3, color: Color3?)
 	aimFolder = getNamedFolder(AIM_FOLDER_NAME, aimFolder)
 	clearFolder(aimFolder)
 
-	local crossColor = color or Color3.fromRGB(255, 255, 255)
+	local crossColor = Color3.fromRGB(255, 255, 255)
 	local p = withHeight(position)
 	local xAxis = Vector3.new(1, 0, 0)
 	local zAxis = Vector3.new(0, 0, 1)
-	makeStaticLine(aimFolder, p - xAxis * 1.4, p - xAxis * 0.32, 0.11, crossColor, 0.08)
-	makeStaticLine(aimFolder, p + xAxis * 0.32, p + xAxis * 1.4, 0.11, crossColor, 0.08)
-	makeStaticLine(aimFolder, p - zAxis * 1.4, p - zAxis * 0.32, 0.11, crossColor, 0.08)
-	makeStaticLine(aimFolder, p + zAxis * 0.32, p + zAxis * 1.4, 0.11, crossColor, 0.08)
-	drawPreviewCircle(aimFolder, position, 0.52, Color3.fromRGB(255, 255, 255), 0.28)
-	drawPreviewCircle(aimFolder, position, 1.75, crossColor, 0.62)
+	local black = Color3.fromRGB(0, 0, 0)
+	makeStaticLine(aimFolder, p - xAxis * 1.6, p - xAxis * 0.38, 0.22, black, 0.36)
+	makeStaticLine(aimFolder, p + xAxis * 0.38, p + xAxis * 1.6, 0.22, black, 0.36)
+	makeStaticLine(aimFolder, p - zAxis * 1.6, p - zAxis * 0.38, 0.22, black, 0.36)
+	makeStaticLine(aimFolder, p + zAxis * 0.38, p + zAxis * 1.6, 0.22, black, 0.36)
+	makeStaticLine(aimFolder, p - xAxis * 1.45, p - xAxis * 0.46, 0.1, crossColor, 0.04)
+	makeStaticLine(aimFolder, p + xAxis * 0.46, p + xAxis * 1.45, 0.1, crossColor, 0.04)
+	makeStaticLine(aimFolder, p - zAxis * 1.45, p - zAxis * 0.46, 0.1, crossColor, 0.04)
+	makeStaticLine(aimFolder, p + zAxis * 0.46, p + zAxis * 1.45, 0.1, crossColor, 0.04)
+	makeStaticBlock(aimFolder, position, Vector3.new(0.26, 0.08, 0.26), crossColor, 0.02)
 end
 
 function EffectsClient.clearAimCrosshair()
@@ -607,7 +631,7 @@ function EffectsClient.drawTelegraph(payload)
 		return
 	end
 
-	local color = payload.color or Color3.fromRGB(255, 220, 120)
+	local color = payload.color or Color3.fromRGB(69, 243, 255)
 	local duration = payload.duration or 1
 	local origin = payload.origin
 	local telegraphFolder = Instance.new("Folder")

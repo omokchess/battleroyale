@@ -50,7 +50,8 @@ local states: { [Player]: PlayerState } = {}
 local projectiles = {} -- live server-simulated projectiles (waves, fireballs, …)
 local PROJ_TARGET_RADIUS = 2 -- studs; combatant body half-size for projectile contact
 local NO_BASIC_ATTACK = { greatsword = true, matchlock = true, sniper = true }
-local GOLD_EDGE = Color3.fromRGB(216, 178, 74)
+local ARENA_FLOOR = Color3.fromRGB(18, 24, 33)
+local WEB_CYAN = Color3.fromRGB(69, 243, 255)
 
 local function hideAvatar(character: Model, humanoid: Humanoid?)
 	if humanoid then
@@ -109,10 +110,10 @@ local function ensureArena()
 			if descendant:IsA("BasePart") then
 				descendant.Reflectance = 0
 				if descendant.Name:find("Wall") or descendant.Name:find("NeonEdge") then
-					descendant.Color = GOLD_EDGE
+					descendant.Color = WEB_CYAN
 				elseif descendant.Name == "ArenaFloor" then
 					descendant.Material = Enum.Material.Slate
-					descendant.Color = Color3.fromRGB(18, 24, 33)
+					descendant.Color = ARENA_FLOOR
 				end
 			end
 		end
@@ -154,7 +155,7 @@ local function ensureArena()
 	floor.Anchored = true
 	floor.Size = Vector3.new(140, 1, 140)
 	floor.Position = Vector3.new(0, -0.45, 0)
-	floor.Color = Color3.fromRGB(18, 24, 33)
+	floor.Color = ARENA_FLOOR
 	floor.Material = Enum.Material.Slate
 	floor.CastShadow = false
 	floor.Reflectance = 0
@@ -165,15 +166,15 @@ local function ensureArena()
 		staticPart("GridZ_" .. tostring(offset), Vector3.new(0.08, 0.08, 140), Vector3.new(offset, 0.1, 0), Color3.fromRGB(45, 68, 82), Enum.Material.Neon, 0.68, false)
 	end
 
-	staticPart("NorthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, -71), GOLD_EDGE, Enum.Material.SmoothPlastic, 1, true)
-	staticPart("SouthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, 71), GOLD_EDGE, Enum.Material.SmoothPlastic, 1, true)
-	staticPart("EastWall", Vector3.new(2, 8, 142), Vector3.new(71, 3.5, 0), GOLD_EDGE, Enum.Material.SmoothPlastic, 1, true)
-	staticPart("WestWall", Vector3.new(2, 8, 142), Vector3.new(-71, 3.5, 0), GOLD_EDGE, Enum.Material.SmoothPlastic, 1, true)
+	staticPart("NorthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, -71), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)
+	staticPart("SouthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, 71), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)
+	staticPart("EastWall", Vector3.new(2, 8, 142), Vector3.new(71, 3.5, 0), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)
+	staticPart("WestWall", Vector3.new(2, 8, 142), Vector3.new(-71, 3.5, 0), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)
 
-	staticPart("NorthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, -70), GOLD_EDGE, Enum.Material.Neon, 0.05, false)
-	staticPart("SouthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, 70), GOLD_EDGE, Enum.Material.Neon, 0.05, false)
-	staticPart("EastNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(70, 0.3, 0), GOLD_EDGE, Enum.Material.Neon, 0.05, false)
-	staticPart("WestNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(-70, 0.3, 0), GOLD_EDGE, Enum.Material.Neon, 0.05, false)
+	staticPart("NorthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, -70), WEB_CYAN, Enum.Material.Neon, 0.05, false)
+	staticPart("SouthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, 70), WEB_CYAN, Enum.Material.Neon, 0.05, false)
+	staticPart("EastNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(70, 0.3, 0), WEB_CYAN, Enum.Material.Neon, 0.05, false)
+	staticPart("WestNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(-70, 0.3, 0), WEB_CYAN, Enum.Material.Neon, 0.05, false)
 end
 
 local function getState(player: Player): PlayerState
@@ -1177,6 +1178,17 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 		if character then
 			spawnNearArena(player, character)
 		end
+		applyWeaponStats(player)
+	elseif action == "LeaveGame" then
+		state.inGame = false
+		state.buffType = nil
+		state.daggerQte = nil
+		state.greatswordChargeStart = nil
+		state.katanaChargeStart = nil
+		state.comboStep = 0
+		state.attackCooldown = 0
+		player:SetAttribute("InGame", false)
+		setBowStacks(player, state, 0)
 		applyWeaponStats(player)
 	elseif action == "Attack" then
 		attack(player, payload)

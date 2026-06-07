@@ -19,13 +19,13 @@ local CAMERA_UP = Vector3.new(0, 0, -1)
 local AIM_PLANE_Y = 0.55
 local ARENA_HALF_SIZE = 66
 
-local STONE = Color3.fromRGB(27, 22, 34)
+local STONE = Color3.fromRGB(31, 40, 51)
 local DARK = Color3.fromRGB(11, 12, 16)
-local BRASS = Color3.fromRGB(168, 132, 44)
-local GOLD = Color3.fromRGB(216, 178, 74)
+local BRASS = Color3.fromRGB(69, 243, 255)
+local GOLD = Color3.fromRGB(69, 243, 255)
 local GRAY = Color3.fromRGB(156, 163, 175)
 local WHITE = Color3.fromRGB(240, 240, 245)
-local GREEN = Color3.fromRGB(74, 222, 128)
+local GREEN = Color3.fromRGB(34, 197, 94)
 local HUD_FONT = Enum.Font.Code
 
 local Dash = WeaponConfig.Dash
@@ -47,6 +47,8 @@ local greatswordChargeStart = 0
 local chargingKatana = false
 local katanaChargeStart = 0
 local qteState = nil
+local hideEnemyPreview = false
+local minimizeEnemyEffects = false
 
 local BUFF_WEAPONS = { axe = true, gauntlet = true, rapier = true }
 local NO_BASIC_ATTACK = { greatsword = true, matchlock = true, sniper = true }
@@ -181,19 +183,101 @@ hpText.Parent = hpBack
 local killsLabel = label(playerPanel, "KILLS 0", UDim2.fromOffset(312, 20), UDim2.fromOffset(14, 88), GRAY, 15)
 local stackLabel = label(playerPanel, "", UDim2.fromOffset(312, 20), UDim2.fromOffset(14, 114), GOLD, 15, true)
 
+local roomPanel = stonePanel("RoomPanel")
+roomPanel.Size = UDim2.fromOffset(340, 96)
+roomPanel.Position = UDim2.fromOffset(16, 172)
+
+local roomHeader = label(roomPanel, "ROOM CODE", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 12), GRAY, 12)
+roomHeader.TextXAlignment = Enum.TextXAlignment.Right
+local roomCode = label(roomPanel, "ROBLOX", UDim2.fromOffset(312, 24), UDim2.fromOffset(14, 30), GOLD, 20, true)
+roomCode.TextXAlignment = Enum.TextXAlignment.Right
+local pingLabel = label(roomPanel, "LATENCY 0 ms", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 58), GRAY, 13)
+pingLabel.TextXAlignment = Enum.TextXAlignment.Right
+local hostLabel = label(roomPanel, "HOST SERVER", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 76), GREEN, 12, true)
+hostLabel.TextXAlignment = Enum.TextXAlignment.Right
+
+local settingsPanel = stonePanel("SettingsPanel")
+settingsPanel.Size = UDim2.fromOffset(340, 140)
+settingsPanel.Position = UDim2.fromOffset(16, 280)
+
+local settingsHeader = label(settingsPanel, "SETTINGS", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 12), GRAY, 12)
+
+local joystickButton = Instance.new("TextButton")
+joystickButton.Name = "JoystickToggle"
+joystickButton.Size = UDim2.fromOffset(142, 34)
+joystickButton.Position = UDim2.fromOffset(14, 36)
+joystickButton.BackgroundColor3 = STONE
+joystickButton.BorderColor3 = BRASS
+joystickButton.BorderSizePixel = 1
+joystickButton.Font = HUD_FONT
+joystickButton.TextSize = 13
+joystickButton.TextColor3 = GOLD
+joystickButton.Text = "JOYSTICK ON"
+joystickButton.Parent = settingsPanel
+
+local leaveButton = Instance.new("TextButton")
+leaveButton.Name = "LeaveButton"
+leaveButton.Size = UDim2.fromOffset(156, 34)
+leaveButton.Position = UDim2.fromOffset(170, 36)
+leaveButton.BackgroundColor3 = Color3.fromRGB(185, 28, 28)
+leaveButton.BorderColor3 = Color3.fromRGB(239, 68, 68)
+leaveButton.BorderSizePixel = 1
+leaveButton.Font = HUD_FONT
+leaveButton.TextSize = 14
+leaveButton.TextColor3 = WHITE
+leaveButton.Text = "LEAVE GAME"
+leaveButton.Parent = settingsPanel
+
+local function settingRow(y: number, text: string)
+	local rowLabel = label(settingsPanel, text, UDim2.fromOffset(228, 22), UDim2.fromOffset(14, y), WHITE, 14)
+	local toggle = Instance.new("TextButton")
+	toggle.Size = UDim2.fromOffset(54, 22)
+	toggle.Position = UDim2.fromOffset(272, y)
+	toggle.BackgroundColor3 = DARK
+	toggle.BorderColor3 = BRASS
+	toggle.BorderSizePixel = 1
+	toggle.Font = HUD_FONT
+	toggle.TextSize = 12
+	toggle.TextColor3 = GOLD
+	toggle.Text = "OFF"
+	toggle.Parent = settingsPanel
+	return rowLabel, toggle
+end
+
+local _, previewToggle = settingRow(84, "HIDE ENEMY PREVIEW")
+local _, effectsToggle = settingRow(112, "MIN ENEMY EFFECTS")
+
+local function syncToggle(button: TextButton, enabled: boolean)
+	button.Text = if enabled then "ON" else "OFF"
+	button.TextColor3 = if enabled then WHITE else GRAY
+	button.BackgroundColor3 = if enabled then Color3.fromRGB(34, 51, 60) else DARK
+end
+
+previewToggle.MouseButton1Click:Connect(function()
+	hideEnemyPreview = not hideEnemyPreview
+	syncToggle(previewToggle, hideEnemyPreview)
+end)
+
+effectsToggle.MouseButton1Click:Connect(function()
+	minimizeEnemyEffects = not minimizeEnemyEffects
+	syncToggle(effectsToggle, minimizeEnemyEffects)
+end)
+
+syncToggle(previewToggle, hideEnemyPreview)
+syncToggle(effectsToggle, minimizeEnemyEffects)
+
 local abilityPanel = stonePanel("AbilityHud")
-abilityPanel.Size = UDim2.fromOffset(206, 118)
-abilityPanel.AnchorPoint = Vector2.new(0, 1)
-abilityPanel.Position = UDim2.new(0, 16, 1, -16)
+abilityPanel.Size = UDim2.fromOffset(340, 118)
+abilityPanel.Position = UDim2.fromOffset(16, 432)
 
 local function abilityRow(y: number, keyText: string, keyColor: Color3, name: string)
-	local key = label(abilityPanel, keyText, UDim2.fromOffset(44, 14), UDim2.fromOffset(10, y), keyColor, 12, true)
-	local nameL = label(abilityPanel, name, UDim2.fromOffset(80, 14), UDim2.fromOffset(50, y), GRAY, 11)
-	local state = label(abilityPanel, "READY", UDim2.fromOffset(70, 14), UDim2.fromOffset(126, y), WHITE, 11)
+	local key = label(abilityPanel, keyText, UDim2.fromOffset(50, 14), UDim2.fromOffset(14, y), keyColor, 12, true)
+	local nameL = label(abilityPanel, name, UDim2.fromOffset(140, 14), UDim2.fromOffset(66, y), GRAY, 11)
+	local state = label(abilityPanel, "READY", UDim2.fromOffset(112, 14), UDim2.fromOffset(214, y), WHITE, 11)
 	state.TextXAlignment = Enum.TextXAlignment.Right
 	local back = Instance.new("Frame")
-	back.Size = UDim2.fromOffset(186, 8)
-	back.Position = UDim2.fromOffset(10, y + 16)
+	back.Size = UDim2.fromOffset(312, 8)
+	back.Position = UDim2.fromOffset(14, y + 16)
 	back.BackgroundColor3 = DARK
 	back.BorderColor3 = Color3.fromRGB(75, 85, 99)
 	back.BorderSizePixel = 1
@@ -272,6 +356,8 @@ startButton.Parent = lobbyPanel
 
 local function setGameplayVisible(visible: boolean)
 	playerPanel.Visible = visible
+	roomPanel.Visible = visible
+	settingsPanel.Visible = visible
 	abilityPanel.Visible = visible
 	weaponPanel.Visible = visible
 end
@@ -283,6 +369,17 @@ startButton.MouseButton1Click:Connect(function()
 	lobbyPanel.Visible = false
 	setGameplayVisible(true)
 	CombatRemote:FireServer("EnterGame")
+end)
+
+leaveButton.MouseButton1Click:Connect(function()
+	inGame = false
+	lobbyPanel.Visible = true
+	setGameplayVisible(false)
+	EffectsClient.clearPreview()
+	EffectsClient.clearChargePreview()
+	EffectsClient.clearAimCrosshair()
+	EffectsClient.clearQTE()
+	CombatRemote:FireServer("LeaveGame")
 end)
 
 local weaponButtons: { [string]: TextButton } = {}
@@ -306,7 +403,7 @@ end
 local function updateWeaponButtons()
 	for weaponId, button in pairs(weaponButtons) do
 		local active = weaponId == selectedWeapon
-		button.BackgroundColor3 = if active then Color3.fromRGB(40, 32, 20) else Color3.fromRGB(20, 17, 26)
+		button.BackgroundColor3 = if active then Color3.fromRGB(31, 40, 51) else DARK
 		button.BorderColor3 = if active then GOLD else Color3.fromRGB(64, 64, 74)
 		button.TextColor3 = if active then GOLD else WeaponConfig.getWeapon(weaponId).color
 	end
@@ -343,7 +440,7 @@ for index, weaponId in ipairs(WeaponConfig.Order) do
 	button.Name = weaponId
 	button.LayoutOrder = index
 	button.Size = UDim2.new(1, 0, 0, 25)
-	button.BackgroundColor3 = Color3.fromRGB(20, 17, 26)
+	button.BackgroundColor3 = DARK
 	button.BorderColor3 = Color3.fromRGB(64, 64, 74)
 	button.BorderSizePixel = 1
 	button.Font = HUD_FONT
@@ -619,9 +716,13 @@ end)
 
 CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 	if action == "AttackEffect" and typeof(payload) == "table" then
-		EffectsClient.drawAttackEffect(payload)
+		if not minimizeEnemyEffects or payload.userId == player.UserId then
+			EffectsClient.drawAttackEffect(payload)
+		end
 	elseif action == "SkillEffect" and typeof(payload) == "table" then
-		if payload.kind == "sweep" then
+		if minimizeEnemyEffects and payload.userId ~= player.UserId then
+			return
+		elseif payload.kind == "sweep" then
 			EffectsClient.drawAttackEffect(payload)
 		elseif payload.kind == "buff" then
 			local root = rootOfUser(payload.userId)
@@ -630,7 +731,9 @@ CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 			end
 		end
 	elseif action == "Telegraph" and typeof(payload) == "table" then
-		EffectsClient.drawTelegraph(payload)
+		if not hideEnemyPreview or payload.userId == player.UserId then
+			EffectsClient.drawTelegraph(payload)
+		end
 	elseif action == "QTEStart" and typeof(payload) == "table" then
 		qteState = {
 			targetUserId = payload.targetUserId,
