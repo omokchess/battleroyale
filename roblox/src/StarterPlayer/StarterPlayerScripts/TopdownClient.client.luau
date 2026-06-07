@@ -33,6 +33,7 @@ local aimDirection = Vector3.new(0, 0, -1)
 local aimPoint = Vector3.new(0, AIM_PLANE_Y, -1)
 local lastAimSent = 0
 local selectedWeapon = WeaponConfig.DefaultWeapon
+local inGame = false
 local heldMoveKeys = {}
 local dashUntil = 0
 local dashReadyAt = 0
@@ -43,6 +44,8 @@ local altReadyAt = 0
 local altCooldown = 0
 local chargingGreatsword = false
 local greatswordChargeStart = 0
+local chargingKatana = false
+local katanaChargeStart = 0
 local qteState = nil
 
 local BUFF_WEAPONS = { axe = true, gauntlet = true, rapier = true }
@@ -93,7 +96,8 @@ local function altCooldownFor(id: string): number
 	elseif id == "katana" then
 		return WeaponConfig.Skill.katana.iaijutsuCooldown
 	end
-	return 0
+	local alt = WeaponConfig.AltSkill and WeaponConfig.AltSkill[id]
+	return alt and alt.cooldown or 0
 end
 
 local function altLabelFor(id: string): string
@@ -104,7 +108,7 @@ local function altLabelFor(id: string): string
 	elseif id == "katana" then
 		return "IAI"
 	end
-	return "ALT"
+	return "R-SKILL"
 end
 
 local screenGui = Instance.new("ScreenGui")
@@ -139,11 +143,11 @@ local function label(parent: Instance, text: string, size: UDim2, pos: UDim2, co
 end
 
 local playerPanel = stonePanel("PlayerPanel")
-playerPanel.Size = UDim2.fromOffset(224, 92)
+playerPanel.Size = UDim2.fromOffset(340, 144)
 playerPanel.Position = UDim2.fromOffset(16, 16)
 
-local nameLabel = label(playerPanel, "PLAYER", UDim2.fromOffset(130, 18), UDim2.fromOffset(10, 8), WHITE, 15, true)
-local weaponTag = label(playerPanel, "SWORD", UDim2.fromOffset(76, 18), UDim2.fromOffset(138, 8), GOLD, 12, true)
+local nameLabel = label(playerPanel, "PLAYER", UDim2.fromOffset(194, 26), UDim2.fromOffset(14, 10), WHITE, 22, true)
+local weaponTag = label(playerPanel, "SWORD", UDim2.fromOffset(112, 26), UDim2.fromOffset(214, 10), GOLD, 15, true)
 weaponTag.TextXAlignment = Enum.TextXAlignment.Right
 weaponTag.BackgroundColor3 = DARK
 weaponTag.BackgroundTransparency = 0
@@ -151,8 +155,8 @@ weaponTag.BorderColor3 = Color3.fromRGB(75, 85, 99)
 weaponTag.BorderSizePixel = 1
 
 local hpBack = Instance.new("Frame")
-hpBack.Size = UDim2.fromOffset(204, 18)
-hpBack.Position = UDim2.fromOffset(10, 34)
+hpBack.Size = UDim2.fromOffset(312, 30)
+hpBack.Position = UDim2.fromOffset(14, 48)
 hpBack.BackgroundColor3 = DARK
 hpBack.BorderColor3 = Color3.fromRGB(107, 114, 128)
 hpBack.BorderSizePixel = 1
@@ -168,13 +172,13 @@ local hpText = Instance.new("TextLabel")
 hpText.Size = UDim2.fromScale(1, 1)
 hpText.BackgroundTransparency = 1
 hpText.Font = HUD_FONT
-hpText.TextSize = 12
+hpText.TextSize = 18
 hpText.TextColor3 = WHITE
 hpText.Text = "100 / 100"
 hpText.Parent = hpBack
 
-local killsLabel = label(playerPanel, "KILLS 0", UDim2.fromOffset(204, 16), UDim2.fromOffset(10, 58), GRAY, 12)
-local stackLabel = label(playerPanel, "", UDim2.fromOffset(204, 16), UDim2.fromOffset(10, 74), GOLD, 12, true)
+local killsLabel = label(playerPanel, "KILLS 0", UDim2.fromOffset(312, 20), UDim2.fromOffset(14, 88), GRAY, 15)
+local stackLabel = label(playerPanel, "", UDim2.fromOffset(312, 20), UDim2.fromOffset(14, 114), GOLD, 15, true)
 
 local abilityPanel = stonePanel("AbilityHud")
 abilityPanel.Size = UDim2.fromOffset(206, 118)
@@ -249,6 +253,53 @@ attackButton.TextColor3 = GOLD
 attackButton.Text = "ATTACK"
 attackButton.Parent = screenGui
 
+local lobbyPanel = Instance.new("Frame")
+lobbyPanel.Name = "MainLobby"
+lobbyPanel.Size = UDim2.fromScale(1, 1)
+lobbyPanel.BackgroundColor3 = Color3.fromRGB(8, 9, 13)
+lobbyPanel.BackgroundTransparency = 0.05
+lobbyPanel.BorderSizePixel = 0
+lobbyPanel.ZIndex = 20
+lobbyPanel.Parent = screenGui
+
+local lobbyTitle = label(lobbyPanel, "PIXEL ROYALE", UDim2.fromOffset(520, 64), UDim2.new(0.5, -260, 0.32, -32), GOLD, 42, true)
+lobbyTitle.TextXAlignment = Enum.TextXAlignment.Center
+lobbyTitle.ZIndex = 21
+
+local lobbySubtitle = label(lobbyPanel, "TOPDOWN ROBLOX REMAKE", UDim2.fromOffset(520, 28), UDim2.new(0.5, -260, 0.42, -14), GRAY, 18)
+lobbySubtitle.TextXAlignment = Enum.TextXAlignment.Center
+lobbySubtitle.ZIndex = 21
+
+local startButton = Instance.new("TextButton")
+startButton.Name = "StartButton"
+startButton.Size = UDim2.fromOffset(260, 64)
+startButton.Position = UDim2.new(0.5, -130, 0.52, -32)
+startButton.BackgroundColor3 = STONE
+startButton.BorderColor3 = GOLD
+startButton.BorderSizePixel = 3
+startButton.Font = HUD_FONT
+startButton.TextSize = 24
+startButton.TextColor3 = GOLD
+startButton.Text = "START"
+startButton.ZIndex = 21
+startButton.Parent = lobbyPanel
+
+local function setGameplayVisible(visible: boolean)
+	playerPanel.Visible = visible
+	abilityPanel.Visible = visible
+	weaponPanel.Visible = visible
+	attackButton.Visible = visible
+end
+
+setGameplayVisible(false)
+
+startButton.MouseButton1Click:Connect(function()
+	inGame = true
+	lobbyPanel.Visible = false
+	setGameplayVisible(true)
+	CombatRemote:FireServer("EnterGame")
+end)
+
 local weaponButtons: { [string]: TextButton } = {}
 
 local function getHumanoid()
@@ -293,8 +344,10 @@ local function setWeapon(weaponId: string)
 	altRow.fill.BackgroundTransparency = if hasAlt then 0 else 0.7
 
 	chargingGreatsword = false
+	chargingKatana = false
 	qteState = nil
 	EffectsClient.clearQTE()
+	EffectsClient.clearChargePreview()
 	updateWeaponButtons()
 	CombatRemote:FireServer("SetWeapon", weaponId)
 end
@@ -366,6 +419,12 @@ local function updateHud()
 	if altCooldown > 0 then
 		setBar(altRow, altReadyAt, altCooldown)
 	end
+	if chargingKatana then
+		local sk = WeaponConfig.Skill.katana
+		local ratio = math.clamp((now - katanaChargeStart) / sk.iaijutsuCharge, 0, 1)
+		altRow.fill.Size = UDim2.fromScale(ratio, 1)
+		altRow.state.Text = string.format("%d%%", math.floor(ratio * 100 + 0.5))
+	end
 end
 
 local function bindCharacter(character: Model)
@@ -424,11 +483,14 @@ local function clampRootToArena(root: BasePart)
 end
 
 local function attack()
+	if not inGame or selectedWeapon == "greatsword" then
+		return
+	end
 	CombatRemote:FireServer("Attack", { target = aimPoint })
 end
 
 local function tryDash()
-	if not getRoot() then
+	if not inGame or not getRoot() then
 		return
 	end
 	local now = os.clock()
@@ -448,6 +510,9 @@ local function tryDash()
 end
 
 local function pressSkill()
+	if not inGame then
+		return
+	end
 	if qteState then
 		CombatRemote:FireServer("DaggerQTE")
 		qteState = nil
@@ -477,7 +542,7 @@ local function pressSkill()
 end
 
 local function releaseSkill()
-	if selectedWeapon ~= "greatsword" or not chargingGreatsword then
+	if not inGame or selectedWeapon ~= "greatsword" or not chargingGreatsword then
 		return
 	end
 	chargingGreatsword = false
@@ -521,11 +586,34 @@ ContextActionService:BindActionAtPriority("PixelRoyaleSkill", function(_, inputS
 end, false, 3000, Enum.KeyCode.F)
 
 ContextActionService:BindActionAtPriority("PixelRoyaleAltSkill", function(_, inputState)
+	if not inGame then
+		return Enum.ContextActionResult.Sink
+	end
 	if inputState == Enum.UserInputState.Begin then
-		if altCooldown > 0 and os.clock() >= altReadyAt then
+		local now = os.clock()
+		if altCooldown > 0 and now < altReadyAt then
+			return Enum.ContextActionResult.Sink
+		end
+		if selectedWeapon == "katana" then
+			if chargingKatana then
+				return Enum.ContextActionResult.Sink
+			end
+			chargingKatana = true
+			katanaChargeStart = now
+			CombatRemote:FireServer("AltStart")
+		else
+			if altCooldown > 0 then
+				altReadyAt = now + altCooldown
+			end
+			CombatRemote:FireServer("AltSkill")
+		end
+	elseif inputState == Enum.UserInputState.End and selectedWeapon == "katana" and chargingKatana then
+		chargingKatana = false
+		if altCooldown > 0 then
 			altReadyAt = os.clock() + altCooldown
 		end
-		CombatRemote:FireServer("AltSkill")
+		CombatRemote:FireServer("AltRelease")
+		EffectsClient.clearChargePreview()
 	end
 	return Enum.ContextActionResult.Sink
 end, false, 3000, Enum.KeyCode.R)
@@ -594,6 +682,19 @@ RunService.RenderStepped:Connect(function(dt)
 	aimDirection, aimPoint = computeAim(root)
 
 	local humanoid = getHumanoid()
+	if not inGame then
+		if humanoid then
+			humanoid.AutoRotate = false
+			humanoid:Move(Vector3.zero, false)
+		end
+		EffectsClient.clearPreview()
+		EffectsClient.clearChargePreview()
+		EffectsClient.clearQTE()
+		CombatantTokenClient.updateAll(aimDirection)
+		updateHud()
+		return
+	end
+
 	if humanoid then
 		humanoid.AutoRotate = false
 		if os.clock() < dashUntil then
@@ -608,12 +709,24 @@ RunService.RenderStepped:Connect(function(dt)
 	CombatantTokenClient.updateAll(aimDirection)
 
 	local weapon = WeaponConfig.getEffectiveWeapon(selectedWeapon, nil)
-	EffectsClient.updateAttackPreview(root.Position, aimDirection, weapon, aimPoint)
+	if selectedWeapon ~= "greatsword" and not chargingKatana then
+		EffectsClient.updateAttackPreview(root.Position, aimDirection, weapon, aimPoint)
+	else
+		EffectsClient.clearPreview()
+	end
 
 	if chargingGreatsword then
 		local sk = WeaponConfig.Skill.greatsword
 		local chargeRatio = math.clamp((os.clock() - greatswordChargeStart) / sk.chargeMax, 0, 1)
 		EffectsClient.updateChargePreview(root.Position, aimDirection, sk, chargeRatio, WeaponConfig.getWeapon("greatsword").color)
+	elseif chargingKatana then
+		local sk = WeaponConfig.Skill.katana
+		local chargeRatio = math.clamp((os.clock() - katanaChargeStart) / sk.iaijutsuCharge, 0, 1)
+		EffectsClient.updateChargePreview(root.Position, aimDirection, {
+			hitType = "line",
+			range = sk.iaijutsuRange,
+			width = sk.iaijutsuWidth,
+		}, chargeRatio, WeaponConfig.getWeapon("katana").color)
 	else
 		EffectsClient.clearChargePreview()
 	end

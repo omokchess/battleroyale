@@ -1,4 +1,6 @@
 local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local EffectsClient = {}
@@ -13,6 +15,27 @@ local folder: Folder? = nil
 local previewFolder: Folder? = nil
 local chargeFolder: Folder? = nil
 local qteFolder: Folder? = nil
+
+local function rootOfUser(userId: number?): BasePart?
+	local player = userId and Players:GetPlayerByUserId(userId)
+	local character = player and player.Character
+	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function aimOfUser(userId: number?, fallback: Vector3?): Vector3
+	local player = userId and Players:GetPlayerByUserId(userId)
+	if player then
+		local x = player:GetAttribute("AimX")
+		local z = player:GetAttribute("AimZ")
+		if typeof(x) == "number" and typeof(z) == "number" then
+			local dir = Vector3.new(x, 0, z)
+			if dir.Magnitude > 0.01 then
+				return dir.Unit
+			end
+		end
+	end
+	return fallback or Vector3.new(0, 0, -1)
+end
 
 local function getFolder(): Folder
 	if folder and folder.Parent then
@@ -236,6 +259,25 @@ function EffectsClient.drawLine(payload)
 	makeBlock(endPoint, Vector3.new(0.9, 0.12, 0.9), Color3.fromRGB(255, 255, 255), life, 0.2)
 end
 
+function EffectsClient.drawPunch(payload)
+	local origin = payload.origin
+	local direction = payload.direction or Vector3.new(0, 0, -1)
+	local range = payload.range or 5
+	local color = payload.color or Color3.fromRGB(255, 69, 219)
+	local life = payload.life or 0.14
+	local center = withHeight(origin + direction * (range * 0.45))
+
+	makePart(withHeight(origin + direction * 0.5), withHeight(origin + direction * range), 0.72, color, life, 0.22)
+	makePart(withHeight(origin + direction * 0.8), withHeight(origin + direction * range * 0.75), 0.22, Color3.fromRGB(255, 255, 255), life, 0.06)
+	makeBlock(origin + direction * range, Vector3.new(1.2, 0.16, 1.2), Color3.fromRGB(255, 255, 255), life, 0.12)
+
+	for i = -2, 2 do
+		local offset = i * 0.28
+		local side = rotateFlat(direction, math.rad(90))
+		makePart(center + side * offset, center + side * offset + direction * 1.8, 0.14, color, life, 0.35)
+	end
+end
+
 -- Web-style slash: a faint cone + a bright crescent that sweeps edge-to-edge
 -- with a glowing white leading tip.
 function EffectsClient.drawArc(payload)
@@ -396,11 +438,7 @@ function EffectsClient.updateAttackPreview(origin: Vector3, direction: Vector3, 
 	if hitType == "circle" or hitType == "slam" then
 		drawPreviewCircle(previewFolder, origin, range, color, alpha)
 	elseif hitType == "line" or hitType == "precise_line" or hitType == "projectile" then
-		local previewRange = range
-		if targetPoint and hitType == "projectile" then
-			previewRange = math.clamp((Vector3.new(targetPoint.X, 0, targetPoint.Z) - Vector3.new(origin.X, 0, origin.Z)).Magnitude, 2, range)
-		end
-		drawPreviewLine(previewFolder, origin, direction, previewRange, math.max(weapon.width or 0.6, 0.16), color, alpha)
+		drawPreviewLine(previewFolder, origin, direction, range, math.max(weapon.width or 0.6, 0.16), color, alpha)
 	else
 		drawPreviewArc(previewFolder, origin, direction, range, weapon.angle or 100, color, alpha)
 	end
@@ -418,6 +456,20 @@ function EffectsClient.updateChargePreview(origin: Vector3, direction: Vector3, 
 
 	local chargeColor = color or Color3.fromRGB(139, 211, 255)
 	local range = skill.range or 12.8
+	if skill.hitType == "line" or skill.hitType == "precise_line" then
+		local width = skill.width or 1
+		drawPreviewLine(chargeFolder, origin, direction, range, width, chargeColor, 0.42)
+		makeStaticLine(
+			chargeFolder,
+			withHeight(origin),
+			withHeight(origin + direction * range * math.clamp(ratio, 0, 1)),
+			math.max(width * 0.35, 0.18),
+			Color3.fromRGB(255, 255, 255),
+			0.08
+		)
+		return
+	end
+
 	local angle = skill.angle or 210
 	drawPreviewArc(chargeFolder, origin, direction, range, angle, chargeColor, 0.48)
 
@@ -453,6 +505,70 @@ function EffectsClient.drawTelegraph(payload)
 	telegraphFolder.Name = "Telegraph"
 	telegraphFolder.Parent = getFolder()
 	Debris:AddItem(telegraphFolder, duration + 0.35)
+
+	local function drawOnce()
+		clearFolder(telegraphFolder)
+		local drawOrigin = origin
+		local drawDirection = payload.direction or Vector3.new(0, 0, -1)
+		if payload.follow then
+			local root = rootOfUser(payload.userId)
+			if root then
+				drawOrigin = root.Position
+				drawDirection = aimOfUser(payload.userId, drawDirection)
+			end
+		end
+		if payload.kind == "magic_target" then
+			drawPreviewCircle(telegraphFolder, drawOrigin, payload.range or 1.5, color, 0.24)
+			return
+		end
+		if payload.hitType == "circle" then
+			drawPreviewCircle(telegraphFolder, drawOrigin, payload.range or 10, color, 0.28)
+		elseif payload.hitType == "line" then
+			drawPreviewLine(telegraphFolder, drawOrigin, drawDirection, payload.range or 12, payload.width or 1, color, 0.35)
+		elseif payload.hitType == "arc" or payload.hitType == "blade_sweep" then
+			drawPreviewArc(telegraphFolder, drawOrigin, drawDirection, payload.range or 12, payload.angle or 180, color, 0.38)
+		end
+	end
+
+	if payload.follow then
+		local started = os.clock()
+		local connection
+		connection = RunService.RenderStepped:Connect(function()
+			if not telegraphFolder.Parent or os.clock() - started > duration then
+				if connection then
+					connection:Disconnect()
+				end
+				return
+			end
+			drawOnce()
+		end)
+		drawOnce()
+		return
+	end
+
+	if payload.kind == "magic_target" then
+		local range = payload.range or 3.5
+		local started = os.clock()
+		local connection
+		connection = RunService.RenderStepped:Connect(function()
+			if not telegraphFolder.Parent then
+				if connection then
+					connection:Disconnect()
+				end
+				return
+			end
+			local t = math.clamp((os.clock() - started) / math.max(duration, 0.01), 0, 1)
+			clearFolder(telegraphFolder)
+			if t >= 1 then
+				if connection then
+					connection:Disconnect()
+				end
+				return
+			end
+			drawPreviewCircle(telegraphFolder, origin, range * (0.18 + 0.82 * t), color, 0.16 + 0.56 * t)
+		end)
+		return
+	end
 
 	if payload.hitType == "circle" then
 		local range = payload.range or 10
@@ -504,13 +620,52 @@ function EffectsClient.drawAttackEffect(payload)
 		return
 	end
 
-	local shape = SHAPE[payload.hitType] or "arc"
-	if shape == "circle" then
-		EffectsClient.drawCircle(payload)
-	elseif shape == "line" then
-		EffectsClient.drawLine(payload)
-	else
+	if payload.follow then
+		local root = rootOfUser(payload.userId)
+		if not root then
+			return
+		end
+		local started = os.clock()
+		local duration = payload.life or 0.18
+		local lastDraw = 0
+		local connection
+		connection = RunService.RenderStepped:Connect(function()
+			local now = os.clock()
+			if not root.Parent or now - started > duration then
+				if connection then
+					connection:Disconnect()
+				end
+				return
+			end
+			if now - lastDraw >= 0.045 then
+				lastDraw = now
+				local copy = table.clone(payload)
+				copy.follow = false
+				copy.origin = root.Position
+				copy.direction = aimOfUser(payload.userId, payload.direction)
+				copy.life = 0.08
+				EffectsClient.drawAttackEffect(copy)
+			end
+		end)
+		return
+	end
+
+	if payload.vfx == "punch" then
+		EffectsClient.drawPunch(payload)
+	elseif payload.vfx == "slash" then
+		if (payload.hitType == "circle" or payload.hitType == "slam") and not payload.angle then
+			payload.angle = 360
+		end
 		EffectsClient.drawArc(payload)
+	else
+		local shape = SHAPE[payload.hitType] or "arc"
+		if shape == "circle" then
+			EffectsClient.drawCircle(payload)
+		elseif shape == "line" then
+			EffectsClient.drawLine(payload)
+		else
+			EffectsClient.drawArc(payload)
+		end
 	end
 
 	-- Finisher pop.
