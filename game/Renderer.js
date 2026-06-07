@@ -10,8 +10,8 @@ const WEAPON_SPRITE_META = {
   axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0, noAimFlip: true },
   bow: { src: '/assets/weapons/bow.png', scale: 0.58, anchorX: 0.32, anchorY: 0.5, angleOffset: 0 },
   spear: { src: '/assets/weapons/spear.png', scale: 0.68, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
-  gauntlet: { src: '/assets/weapons/gauntlet.png', scale: 0.56, anchorX: 0.36, anchorY: 0.52, angleOffset: 0 },
-  greatsword: { src: '/assets/weapons/greatsword.png', scale: 0.76, anchorX: 0.84, anchorY: 0.52, angleOffset: Math.PI + 0.05, noAimFlip: true },
+  gauntlet: { src: '/assets/weapons/gauntlet.png', scale: 0.42, anchorX: 0.36, anchorY: 0.52, angleOffset: 0 },
+  greatsword: { src: '/assets/weapons/greatsword.png', scale: 0.76, anchorX: 0.84, anchorY: 0.52, angleOffset: Math.PI, noAimFlip: true },
   scythe: { src: '/assets/weapons/scythe.png', scale: 0.82, anchorX: 0.18, anchorY: 0.72, angleOffset: -0.2, noAimFlip: true },
   dagger: { src: '/assets/weapons/dagger.png', scale: 0.44, anchorX: 0.26, anchorY: 0.5, angleOffset: 0 },
   rapier: { src: '/assets/weapons/rapier.png', scale: 0.56, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 },
@@ -21,7 +21,7 @@ const WEAPON_SPRITE_META = {
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
-const WEAPON_ASSET_VERSION = '20260608a';
+const WEAPON_ASSET_VERSION = '20260608b';
 
 export class Renderer {
   constructor(canvas) {
@@ -3162,7 +3162,7 @@ export class Renderer {
     }
 
     else if (weaponType === 'scythe') {
-      const scytheAngle = active ? weaponAngle + 0.35 : player.angle + 0.12;
+      const scytheAngle = active ? weaponAngle + 0.35 : player.angle + Math.PI / 2;
       const gripX = scr.x + Math.cos(player.angle) * (active ? 5 : 7);
       const gripY = scr.y + Math.sin(player.angle) * (active ? 5 : 7);
       const handleTop = -31 - Math.max(0, reach * 0.12);
@@ -3423,7 +3423,7 @@ export class Renderer {
     } else if (weaponType === 'bow') {
       drawAngle = player.angle;
     } else if (weaponType === 'scythe') {
-      drawAngle = active ? weaponAngle + 0.35 : player.angle + 0.12;
+      drawAngle = active ? weaponAngle + 0.35 : player.angle + Math.PI / 2;
     }
 
     const spriteScale = meta.scale * (active ? 1.06 : 1);

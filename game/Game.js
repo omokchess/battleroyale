@@ -676,10 +676,10 @@ export class Game {
       return attackConfig;
     }
 
-    const min = Number.isFinite(attackConfig.punchAngleMin) ? attackConfig.punchAngleMin : 0.08;
-    const spread = Number.isFinite(attackConfig.punchAngleSpread) ? attackConfig.punchAngleSpread : 0.3;
-    const side = Math.random() < 0.5 ? -1 : 1;
-    const amount = min + Math.random() * Math.max(0, spread - min);
+    const side = player.gauntletPunchSide === 1 ? -1 : 1;
+    player.gauntletPunchSide = side;
+    const jitterDeg = Number.isFinite(attackConfig.punchAngleJitter) ? attackConfig.punchAngleJitter : 15;
+    const amount = Math.random() * (jitterDeg * Math.PI / 180);
     return {
       ...attackConfig,
       angleOffset: side * amount,

@@ -196,7 +196,7 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   assert.equal(hit.knockback, Weapons.hammer.knockback);
 });
 
-test('gauntlet basic punch picks one offset lane for motion and hitbox', () => {
+test('gauntlet basic punch alternates fists with a 15 degree offset hitbox', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.mapWidth = 700;
@@ -206,7 +206,8 @@ test('gauntlet basic punch picks one offset lane for motion and hitbox', () => {
 
   const owner = new Player('gauntlet-owner', 'Knuckle', 'gauntlet', 100, 100);
   owner.angle = 0;
-  const aligned = new Player('gauntlet-aligned', 'Aligned', 'sword', 100 + Math.cos(0.34) * 52, 100 + Math.sin(0.34) * 52);
+  const offsetAngle = 15 * Math.PI / 180;
+  const aligned = new Player('gauntlet-aligned', 'Aligned', 'sword', 100 + Math.cos(offsetAngle) * 52, 100 + Math.sin(offsetAngle) * 52);
   const center = new Player('gauntlet-center', 'Center', 'sword', 152, 100);
   aligned.radius = 1;
   center.radius = 1;
@@ -215,12 +216,16 @@ test('gauntlet basic punch picks one offset lane for motion and hitbox', () => {
   game.players[center.id] = center;
 
   const originalRandom = Math.random;
-  Math.random = () => 0.999;
+  Math.random = () => 1;
   try {
     const attack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
     assert.equal(attack.punchSide, 1);
-    assert.ok(attack.angleOffset > 0.3);
+    assert.ok(Math.abs(attack.angleOffset - offsetAngle) < 1e-12);
     assert.equal(game._queueOrApplyMeleeHit(owner, attack, 1000), 1);
+
+    const nextAttack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
+    assert.equal(nextAttack.punchSide, -1);
+    assert.ok(Math.abs(nextAttack.angleOffset + offsetAngle) < 1e-12);
   } finally {
     Math.random = originalRandom;
   }

@@ -27,6 +27,7 @@ export class Player {
     // Cool down tracker
     this.lastAttackTime = 0;
     this.swingDirection = -1;
+    this.gauntletPunchSide = -1;
     this.comboStep = 0;
     this.comboDelayUntil = 0;
 
@@ -216,6 +217,7 @@ export class Player {
     this.katanaChargeStart = 0;
     this.katanaChargeAngle = 0;
     this.daggerQte = null;
+    this.gauntletPunchSide = -1;
     this.comboStep = 0;
     this.comboDelayUntil = 0;
   }
