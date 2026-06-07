@@ -157,15 +157,17 @@ html, body {
 
 /* Custom selection borders & neon pulses for weapon cards */
 #weaponCards {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.7rem;
+  /* Auto-fit columns sized to a generous minimum so the weapon art is large on
+     every screen (≈3 cols on phones, ≈5 on desktop) instead of tiny 5-up cells. */
+  grid-template-columns: repeat(auto-fill, minmax(5.25rem, 1fr));
+  gap: 0.6rem;
 }
 
 .weapon-card {
   border: 2px solid #374151;
   background-color: #0b0c10;
-  min-height: 5.25rem;
-  padding: 0.7rem 0.45rem;
+  min-height: 6rem;
+  padding: 0.5rem 0.3rem;
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 

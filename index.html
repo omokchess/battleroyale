@@ -28,7 +28,15 @@
   <body class="bg-[#0b0c10] text-gray-200 font-sans overflow-hidden select-none">
 
     <!-- LOGIN GATE (shown until a session is resolved; hidden in guest mode) -->
-    <div id="authScreen" class="absolute inset-0 z-[60] flex items-center justify-center bg-[#0b0c10] p-4">
+    <!-- Boot loader: shown until the auth session resolves, so a logged-in player
+         goes straight to the lobby with no login-screen flash. Hidden by main.js
+         in BOTH onEnterLobby and onRequireLogin. -->
+    <div id="bootScreen" class="absolute inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-[#0b0c10] p-4">
+      <h1 class="font-display text-3xl font-extrabold tracking-tight text-[#45f3ff] uppercase drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]">PIXELROYALE</h1>
+      <div class="font-mono text-xs text-[#66fcf1] uppercase tracking-wider animate-pulse">불러오는 중...</div>
+    </div>
+
+    <div id="authScreen" class="hidden absolute inset-0 z-[60] flex items-center justify-center bg-[#0b0c10] p-4">
       <div class="w-full max-w-sm p-8 bg-[#1f2833] border-4 border-[#45f3ff] text-center shadow-[0_0_20px_rgba(69,243,255,0.3)]">
         <h1 class="font-display text-3xl font-extrabold text-[#45f3ff] uppercase mb-2 drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]">픽셀로얄</h1>
         <p class="font-mono text-xs text-[#66fcf1] mb-6 tracking-wider">로그인하고 게임을 즐기세요</p>
@@ -49,7 +57,7 @@
     </div>
 
     <!-- MAIN LOBBY/START MENU -->
-    <div id="lobbyMenu" class="absolute inset-0 z-50 flex items-center justify-center bg-[#0b0c10] bg-opacity-95 transition-all duration-300 p-3 sm:p-4 overflow-y-auto">
+    <div id="lobbyMenu" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-[#0b0c10] bg-opacity-95 transition-all duration-300 p-3 sm:p-4 overflow-y-auto">
       <div class="w-full max-w-6xl flex flex-col lg:flex-row gap-4 items-stretch my-auto">
 
         <!-- COLUMN 1: Account / My Page (sits left of weapon + create on desktop) -->

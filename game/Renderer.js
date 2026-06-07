@@ -3450,11 +3450,15 @@ export class Renderer {
       ctx.restore();
     };
 
+    // Aim pointing left would otherwise render the sprite upside-down. Mirror it
+    // vertically once the draw direction crosses the ±90° (straight up/down)
+    // lines so the weapon always stays "upright" around its grip.
+    const aimFlip = Math.cos(drawAngle) < 0 ? -1 : 1;
     if (weaponType === 'gauntlet') {
-      drawSingle(0.05, -5, 1);
-      drawSingle(-0.05, 5, -1);
+      drawSingle(0.05, -5, aimFlip);
+      drawSingle(-0.05, 5, -aimFlip);
     } else {
-      drawSingle(0, 0, 1);
+      drawSingle(0, 0, aimFlip);
     }
     return true;
   }

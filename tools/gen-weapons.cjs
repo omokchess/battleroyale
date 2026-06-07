@@ -181,12 +181,14 @@ const weapons = {
     line(c, 107, 67, 122, 64, C.steelSh, 1);
   },
   axe(c) {
-    rect(c, 12, 60, 102, 68, C.wood); rect(c, 12, 60, 102, 61, C.woodHi); rect(c, 12, 67, 102, 68, C.woodSh);
-    // broad single-bit head: top + bottom horns, wide cutting arc on the right
-    poly(c, [[98, 43], [114, 47], [123, 60], [123, 68], [114, 81], [98, 85], [104, 64]], C.iron);
-    rect(c, 94, 55, 104, 73, C.ironSh); // socket/cheek over the haft
-    rect(c, 99, 47, 112, 50, C.ironHi); // top bevel
-    curve(c, [100, 46], [123, 64], [100, 82], C.steelHi, 2); // bright cutting edge
+    rect(c, 10, 61, 104, 67, C.wood); rect(c, 10, 61, 104, 62, C.woodHi); rect(c, 10, 66, 104, 67, C.woodSh);
+    rect(c, 116, 58, 120, 70, C.wood); // haft horn poking past the head
+    // bold single-bit head: sharp upper horn, deep bearded lower edge, wide cutting arc
+    poly(c, [[94, 38], [110, 42], [122, 56], [124, 64], [121, 74], [110, 88], [92, 92], [97, 74], [101, 64], [97, 54]], C.iron);
+    rect(c, 96, 56, 106, 72, C.ironSh); // socket cheek over the haft
+    rect(c, 99, 44, 114, 48, C.ironHi); // top bevel sheen
+    curve(c, [108, 43], [124, 64], [108, 89], C.steelHi, 3); // bright forged cutting edge
+    curve(c, [106, 50], [118, 64], [106, 80], C.steel, 1);
   },
   hammer(c) {
     rect(c, 12, 60, 100, 68, C.wood); rect(c, 12, 60, 100, 61, C.woodHi); rect(c, 12, 67, 100, 68, C.woodSh);
@@ -242,13 +244,15 @@ const weapons = {
     ring(c, 107, 64, 12, C.gold);
   },
   scythe(c) {
-    // Grip sits LOW (anchorY 0.72) with the blade sweeping up — matches the held pose.
-    rect(c, 18, 86, 106, 93, C.wood); rect(c, 18, 86, 106, 87, C.woodHi); rect(c, 18, 92, 106, 93, C.woodSh);
-    rect(c, 24, 83, 30, 96, C.leather);
-    // large crescent blade sweeping up-left from the haft top
-    poly(c, [[108, 86], [97, 60], [78, 46], [50, 40], [59, 52], [80, 64], [100, 80]], C.steel);
-    curve(c, [50, 40], [88, 46], [108, 85], C.steelHi, 2); // bright outer edge
-    curve(c, [59, 52], [86, 62], [101, 80], C.steelSh, 1); // inner shadow
+    // Grip sits LOW (anchorY 0.72); a long thin crescent blade sweeps up-left.
+    rect(c, 16, 86, 104, 92, C.wood); rect(c, 16, 86, 104, 87, C.woodHi); rect(c, 16, 91, 104, 92, C.woodSh);
+    rect(c, 24, 83, 31, 95, C.leather); rect(c, 24, 83, 25, 95, C.leatherHi); // grip wrap
+    disc(c, 102, 89, 5, C.gold); disc(c, 101, 88, 2, C.goldHi);                // collar / snath ring
+    // long, thin, dramatic blade
+    poly(c, [[104, 88], [90, 62], [70, 42], [46, 30], [32, 27],
+             [39, 36], [58, 47], [78, 63], [95, 82]], C.steel);
+    curve(c, [32, 27], [76, 38], [104, 87], C.steelHi, 2); // bright back edge
+    curve(c, [39, 36], [70, 52], [95, 80], C.steelSh, 1);  // inner cutting shadow
   },
   bow(c) {
     // VERTICAL: wooden limbs bulging right, string straight on the left.

@@ -12,6 +12,7 @@ import * as accountUI from './ui/account-ui.js';
 
 // Dom Elements
 const authScreen = document.getElementById('authScreen');
+const bootScreen = document.getElementById('bootScreen');
 const lobbyMenu = document.getElementById('lobbyMenu');
 const gameScreen = document.getElementById('gameScreen');
 const gameCanvas = document.getElementById('gameCanvas');
@@ -88,8 +89,12 @@ function setupWeaponSelector() {
     const w = card.dataset.weapon;
     const iconBox = card.querySelector('div');
     if (iconBox && w) {
-      iconBox.style.width = '3.5rem';
-      iconBox.style.height = '3.5rem';
+      // Fill the (wider, 4-column) card so the weapon art reads large on every
+      // screen, capped so it never gets cartoonishly big on desktop.
+      iconBox.style.width = '100%';
+      iconBox.style.height = 'auto';
+      iconBox.style.aspectRatio = '1 / 1';
+      iconBox.style.maxWidth = '5.25rem';
       // Stand every weapon upright pointing downward in the picker — except the
       // bow, whose sprite is already drawn vertically.
       const rot = w === 'bow' ? '' : 'transform:rotate(90deg);';
@@ -537,6 +542,7 @@ accountUI.init({
     // don't yank the player out of the game.
     if (activeGame) return;
 
+    bootScreen?.classList.add('hidden');
     authScreen?.classList.add('hidden');
     lobbyMenu.classList.remove('hidden');
 
@@ -548,6 +554,7 @@ accountUI.init({
     startLobbyBrowsing();
   },
   onRequireLogin: () => {
+    bootScreen?.classList.add('hidden');
     authScreen?.classList.remove('hidden');
     lobbyMenu.classList.add('hidden');
     gameScreen.classList.add('hidden');
