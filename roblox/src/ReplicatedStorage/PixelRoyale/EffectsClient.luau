@@ -238,6 +238,26 @@ function EffectsClient.drawBuff(root: BasePart?, color: Color3?, duration: numbe
 	Debris:AddItem(pad, life + 0.1)
 end
 
+-- A neon ball flying along the shot trajectory (visual only; server owns hits).
+function EffectsClient.drawProjectile(payload)
+	if typeof(payload) ~= "table" or typeof(payload.origin) ~= "Vector3" then
+		return
+	end
+	local speed = payload.speed or 60
+	local range = payload.range or 30
+	local life = math.clamp(range / math.max(speed, 1), 0.1, 2.2)
+	local origin = withHeight(payload.origin)
+	local d = (payload.radius or 0.6) * 2 + 0.7
+	local ball = Instance.new("Part")
+	ball.Shape = Enum.PartType.Ball
+	configure(ball, payload.color or Color3.fromRGB(120, 220, 255), 0.05)
+	ball.Size = Vector3.new(d, d, d)
+	ball.CFrame = CFrame.new(origin)
+	local endPos = origin + (payload.direction or Vector3.new(0, 0, -1)) * range
+	TweenService:Create(ball, TweenInfo.new(life, Enum.EasingStyle.Linear), { CFrame = CFrame.new(endPos) }):Play()
+	Debris:AddItem(ball, life + 0.05)
+end
+
 function EffectsClient.drawAttackEffect(payload)
 	if typeof(payload) ~= "table" then
 		return

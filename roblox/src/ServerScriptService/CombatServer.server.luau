@@ -40,6 +40,8 @@ type PlayerState = {
 }
 
 local states: { [Player]: PlayerState } = {}
+local projectiles = {} -- live server-simulated projectiles (waves, fireballs, …)
+local PROJ_TARGET_RADIUS = 2 -- studs; combatant body half-size for projectile contact
 
 local function hideAvatar(character: Model, humanoid: Humanoid?)
 	if humanoid then
@@ -293,6 +295,30 @@ local function attack(player: Player)
 	})
 end
 
+-- Spawn a server-simulated projectile + tell clients to render it flying.
+local function spawnProjectile(owner: Player, origin: Vector3, direction: Vector3, opts)
+	table.insert(projectiles, {
+		owner = owner,
+		pos = origin,
+		dir = direction,
+		speed = opts.speed,
+		remaining = opts.range,
+		damage = opts.damage,
+		radius = opts.radius or 0.6,
+		pierce = opts.pierce or false,
+		color = opts.color,
+		hitSet = {},
+	})
+	CombatRemote:FireAllClients("Projectile", {
+		origin = origin,
+		direction = direction,
+		speed = opts.speed,
+		range = opts.range,
+		radius = opts.radius or 0.6,
+		color = opts.color,
+	})
+end
+
 local function clearBuff(player: Player, state: PlayerState)
 	if state.buffType then
 		state.buffType = nil
@@ -374,8 +400,64 @@ local function performSkill(player: Player)
 		return
 	end
 
-	-- TODO: remaining skills — sword waves, bow railgun, spear throw, greatsword
-	-- charge, dagger QTE, hammer slam, katana dash, projectiles, and R abilities.
+	-- Sword F: fire `waveCount` energy waves (projectiles) along the aim.
+	if state.weaponId == "sword" then
+		state.skillReadyAt = now + sk.cooldown
+		local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
+		for i = 1, sk.waveCount do
+			task.delay((i - 1) * sk.waveInterval, function()
+				local _, hum, rt = getCharacterParts(player)
+				if rt and hum then
+					spawnProjectile(player, rt.Position, direction, {
+						speed = sk.waveSpeed,
+						range = WeaponConfig.REACH,
+						damage = sk.directDamage,
+						radius = 0.9,
+						color = WeaponConfig.getWeapon("sword").color,
+					})
+				end
+			end)
+		end
+		return
+	end
+
+	-- Hammer F: three expanding shockwaves at the cast spot after a telegraph.
+	if state.weaponId == "hammer" then
+		state.skillReadyAt = now + sk.cooldown
+		local castPos = root.Position
+		local t = sk.preview
+		for idx, wave in ipairs(sk.waves) do
+			t += sk.waveDelays[idx]
+			local w = wave
+			task.delay(t, function()
+				local tnow = os.clock()
+				for _, other in ipairs(Players:GetPlayers()) do
+					if other ~= player then
+						local otherState = states[other]
+						if not (otherState and tnow < otherState.invulnUntil) then
+							local _, oh, orh = getCharacterParts(other)
+							if oh and orh and HitboxUtil.flat(orh.Position - castPos).Magnitude <= w.range then
+								damageVictim(player, oh, w.damage)
+							end
+						end
+					end
+				end
+				CombatRemote:FireAllClients("SkillEffect", {
+					userId = player.UserId,
+					weaponId = "hammer",
+					kind = "sweep",
+					hitType = "circle",
+					origin = castPos,
+					range = w.range,
+					color = WeaponConfig.getWeapon("hammer").color,
+				})
+			end)
+		end
+		return
+	end
+
+	-- TODO: remaining skills — bow railgun, spear throw, greatsword charge,
+	-- dagger QTE, katana dash-waves, magicstaff spells.
 end
 
 -- R abilities (alt-skill): sniper random teleport, magicstaff self-heal,
@@ -478,7 +560,7 @@ end)
 
 -- Per-frame: expire buffs + drive auto-attack (non-F-triggered weapons swing on
 -- their own cadence; attack() self-gates on the per-swing cooldown).
-RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function(dt)
 	local now = os.clock()
 	for player, state in pairs(states) do
 		if state.buffType and now > state.buffExpire then
@@ -486,6 +568,38 @@ RunService.Heartbeat:Connect(function()
 		end
 		if WeaponConfig.getWeapon(state.weaponId).automaticAttack ~= false then
 			attack(player)
+		end
+	end
+
+	-- Advance + resolve projectiles (move, bounds/range expiry, contact damage).
+	for i = #projectiles, 1, -1 do
+		local p = projectiles[i]
+		local step = p.speed * dt
+		p.pos += p.dir * step
+		p.remaining -= step
+		local dead = p.remaining <= 0 or math.abs(p.pos.X) > 70 or math.abs(p.pos.Z) > 70
+		if not dead then
+			for _, other in ipairs(Players:GetPlayers()) do
+				if other ~= p.owner and not p.hitSet[other] then
+					local otherState = states[other]
+					if not (otherState and now < otherState.invulnUntil) then
+						local _, otherHumanoid, otherRoot = getCharacterParts(other)
+						if otherHumanoid and otherRoot
+							and HitboxUtil.flat(otherRoot.Position - p.pos).Magnitude <= p.radius + PROJ_TARGET_RADIUS then
+							damageVictim(p.owner, otherHumanoid, p.damage)
+							p.hitSet[other] = true
+							CombatRemote:FireAllClients("Spark", { pos = otherRoot.Position, color = p.color })
+							if not p.pierce then
+								dead = true
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+		if dead then
+			table.remove(projectiles, i)
 		end
 	end
 end)

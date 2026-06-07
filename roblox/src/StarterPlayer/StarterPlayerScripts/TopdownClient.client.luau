@@ -391,6 +391,10 @@ CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 		if root then
 			EffectsClient.drawDash(root.Position)
 		end
+	elseif action == "Projectile" and typeof(payload) == "table" then
+		EffectsClient.drawProjectile(payload)
+	elseif action == "Spark" and typeof(payload) == "table" then
+		EffectsClient.drawHitSpark(payload.pos, payload.color)
 	end
 end)
 
