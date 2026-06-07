@@ -8,8 +8,11 @@ import { Game } from './game/Game.js';
 import { Weapons } from './game/Weapons.js';
 import { Protocol } from './multiplayer/Protocol.js';
 import { RoomRegistry } from './multiplayer/RoomRegistry.js';
+import * as accountUI from './ui/account-ui.js';
 
 // Dom Elements
+const authScreen = document.getElementById('authScreen');
+const bootScreen = document.getElementById('bootScreen');
 const lobbyMenu = document.getElementById('lobbyMenu');
 const gameScreen = document.getElementById('gameScreen');
 const gameCanvas = document.getElementById('gameCanvas');
@@ -219,7 +222,7 @@ hostBtn.addEventListener('click', () => {
     enterGameScreen(true);
 
     // Run Game (apply the player's equipped costume colors, if any)
-    activeGame = new Game(gameCanvas, netManager, null);
+    activeGame = new Game(gameCanvas, netManager, accountUI.getEquippedCostume());
     activeGame.start((stats) => {
       // Match ended / disconnected — award coins then return to lobby.
       handleMatchEnd(stats);
@@ -269,7 +272,7 @@ function startJoin(rawCode) {
   netManager = new NetworkManager();
 
   // Create registration payload frame (carry costume so the host paints us correctly)
-  const joinPayload = Protocol.joinRoom(nickname, chosenWeapon, null);
+  const joinPayload = Protocol.joinRoom(nickname, chosenWeapon, accountUI.getEquippedCostume());
 
   netManager.on('onConnected', () => {
     joinBtn.disabled = false;
@@ -277,7 +280,7 @@ function startJoin(rawCode) {
 
     enterGameScreen(false);
 
-    activeGame = new Game(gameCanvas, netManager, null);
+    activeGame = new Game(gameCanvas, netManager, accountUI.getEquippedCostume());
     activeGame.start((stats) => {
       handleMatchEnd(stats);
     });
@@ -458,6 +461,10 @@ function buildWeaponSwitchPanel() {
  * phones, so on mobile we show one section at a time via a bottom tab bar.
  * Desktop is unaffected: `.lobby-tab-hidden` only does anything below `lg`
  * (see styles.css), so all sections stay visible side-by-side on desktop.
+ *
+ * IMPORTANT: this only toggles a presentation class on existing sections — no
+ * account/login element is moved, renamed, or rewired, so the Supabase auth
+ * flow (account-ui.js) is completely untouched.
  */
 function setupLobbyTabs() {
   const tabs = document.querySelectorAll('.lobby-tab');
@@ -507,9 +514,20 @@ function setupLobbyPerfToggle() {
   });
 }
 
-/** Match end: return to the lobby. */
-function handleMatchEnd(stats) {
+/**
+ * Match end: record this session's kills (→ coins) for the logged-in player,
+ * then return to the lobby. `stats.kills` is passed by Game.quit().
+ */
+async function handleMatchEnd(stats) {
   showLobbyScreen();
+  const kills = stats && stats.kills ? stats.kills : 0;
+  if (kills > 0) {
+    try {
+      await accountUI.reportMatch(kills);
+    } catch (e) {
+      console.error('reportMatch failed', e);
+    }
+  }
 }
 
 // Run Setup on page launch
@@ -519,7 +537,29 @@ buildWeaponSwitchPanel();
 setupLobbyTabs();
 setupLobbyPerfToggle();
 
-// No login (Supabase removed): go straight to the lobby in guest mode.
-lobbyMenu.classList.remove('hidden');
-gameScreen.classList.add('hidden');
-startLobbyBrowsing();
+// Auth gate: account-ui resolves the session and tells us which screen to show.
+accountUI.init({
+  onEnterLobby: (profile) => {
+    // If a match is already running (e.g. a token-refresh auth event fired),
+    // don't yank the player out of the game.
+    if (activeGame) return;
+
+    bootScreen?.classList.add('hidden');
+    authScreen?.classList.add('hidden');
+    lobbyMenu.classList.remove('hidden');
+
+    // Prefill the nickname from the account, unless the user already typed one.
+    if (profile && nicknameInput && !nicknameInput.value.trim()) {
+      nicknameInput.value = profile.username || '';
+    }
+
+    startLobbyBrowsing();
+  },
+  onRequireLogin: () => {
+    bootScreen?.classList.add('hidden');
+    authScreen?.classList.remove('hidden');
+    lobbyMenu.classList.add('hidden');
+    gameScreen.classList.add('hidden');
+    stopLobbyBrowsing();
+  },
+});
