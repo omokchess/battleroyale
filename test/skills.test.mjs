@@ -149,6 +149,8 @@ test('melee combo finishers change weapon shape after the required hits', () => 
   const gauntlet = new Player('gauntlet-combo', 'Knuckle', 'gauntlet', 0, 0);
   gauntlet.comboStep = 6;
   gauntlet.lastAttackTime = 6900;
+  assert.equal(Weapons.gauntlet.cooldown, 240);
+  assert.equal(Weapons.gauntlet.type, 'melee_line');
   const gauntletFinisher = game._resolveComboAttack(gauntlet, Weapons.gauntlet, 7000);
   assert.equal(gauntletFinisher.isFinisher, true);
   assert.equal(gauntletFinisher.weaponConfig.type, 'melee_line');
@@ -192,6 +194,39 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   hit = game._resolveMeleeHitResult(hammer, hammerTarget, Weapons.hammer);
   assert.equal(hit.damage, Math.round(Weapons.hammer.damage * 0.72));
   assert.equal(hit.knockback, Weapons.hammer.knockback);
+});
+
+test('gauntlet basic punch picks one offset lane for motion and hitbox', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+  game._applyAttackTempoResult = () => {};
+
+  const owner = new Player('gauntlet-owner', 'Knuckle', 'gauntlet', 100, 100);
+  owner.angle = 0;
+  const aligned = new Player('gauntlet-aligned', 'Aligned', 'sword', 100 + Math.cos(0.34) * 52, 100 + Math.sin(0.34) * 52);
+  const center = new Player('gauntlet-center', 'Center', 'sword', 152, 100);
+  aligned.radius = 1;
+  center.radius = 1;
+  game.players[owner.id] = owner;
+  game.players[aligned.id] = aligned;
+  game.players[center.id] = center;
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.999;
+  try {
+    const attack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
+    assert.equal(attack.punchSide, 1);
+    assert.ok(attack.angleOffset > 0.3);
+    assert.equal(game._queueOrApplyMeleeHit(owner, attack, 1000), 1);
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  assert.equal(aligned.hp, aligned.maxHp - Weapons.gauntlet.damage);
+  assert.equal(center.hp, center.maxHp);
 });
 
 test('greatsword skill charges quickly into a max-damage heavy cleave', () => {

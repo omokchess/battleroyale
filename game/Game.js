@@ -545,7 +545,9 @@ export class Game {
       return;
     }
     const combo = this._resolveComboAttack(player, weaponConfig, now);
-    const attackConfig = combo.weaponConfig;
+    let attackConfig = combo.weaponConfig;
+    attackConfig = this._resolveDirectionalAttack(player, attackConfig);
+    combo.weaponConfig = attackConfig;
     const swingDirection = Number.isFinite(attackConfig.fixedSwingDirection)
       ? attackConfig.fixedSwingDirection
       : player.triggerAttack(now);
@@ -575,6 +577,8 @@ export class Game {
         width: attackConfig.width,
         innerRange: attackConfig.innerRange,
         angleDeg: attackConfig.angle,
+        angleOffset: attackConfig.angleOffset,
+        punchSide: attackConfig.punchSide,
         comboStep: combo.step,
         comboCycle: combo.cycle,
         comboFinisher: combo.isFinisher,
@@ -649,6 +653,9 @@ export class Game {
   _queueOrApplyMeleeHit(player, attackConfig, now) {
     const delayMs = Math.max(0, Math.round(attackConfig.delayDamageMs || 0));
     const snapshot = this._snapshotMeleeAttacker(player);
+    if (Number.isFinite(attackConfig.angleOffset)) {
+      snapshot.angle += attackConfig.angleOffset;
+    }
 
     if (delayMs > 0) {
       if (!this.pendingMeleeHits) this.pendingMeleeHits = [];
@@ -662,6 +669,22 @@ export class Game {
     }
 
     return this._applyMeleeHits(snapshot, attackConfig, now);
+  }
+
+  _resolveDirectionalAttack(player, attackConfig) {
+    if (player.weapon !== 'gauntlet' || player.buffType === 'gauntlet_lance') {
+      return attackConfig;
+    }
+
+    const min = Number.isFinite(attackConfig.punchAngleMin) ? attackConfig.punchAngleMin : 0.08;
+    const spread = Number.isFinite(attackConfig.punchAngleSpread) ? attackConfig.punchAngleSpread : 0.3;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const amount = min + Math.random() * Math.max(0, spread - min);
+    return {
+      ...attackConfig,
+      angleOffset: side * amount,
+      punchSide: side
+    };
   }
 
   _snapshotMeleeAttacker(player) {

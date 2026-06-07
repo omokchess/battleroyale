@@ -7,21 +7,21 @@ import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.
 
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
-  axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0 },
+  axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0, noAimFlip: true },
   bow: { src: '/assets/weapons/bow.png', scale: 0.58, anchorX: 0.32, anchorY: 0.5, angleOffset: 0 },
   spear: { src: '/assets/weapons/spear.png', scale: 0.68, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   gauntlet: { src: '/assets/weapons/gauntlet.png', scale: 0.56, anchorX: 0.36, anchorY: 0.52, angleOffset: 0 },
-  greatsword: { src: '/assets/weapons/greatsword.png', scale: 0.78, anchorX: 0.2, anchorY: 0.54, angleOffset: 0 },
-  scythe: { src: '/assets/weapons/scythe.png', scale: 0.82, anchorX: 0.18, anchorY: 0.72, angleOffset: -0.2 },
+  greatsword: { src: '/assets/weapons/greatsword.png', scale: 0.76, anchorX: 0.84, anchorY: 0.52, angleOffset: Math.PI + 0.05, noAimFlip: true },
+  scythe: { src: '/assets/weapons/scythe.png', scale: 0.82, anchorX: 0.18, anchorY: 0.72, angleOffset: -0.2, noAimFlip: true },
   dagger: { src: '/assets/weapons/dagger.png', scale: 0.44, anchorX: 0.26, anchorY: 0.5, angleOffset: 0 },
   rapier: { src: '/assets/weapons/rapier.png', scale: 0.56, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 },
   hammer: { src: '/assets/weapons/hammer.png', scale: 0.68, anchorX: 0.22, anchorY: 0.56, angleOffset: 0 },
   matchlock: { src: '/assets/weapons/matchlock.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
-  katana: { src: '/assets/weapons/katana.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
+  katana: { src: '/assets/weapons/katana.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0, noAimFlip: true },
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
-const WEAPON_ASSET_VERSION = '20260607c';
+const WEAPON_ASSET_VERSION = '20260608a';
 
 export class Renderer {
   constructor(canvas) {
@@ -2313,12 +2313,14 @@ export class Renderer {
 
     const attacker = this._findPlayerById(players, effect.attackerId);
     if (!attacker || attacker.isDead) return effect;
+    const angleOffset = Number.isFinite(effect.angleOffset) ? effect.angleOffset : 0;
+    const baseAngle = Number.isFinite(attacker.angle) ? attacker.angle : effect.angle;
 
     return {
       ...effect,
       x: attacker.x,
       y: attacker.y,
-      angle: Number.isFinite(attacker.angle) ? attacker.angle : effect.angle
+      angle: Number.isFinite(baseAngle) ? baseAngle + angleOffset : effect.angle
     };
   }
 
@@ -2361,9 +2363,11 @@ export class Renderer {
     if (!effect) return empty;
 
     const progress = clamp01(effect.progress);
-    const angle = this._isPlayerBoundEffect(effect) && Number.isFinite(player.angle)
+    const angleOffset = Number.isFinite(effect.angleOffset) ? effect.angleOffset : 0;
+    const baseAngle = this._isPlayerBoundEffect(effect) && Number.isFinite(player.angle)
       ? player.angle
       : (Number.isFinite(effect.angle) ? effect.angle : player.angle);
+    const angle = baseAngle + angleOffset;
     let lunge = 0;
     let weaponReach = 0;
     let weaponAngle = angle;
@@ -2502,6 +2506,15 @@ export class Renderer {
       weaponAngle = angle + spin * Math.PI * spinMult;
       bodyScale = (effect.comboFinisher ? 2.6 : 1.8) * Math.sin(Math.PI * clamp01(progress));
 
+    } else if (effect.weapon === 'gauntlet') {
+      const punch = progress < 0.2
+        ? easeOutBack(progress / 0.2)
+        : Math.max(0, 1 - (progress - 0.2) / 0.8);
+      lunge = 6 * punch;
+      weaponReach = 18 * punch;
+      weaponAngle = angle;
+      bodyScale = 1.15 * punch;
+
     } else if (effect.type === 'melee_line') {
       const thrust = progress < 0.18
         ? easeOutBack(progress / 0.18)
@@ -2510,14 +2523,6 @@ export class Renderer {
       lunge = 8 * thrust * finisherBoost;
       weaponReach = 18 * thrust * finisherBoost;
       bodyScale = 1.2 * thrust * finisherBoost;
-
-    } else if (effect.weapon === 'gauntlet') {
-      const punch = progress < 0.28
-        ? easeOutBack(progress / 0.28)
-        : Math.max(0, 1 - (progress - 0.28) / 0.72);
-      lunge = 7 * punch;
-      weaponReach = 16 * punch;
-      bodyScale = 1.4 * punch;
 
     } else {
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
@@ -2541,7 +2546,8 @@ export class Renderer {
       bodyY: Math.sin(angle) * lunge,
       bodyScale,
       weaponReach,
-      weaponAngle
+      weaponAngle,
+      punchSide: Number.isFinite(effect.punchSide) ? effect.punchSide : 0
     };
   }
 
@@ -3453,10 +3459,15 @@ export class Renderer {
     // Aim pointing left would otherwise render the sprite upside-down. Mirror it
     // vertically once the draw direction crosses the ±90° (straight up/down)
     // lines so the weapon always stays "upright" around its grip.
-    const aimFlip = Math.cos(drawAngle) < 0 ? -1 : 1;
+    const aimFlip = meta.noAimFlip ? 1 : (Math.cos(drawAngle) < 0 ? -1 : 1);
     if (weaponType === 'gauntlet') {
-      drawSingle(0.05, -5, aimFlip);
-      drawSingle(-0.05, 5, -aimFlip);
+      const side = Number.isFinite(motion.punchSide) ? Math.sign(motion.punchSide) : 0;
+      if (active && side !== 0) {
+        drawSingle(0, side * 5.5, side < 0 ? aimFlip : -aimFlip);
+      } else {
+        drawSingle(0.05, -5, aimFlip);
+        drawSingle(-0.05, 5, -aimFlip);
+      }
     } else {
       drawSingle(0, 0, aimFlip);
     }
@@ -3557,7 +3568,7 @@ export class Renderer {
     ctx.setLineDash(isFinisherPreview ? [9, 5] : (showStrong ? [] : [6, 7]));
 
     const range = weapon.range;
-    const angle = player.angle;
+    const angle = player.angle + (Number.isFinite(activeAttack?.angleOffset) ? activeAttack.angleOffset : 0);
     const arcShapeTypes = ['melee_arc', 'melee_heavy_arc', 'melee_sweet_arc', 'melee_backstab', 'melee_blade_sweep'];
     const circleShapeTypes = ['melee_circle', 'melee_slam'];
     const lineShapeTypes = ['melee_line', 'melee_precise_line', 'melee_heavy_line'];
