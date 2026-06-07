@@ -258,6 +258,7 @@ local function attack(player: Player)
 	local origin = root.Position
 	local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
 	local hitCount = 0
+	local hitPoints = {}
 
 	for _, other in ipairs(Players:GetPlayers()) do
 		if other ~= player then
@@ -268,6 +269,7 @@ local function attack(player: Player)
 			local _, otherHumanoid, otherRoot = getCharacterParts(other)
 			if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, swing) then
 				hitCount += 1
+				table.insert(hitPoints, otherRoot.Position)
 				damageVictim(player, otherHumanoid, swing.damage)
 			end
 		end
@@ -284,6 +286,7 @@ local function attack(player: Player)
 		angle = swing.angle or 0,
 		color = weapon.color,
 		hitCount = hitCount,
+		hits = hitPoints,
 		isFinisher = isFinisher,
 	})
 end
@@ -336,6 +339,7 @@ local function performSkill(player: Player)
 		local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
 		local shape = { hitType = sk.hitType, range = sk.range, angle = sk.angle }
 		local hitCount = 0
+		local hitPoints = {}
 		for _, other in ipairs(Players:GetPlayers()) do
 			if other ~= player then
 				local otherState = states[other]
@@ -347,6 +351,7 @@ local function performSkill(player: Player)
 					local dist = HitboxUtil.flat(otherRoot.Position - origin).Magnitude
 					local dmg = if dist > (sk.innerRange or 0) then sk.sweetDamage else sk.damage
 					hitCount += 1
+					table.insert(hitPoints, otherRoot.Position)
 					damageVictim(player, otherHumanoid, dmg)
 				end
 			end
@@ -362,6 +367,7 @@ local function performSkill(player: Player)
 			angle = sk.angle or 0,
 			color = WeaponConfig.getWeapon(state.weaponId).color,
 			hitCount = hitCount,
+			hits = hitPoints,
 		})
 		return
 	end

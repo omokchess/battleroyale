@@ -361,13 +361,28 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
+local function rootOfUser(userId: number?): BasePart?
+	local other = userId and Players:GetPlayerByUserId(userId)
+	local char = other and other.Character
+	return char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
 CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 	if action == "AttackEffect" and typeof(payload) == "table" then
 		EffectsClient.drawAttackEffect(payload)
 	elseif action == "SkillEffect" and typeof(payload) == "table" then
-		-- Instant skills (e.g. scythe sweep) reuse the attack visual; buffs have no flash yet.
 		if payload.kind == "sweep" then
-			EffectsClient.drawAttackEffect(payload)
+			EffectsClient.drawAttackEffect(payload) -- instant skills reuse the attack visual
+		elseif payload.kind == "buff" then
+			local root = rootOfUser(payload.userId)
+			if root then
+				EffectsClient.drawBuff(root, payload.color, payload.duration)
+			end
+		end
+	elseif action == "DashEffect" and typeof(payload) == "table" then
+		local root = rootOfUser(payload.userId)
+		if root then
+			EffectsClient.drawDash(root.Position)
 		end
 	end
 end)

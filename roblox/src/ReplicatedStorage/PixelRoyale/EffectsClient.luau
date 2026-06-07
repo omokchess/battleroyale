@@ -170,17 +170,98 @@ function EffectsClient.drawArc(payload)
 	makePart(withHeight(origin + right * range * 0.2), withHeight(origin + right * range), 0.18, color, life, 0.35)
 end
 
+-- Map every weapon hitType onto the matching visual (mirrors HitboxUtil).
+local SHAPE = {
+	circle = "circle", slam = "circle",
+	line = "line", precise_line = "line", projectile = "line",
+	arc = "arc", sweet_arc = "arc", blade_sweep = "arc",
+}
+
+-- White spark + radial spokes at a contact point.
+function EffectsClient.drawHitSpark(position: Vector3, color: Color3?)
+	if typeof(position) ~= "Vector3" then
+		return
+	end
+	makeBlock(position, Vector3.new(1.7, 0.16, 1.7), Color3.fromRGB(255, 255, 255), 0.22, 0.05)
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2
+		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+		makePart(withHeight(position + dir * 0.2), withHeight(position + dir * 1.7), 0.16, color or Color3.fromRGB(255, 220, 120), 0.22, 0.18)
+	end
+end
+
+-- Expanding ring + flash where a player dashed.
+function EffectsClient.drawDash(position: Vector3, color: Color3?)
+	if typeof(position) ~= "Vector3" then
+		return
+	end
+	color = color or Color3.fromRGB(180, 240, 255)
+	makeBlock(position, Vector3.new(2.4, 0.18, 2.4), Color3.fromRGB(255, 255, 255), 0.26, 0.1)
+	local segments = 26
+	local r = 2.7
+	for i = 1, segments do
+		local a0 = (i - 1) / segments * math.pi * 2
+		local a1 = i / segments * math.pi * 2
+		local p0 = withHeight(position + Vector3.new(math.cos(a0) * r, 0, math.sin(a0) * r))
+		local p1 = withHeight(position + Vector3.new(math.cos(a1) * r, 0, math.sin(a1) * r))
+		makePart(p0, p1, 0.18, color, 0.3, 0.25)
+	end
+end
+
+-- Glowing pad welded under a buffed player; follows them for the buff duration.
+function EffectsClient.drawBuff(root: BasePart?, color: Color3?, duration: number?)
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+	local life = duration or 4
+	local pad = Instance.new("Part")
+	pad.Size = Vector3.new(5.6, 0.14, 5.6)
+	pad.Anchored = false
+	pad.CanCollide = false
+	pad.CanQuery = false
+	pad.CanTouch = false
+	pad.CastShadow = false
+	pad.Material = Enum.Material.Neon
+	pad.Color = color or Color3.fromRGB(255, 220, 120)
+	pad.Transparency = 0.58
+	pad.CFrame = root.CFrame * CFrame.new(0, -2.4, 0)
+	pad.Parent = getFolder()
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = pad
+	weld.Part1 = root
+	weld.Parent = pad
+	task.delay(math.max(life - 0.45, 0), function()
+		if pad.Parent then
+			TweenService:Create(pad, TweenInfo.new(0.45), { Transparency = 1 }):Play()
+		end
+	end)
+	Debris:AddItem(pad, life + 0.1)
+end
+
 function EffectsClient.drawAttackEffect(payload)
 	if typeof(payload) ~= "table" then
 		return
 	end
 
-	if payload.hitType == "circle" then
+	local shape = SHAPE[payload.hitType] or "arc"
+	if shape == "circle" then
 		EffectsClient.drawCircle(payload)
-	elseif payload.hitType == "line" then
+	elseif shape == "line" then
 		EffectsClient.drawLine(payload)
 	else
 		EffectsClient.drawArc(payload)
+	end
+
+	-- Finisher pop.
+	if payload.isFinisher and payload.origin then
+		makeBlock(payload.origin, Vector3.new(2.2, 0.2, 2.2), Color3.fromRGB(255, 255, 255), 0.26, 0.05)
+	end
+
+	-- Contact sparks at each hit the server reported.
+	if typeof(payload.hits) == "table" then
+		for _, pos in ipairs(payload.hits) do
+			EffectsClient.drawHitSpark(pos, payload.color)
+		end
 	end
 end
 
