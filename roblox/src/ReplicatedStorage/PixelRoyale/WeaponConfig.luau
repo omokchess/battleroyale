@@ -20,12 +20,12 @@ WeaponConfig.Order = {
 WeaponConfig.Weapons = {
 	sword = {
 		displayName = "Sword", damage = 24, maxHealth = 120, cooldown = 0.55,
-		moveSpeed = 1.1, range = 7, angle = 110, hitType = "blade_sweep",
+		moveSpeed = 1.1, range = 9.5, angle = 110, hitType = "blade_sweep",
 		bladeHalfWidth = 1.2, vfx = "slash", color = Color3.fromRGB(69, 243, 255),
 	},
 	axe = {
 		displayName = "Axe", damage = 36, maxHealth = 150, cooldown = 0.82,
-		moveSpeed = 0.85, range = 6.3, angle = 360, hitType = "circle", vfx = "slash",
+		moveSpeed = 0.85, range = 8.5, angle = 360, hitType = "circle", vfx = "slash",
 		color = Color3.fromRGB(245, 85, 85),
 	},
 	bow = {
@@ -35,40 +35,40 @@ WeaponConfig.Weapons = {
 	},
 	spear = {
 		displayName = "Spear", damage = 17, maxHealth = 100, cooldown = 0.5,
-		moveSpeed = 1, range = 12, width = 1.6, hitType = "line",
+		moveSpeed = 1, range = 16, width = 1.6, hitType = "line",
 		color = Color3.fromRGB(255, 163, 69),
 	},
 	gauntlet = {
 		displayName = "Gauntlet", damage = 19, maxHealth = 110, cooldown = 0.16,
-		moveSpeed = 1.3, range = 5.8, angle = 110, hitType = "arc", vfx = "punch",
+		moveSpeed = 1.3, range = 7.8, angle = 110, hitType = "arc", vfx = "punch",
 		color = Color3.fromRGB(255, 69, 219),
 	},
 	greatsword = {
 		displayName = "Greatsword", damage = 38, maxHealth = 140, cooldown = 0.9,
-		automaticAttack = false, moveSpeed = 0.82, range = 8.8, angle = 210,
+		automaticAttack = false, moveSpeed = 0.82, range = 11.8, angle = 210,
 		fixedSwingDirection = 1, hitType = "arc", color = Color3.fromRGB(139, 211, 255),
 	},
 	scythe = {
 		displayName = "Scythe", damage = 18, sweetDamage = 34, maxHealth = 115,
-		cooldown = 0.68, moveSpeed = 1.05, range = 9.2, innerRange = 5.2, angle = 190,
+		cooldown = 0.68, moveSpeed = 1.05, range = 12.4, innerRange = 5.2, angle = 190,
 		pull = 2.4, fixedSwingDirection = 1, hitType = "sweet_arc", bladeHalfWidth = 1.6,
 		color = Color3.fromRGB(217, 70, 239),
 	},
 	dagger = {
 		displayName = "Dagger", damage = 14, maxHealth = 90, cooldown = 0.3,
-		moveSpeed = 1.35, range = 5.8, width = 0.1, critDamage = 20,
+		moveSpeed = 1.35, range = 7.8, width = 0.1, critDamage = 20,
 		hitCooldownRefund = 0.04, hitType = "precise_line",
 		color = Color3.fromRGB(248, 250, 252),
 	},
 	rapier = {
 		displayName = "Rapier", damage = 20, critDamage = 24, maxHealth = 100,
-		cooldown = 0.43, moveSpeed = 1.15, range = 8.7, width = 0.1,
+		cooldown = 0.43, moveSpeed = 1.15, range = 11.7, width = 0.1,
 		hitCooldownRefund = 0.18, missPenalty = 0.15, hitType = "precise_line",
 		color = Color3.fromRGB(250, 204, 21),
 	},
 	hammer = {
 		displayName = "Hammer", damage = 36, maxHealth = 145, cooldown = 1.15,
-		moveSpeed = 0.75, range = 7.8, innerRange = 3.6, angle = 360, knockback = 6.8,
+		moveSpeed = 0.75, range = 10.5, innerRange = 3.6, angle = 360, knockback = 6.8,
 		hitType = "slam", color = Color3.fromRGB(251, 146, 60),
 	},
 	matchlock = {
@@ -78,7 +78,7 @@ WeaponConfig.Weapons = {
 	},
 	katana = {
 		displayName = "Katana", damage = 24, maxHealth = 110, cooldown = 0.43,
-		moveSpeed = 1.2, range = 7, angle = 110, hitType = "blade_sweep",
+		moveSpeed = 1.2, range = 9.5, angle = 110, hitType = "blade_sweep",
 		bladeHalfWidth = 1.2, vfx = "slash", color = Color3.fromRGB(244, 63, 94),
 	},
 	magicstaff = {
