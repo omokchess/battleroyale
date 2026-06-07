@@ -130,7 +130,17 @@ h1 {
   color: #f0c34d !important;
   text-shadow: 0 0 14px rgba(240, 195, 77, 0.45), 0 2px 5px rgba(0, 0, 0, 0.85);
 }
-#hostBtn, #joinBtn { box-shadow: 0 0 16px rgba(201, 162, 39, 0.32) !important; }
+/* Primary actions: brass plaques with engraved dark text (no more teal/blue). */
+#hostBtn, #joinBtn, #refreshRoomsBtn {
+  background: linear-gradient(180deg, #cda833, #7a5e1e) !important;
+  border-color: #e6c75a !important;
+  color: #1c1408 !important;
+  text-shadow: 0 1px 0 rgba(240, 195, 77, 0.4);
+}
+#hostBtn, #joinBtn { box-shadow: 0 0 16px rgba(201, 162, 39, 0.32), inset 0 1px 0 rgba(255, 240, 200, 0.45) !important; }
+#hostBtn:hover, #joinBtn:hover, #refreshRoomsBtn:hover {
+  background: linear-gradient(180deg, #e6c75a, #9a7a28) !important;
+}
 ::selection { background: rgba(201, 162, 39, 0.45); color: #fff; }
 
 /* Base style setups */
@@ -178,21 +188,21 @@ html, body {
 
 .weapon-card:hover {
   transform: translateY(-2px);
-  border-color: #66fcf1;
-  box-shadow: 0 4px 10px rgba(102, 252, 241, 0.25);
+  border-color: #c9a227;
+  box-shadow: 0 4px 10px rgba(201, 162, 39, 0.28);
 }
 
 .weapon-card.selected {
-  background-color: #1f2833;
-  border-color: #45f3ff;
-  color: #45f3ff;
-  box-shadow: 0 0 12px rgba(69, 243, 255, 0.5);
+  background-color: #241c2c;
+  border-color: #d4af37 !important;
+  color: #f0c34d;
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.55), inset 0 0 0 1px rgba(240, 195, 77, 0.35);
   transform: scale(1.05);
 }
 
 .weapon-card.selected svg {
-  stroke: #45f3ff;
-  filter: drop-shadow(0 0 4px rgba(69, 243, 255, 0.8));
+  stroke: #f0c34d;
+  filter: drop-shadow(0 0 4px rgba(240, 195, 77, 0.85));
 }
 
 /* Custom canvas crisp render */
@@ -214,19 +224,27 @@ canvas {
   touch-action: none;
 }
 
-/* Scrollbars for lobbies */
+/* Scrollbars: forged brass rail set into dark stone (medieval). */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 11px;
+  height: 11px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0c10;
+  background: #120e18;
+  box-shadow: inset 1px 0 0 rgba(201, 162, 39, 0.20), inset -1px 0 0 rgba(0, 0, 0, 0.6);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f2833;
-  border: 1px solid #45f3ff;
+  background: linear-gradient(180deg, #b8902f, #6b5320);
+  border: 1px solid #2a2018;
+  box-shadow: inset 0 1px 0 rgba(240, 195, 77, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.5);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #45f3ff;
+  background: linear-gradient(180deg, #e6c75a, #8a6a22);
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #a8842c #120e18;
 }
 
 /* Animations for Announcement text */
@@ -313,13 +331,15 @@ canvas {
   white-space: nowrap;
 }
 
+/* ON/OFF switch styled as a forged metal lever set in a dark iron channel. */
 .visual-setting-toggle {
   appearance: none;
-  width: 2.75rem;
-  height: 1.45rem;
+  width: 2.9rem;
+  height: 1.5rem;
   flex: 0 0 auto;
-  border: 1px solid #45f3ff;
-  background: #0b0c10;
+  border: 2px solid #6b5320;
+  background: linear-gradient(180deg, #171019, #241a10);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.65);
   position: relative;
   cursor: pointer;
   transition: background 0.14s ease, border-color 0.14s ease;
@@ -328,23 +348,28 @@ canvas {
 .visual-setting-toggle::after {
   content: "";
   position: absolute;
-  left: 0.18rem;
-  top: 0.18rem;
-  width: 0.95rem;
-  height: 0.95rem;
-  background: #6b7280;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
-  transition: transform 0.14s ease, background 0.14s ease;
+  left: 0.14rem;
+  top: 0.14rem;
+  width: 1rem;
+  height: 1rem;
+  /* OFF: a cold iron stud. */
+  background: linear-gradient(180deg, #9a9a9a, #555);
+  border: 1px solid #2a2018;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  transition: transform 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
 }
 
 .visual-setting-toggle:checked {
-  background: rgba(69, 243, 255, 0.16);
-  border-color: #66fcf1;
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.30), rgba(138, 106, 34, 0.30));
+  border-color: #c9a227;
 }
 
 .visual-setting-toggle:checked::after {
-  transform: translateX(1.25rem);
-  background: #66fcf1;
+  transform: translateX(1.3rem);
+  /* ON: a lit brass stud. */
+  background: linear-gradient(180deg, #f0c34d, #b8902f);
+  border-color: #6b5320;
+  box-shadow: 0 0 7px rgba(240, 195, 77, 0.65);
 }
 
 @media (min-width: 1024px) and (pointer: fine) {
@@ -598,6 +623,11 @@ canvas {
    Lobby mobile tabs (bottom bar) — desktop is unaffected
    ============================================================ */
 .lobby-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.85rem;
+  font-size: 0.8rem;
   border-right: 1px solid rgba(168, 132, 44, 0.35);
   letter-spacing: 0.02em;
 }
@@ -611,6 +641,6 @@ canvas {
 @media (max-width: 1023px) {
   /* On mobile the bottom tab bar drives which lobby section is visible. */
   .lobby-tab-hidden { display: none !important; }
-  /* Keep content clear of the fixed bottom tab bar. */
-  #lobbyMenu { padding-bottom: 4.5rem; }
+  /* Keep content clear of the taller fixed bottom tab bar. */
+  #lobbyMenu { padding-bottom: 5.25rem; }
 }

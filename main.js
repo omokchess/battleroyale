@@ -90,9 +90,12 @@ function setupWeaponSelector() {
     if (iconBox && w) {
       iconBox.style.width = '3.5rem';
       iconBox.style.height = '3.5rem';
+      // Stand every weapon upright pointing downward in the picker — except the
+      // bow, whose sprite is already drawn vertically.
+      const rot = w === 'bow' ? '' : 'transform:rotate(90deg);';
       iconBox.innerHTML =
         `<img src="/assets/weapons/${w}.png" alt="${w}" draggable="false" ` +
-        `class="w-full h-full object-contain" style="image-rendering:pixelated" />`;
+        `class="w-full h-full object-contain" style="image-rendering:pixelated;${rot}" />`;
     }
   });
 
