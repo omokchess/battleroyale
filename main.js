@@ -65,6 +65,8 @@ const UI_ICONS = {
   users: '<circle cx="9" cy="8" r="3"/><path d="M3 21c1-3.5 3.2-5 6-5s5 1.5 6 5"/><path d="M16 11a3 3 0 1 0-1.4-5.7"/><path d="M18 21c-.4-1.7-1.2-3-2.4-3.9"/>'
 };
 
+const WEAPON_ICON_VERSION = '20260607c';
+
 function uiIcon(name, className = 'inline-block w-3 h-3 align-[-2px] mr-1 shrink-0') {
   return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${UI_ICONS[name] || ''}</svg>`;
 }
@@ -99,7 +101,7 @@ function setupWeaponSelector() {
       // bow, whose sprite is already drawn vertically.
       const rot = w === 'bow' ? '' : 'transform:rotate(90deg);';
       iconBox.innerHTML =
-        `<img src="/assets/weapons/${w}.png" alt="${w}" draggable="false" ` +
+        `<img src="/assets/weapons/${w}.png?v=${WEAPON_ICON_VERSION}" alt="${w}" draggable="false" ` +
         `class="w-full h-full object-contain" style="image-rendering:pixelated;${rot}" />`;
     }
   });
