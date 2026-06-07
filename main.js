@@ -9,7 +9,7 @@ import { Weapons } from './game/Weapons.js';
 import { Protocol } from './multiplayer/Protocol.js';
 import { RoomRegistry } from './multiplayer/RoomRegistry.js';
 import * as accountUI from './ui/account-ui.js';
-import { isMobileDevice } from './game/Device.js';
+import { isMobileDevice, isPhoneDevice } from './game/Device.js';
 
 // Dom Elements
 const authScreen = document.getElementById('authScreen');
@@ -331,6 +331,25 @@ function releaseLandscapeLock() {
   } catch (_) {}
 }
 
+/**
+ * Phones (NOT tablets) lock to portrait while in the lobby so the stacked menu
+ * reads naturally. Best-effort: orientation lock needs an installed PWA /
+ * fullscreen on most browsers and is unsupported on iOS Safari, so it never
+ * throws and silently no-ops where the platform disallows it.
+ */
+async function lockPortraitForLobby() {
+  if (!isPhoneDevice()) { releaseLandscapeLock(); return; }
+  try {
+    if (screen.orientation && screen.orientation.lock) {
+      await screen.orientation.lock('portrait').catch(() => {});
+    } else {
+      releaseLandscapeLock();
+    }
+  } catch (_) {
+    releaseLandscapeLock();
+  }
+}
+
 function enterGameScreen(isHost) {
   lobbyMenu.classList.add('hidden');
   gameScreen.classList.remove('hidden');
@@ -343,7 +362,7 @@ function showLobbyScreen() {
   lobbyMenu.classList.remove('hidden');
   gameScreen.classList.add('hidden');
   hostServerIndicator.classList.add('hidden');
-  releaseLandscapeLock();
+  lockPortraitForLobby();
 
   // Tear down any room advertisement and resume browsing the list.
   roomRegistry.stopHosting();
