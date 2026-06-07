@@ -678,10 +678,10 @@ export class Game {
 
     const side = player.gauntletPunchSide === 1 ? -1 : 1;
     player.gauntletPunchSide = side;
-    const jitterDeg = Number.isFinite(attackConfig.punchAngleJitter) ? attackConfig.punchAngleJitter : 15;
-    const minDeg = Number.isFinite(attackConfig.punchAngleMin) ? attackConfig.punchAngleMin : Math.min(6, jitterDeg);
-    const amountDeg = minDeg + Math.random() * Math.max(0, jitterDeg - minDeg);
-    const amount = amountDeg * Math.PI / 180;
+    const convergeOffset = Number.isFinite(attackConfig.punchConvergeOffset)
+      ? attackConfig.punchConvergeOffset
+      : Math.max(4, Math.min(12, (attackConfig.width || 24) * 0.35));
+    const amount = Math.atan2(convergeOffset, Math.max(1, attackConfig.range || 1));
     return {
       ...attackConfig,
       angleOffset: -side * amount,

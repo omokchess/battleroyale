@@ -196,7 +196,7 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   assert.equal(hit.knockback, Weapons.hammer.knockback);
 });
 
-test('gauntlet basic punch alternates fists with an inward 15 degree hitbox', () => {
+test('gauntlet basic punch alternates fists and converges the hit tip to center', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.mapWidth = 700;
@@ -206,32 +206,26 @@ test('gauntlet basic punch alternates fists with an inward 15 degree hitbox', ()
 
   const owner = new Player('gauntlet-owner', 'Knuckle', 'gauntlet', 100, 100);
   owner.angle = 0;
-  const offsetAngle = 15 * Math.PI / 180;
+  const offsetAngle = Math.atan2(Weapons.gauntlet.punchConvergeOffset, Weapons.gauntlet.range);
   const aligned = new Player('gauntlet-aligned', 'Aligned', 'sword', 100 + Math.cos(-offsetAngle) * 52, 100 + Math.sin(-offsetAngle) * 52);
-  const center = new Player('gauntlet-center', 'Center', 'sword', 152, 100);
+  const opposite = new Player('gauntlet-opposite', 'Opposite', 'sword', 100 + Math.cos(offsetAngle) * 52, 100 + Math.sin(offsetAngle) * 52);
   aligned.radius = 1;
-  center.radius = 1;
+  opposite.radius = 1;
   game.players[owner.id] = owner;
   game.players[aligned.id] = aligned;
-  game.players[center.id] = center;
+  game.players[opposite.id] = opposite;
 
-  const originalRandom = Math.random;
-  Math.random = () => 1;
-  try {
-    const attack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
-    assert.equal(attack.punchSide, 1);
-    assert.ok(Math.abs(attack.angleOffset + offsetAngle) < 1e-12);
-    assert.equal(game._queueOrApplyMeleeHit(owner, attack, 1000), 1);
+  const attack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
+  assert.equal(attack.punchSide, 1);
+  assert.ok(Math.abs(attack.angleOffset + offsetAngle) < 1e-12);
+  assert.equal(game._queueOrApplyMeleeHit(owner, attack, 1000), 1);
 
-    const nextAttack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
-    assert.equal(nextAttack.punchSide, -1);
-    assert.ok(Math.abs(nextAttack.angleOffset - offsetAngle) < 1e-12);
-  } finally {
-    Math.random = originalRandom;
-  }
+  const nextAttack = game._resolveDirectionalAttack(owner, Weapons.gauntlet);
+  assert.equal(nextAttack.punchSide, -1);
+  assert.ok(Math.abs(nextAttack.angleOffset - offsetAngle) < 1e-12);
 
   assert.equal(aligned.hp, aligned.maxHp - Weapons.gauntlet.damage);
-  assert.equal(center.hp, center.maxHp);
+  assert.equal(opposite.hp, opposite.maxHp);
 });
 
 test('gauntlet lance skill also alternates the active punching fist', () => {
@@ -240,22 +234,17 @@ test('gauntlet lance skill also alternates the active punching fist', () => {
   owner.buffType = 'gauntlet_lance';
   owner.angle = 0;
 
-  const originalRandom = Math.random;
-  Math.random = () => 1;
-  try {
-    const weapon = getEffectiveWeapon(owner.weapon, owner.buffType);
-    const first = game._resolveDirectionalAttack(owner, weapon);
-    assert.equal(first.type, 'melee_line');
-    assert.equal(first.range, SkillConfig.gauntlet.range);
-    assert.equal(first.punchSide, 1);
-    assert.ok(Math.abs(first.angleOffset + 15 * Math.PI / 180) < 1e-12);
+  const weapon = getEffectiveWeapon(owner.weapon, owner.buffType);
+  const offsetAngle = Math.atan2(weapon.punchConvergeOffset, weapon.range);
+  const first = game._resolveDirectionalAttack(owner, weapon);
+  assert.equal(first.type, 'melee_line');
+  assert.equal(first.range, SkillConfig.gauntlet.range);
+  assert.equal(first.punchSide, 1);
+  assert.ok(Math.abs(first.angleOffset + offsetAngle) < 1e-12);
 
-    const second = game._resolveDirectionalAttack(owner, weapon);
-    assert.equal(second.punchSide, -1);
-    assert.ok(Math.abs(second.angleOffset - 15 * Math.PI / 180) < 1e-12);
-  } finally {
-    Math.random = originalRandom;
-  }
+  const second = game._resolveDirectionalAttack(owner, weapon);
+  assert.equal(second.punchSide, -1);
+  assert.ok(Math.abs(second.angleOffset - offsetAngle) < 1e-12);
 });
 
 test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
