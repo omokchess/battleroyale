@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PixelRoyale = ReplicatedStorage:WaitForChild("PixelRoyale")
@@ -37,11 +38,20 @@ type PlayerState = {
 	buffExpire: number,
 	skillReadyAt: number,
 	altReadyAt: number,
+	stunnedUntil: number,
+	bowStacks: number,
+	inGame: boolean,
+	greatswordChargeStart: number?,
+	katanaChargeStart: number?,
+	daggerQte: any?,
 }
 
 local states: { [Player]: PlayerState } = {}
 local projectiles = {} -- live server-simulated projectiles (waves, fireballs, …)
 local PROJ_TARGET_RADIUS = 2 -- studs; combatant body half-size for projectile contact
+local NO_BASIC_ATTACK = { greatsword = true, matchlock = true, sniper = true }
+local ARENA_FLOOR = Color3.fromRGB(18, 24, 33)
+local WEB_CYAN = Color3.fromRGB(69, 243, 255)
 
 local function hideAvatar(character: Model, humanoid: Humanoid?)
 	if humanoid then
@@ -58,8 +68,55 @@ local function hideAvatar(character: Model, humanoid: Humanoid?)
 	end
 end
 
+local function configureWorldLighting()
+	Lighting.Brightness = 0.65
+	Lighting.ClockTime = 0
+	Lighting.GlobalShadows = false
+	Lighting.Ambient = Color3.fromRGB(18, 18, 24)
+	Lighting.OutdoorAmbient = Color3.fromRGB(4, 4, 8)
+	Lighting.EnvironmentDiffuseScale = 0
+	Lighting.EnvironmentSpecularScale = 0
+	Lighting.FogColor = Color3.fromRGB(0, 0, 0)
+	Lighting.FogEnd = 260
+end
+
+local function ensureVoidBackdrop(parent: Instance)
+	if parent:FindFirstChild("VoidBackdrop") then
+		return
+	end
+
+	local part = Instance.new("Part")
+	part.Name = "VoidBackdrop"
+	part.Anchored = true
+	part.Size = Vector3.new(420, 1, 420)
+	part.Position = Vector3.new(0, -1.15, 0)
+	part.Color = Color3.fromRGB(0, 0, 0)
+	part.Material = Enum.Material.SmoothPlastic
+	part.Transparency = 0
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CastShadow = false
+	part.Reflectance = 0
+	part.Parent = parent
+end
+
 local function ensureArena()
-	if workspace:FindFirstChild("PixelRoyaleArena") then
+	configureWorldLighting()
+
+	local existingArena = workspace:FindFirstChild("PixelRoyaleArena")
+	if existingArena then
+		ensureVoidBackdrop(existingArena)
+		for _, descendant in ipairs(existingArena:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.Reflectance = 0
+				if descendant.Name:find("Wall") or descendant.Name:find("NeonEdge") then
+					descendant.Color = WEB_CYAN
+				elseif descendant.Name == "ArenaFloor" then
+					descendant.Material = Enum.Material.Slate
+					descendant.Color = ARENA_FLOOR
+				end
+			end
+		end
 		return
 	end
 
@@ -86,18 +143,22 @@ local function ensureArena()
 		part.CanCollide = canCollide
 		part.CanQuery = canCollide
 		part.CastShadow = false
+		part.Reflectance = 0
 		part.Parent = arena
 		return part
 	end
+
+	ensureVoidBackdrop(arena)
 
 	local floor = Instance.new("Part")
 	floor.Name = "ArenaFloor"
 	floor.Anchored = true
 	floor.Size = Vector3.new(140, 1, 140)
 	floor.Position = Vector3.new(0, -0.45, 0)
-	floor.Color = Color3.fromRGB(18, 24, 33)
-	floor.Material = Enum.Material.SmoothPlastic
+	floor.Color = ARENA_FLOOR
+	floor.Material = Enum.Material.Slate
 	floor.CastShadow = false
+	floor.Reflectance = 0
 	floor.Parent = arena
 
 	for offset = -63, 63, 7 do
@@ -105,15 +166,15 @@ local function ensureArena()
 		staticPart("GridZ_" .. tostring(offset), Vector3.new(0.08, 0.08, 140), Vector3.new(offset, 0.1, 0), Color3.fromRGB(45, 68, 82), Enum.Material.Neon, 0.68, false)
 	end
 
-	staticPart("NorthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, -71), Color3.fromRGB(31, 245, 255), Enum.Material.SmoothPlastic, 1, true)
-	staticPart("SouthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, 71), Color3.fromRGB(31, 245, 255), Enum.Material.SmoothPlastic, 1, true)
-	staticPart("EastWall", Vector3.new(2, 8, 142), Vector3.new(71, 3.5, 0), Color3.fromRGB(31, 245, 255), Enum.Material.SmoothPlastic, 1, true)
-	staticPart("WestWall", Vector3.new(2, 8, 142), Vector3.new(-71, 3.5, 0), Color3.fromRGB(31, 245, 255), Enum.Material.SmoothPlastic, 1, true)
+	staticPart("NorthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, -71), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)
+	staticPart("SouthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, 71), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)
+	staticPart("EastWall", Vector3.new(2, 8, 142), Vector3.new(71, 3.5, 0), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)
+	staticPart("WestWall", Vector3.new(2, 8, 142), Vector3.new(-71, 3.5, 0), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)
 
-	staticPart("NorthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, -70), Color3.fromRGB(31, 245, 255), Enum.Material.Neon, 0.05, false)
-	staticPart("SouthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, 70), Color3.fromRGB(31, 245, 255), Enum.Material.Neon, 0.05, false)
-	staticPart("EastNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(70, 0.3, 0), Color3.fromRGB(31, 245, 255), Enum.Material.Neon, 0.05, false)
-	staticPart("WestNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(-70, 0.3, 0), Color3.fromRGB(31, 245, 255), Enum.Material.Neon, 0.05, false)
+	staticPart("NorthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, -70), WEB_CYAN, Enum.Material.Neon, 0.05, false)
+	staticPart("SouthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, 70), WEB_CYAN, Enum.Material.Neon, 0.05, false)
+	staticPart("EastNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(70, 0.3, 0), WEB_CYAN, Enum.Material.Neon, 0.05, false)
+	staticPart("WestNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(-70, 0.3, 0), WEB_CYAN, Enum.Material.Neon, 0.05, false)
 end
 
 local function getState(player: Player): PlayerState
@@ -135,11 +196,19 @@ local function getState(player: Player): PlayerState
 		buffExpire = 0,
 		skillReadyAt = 0,
 		altReadyAt = 0,
+		stunnedUntil = 0,
+		bowStacks = 0,
+		inGame = false,
+		greatswordChargeStart = nil,
+		katanaChargeStart = nil,
+		daggerQte = nil,
 	}
 	states[player] = state
 	player:SetAttribute("Weapon", state.weaponId)
 	player:SetAttribute("AimX", state.aimDirection.X)
 	player:SetAttribute("AimZ", state.aimDirection.Z)
+	player:SetAttribute("BowStacks", state.bowStacks)
+	player:SetAttribute("InGame", state.inGame)
 	return state
 end
 
@@ -171,8 +240,7 @@ local function applyWeaponStats(player: Player)
 	if humanoid.Health <= 0 then
 		humanoid.Health = humanoid.MaxHealth
 	end
-	-- Axe rage roots the wielder in place while active.
-	local moveSpeed = if state.buffType == "axe_rage" then 0 else weapon.moveSpeed
+	local moveSpeed = weapon.moveSpeed
 	humanoid.WalkSpeed = WeaponConfig.BaseWalkSpeed * moveSpeed
 	humanoid.JumpPower = 0
 	player:SetAttribute("Weapon", state.weaponId)
@@ -216,6 +284,80 @@ local function damageVictim(attacker: Player, victimHumanoid: Humanoid, amount: 
 	end
 end
 
+local function canHitTarget(attacker: Player, target: Player, now: number): boolean
+	if target == attacker then
+		return false
+	end
+	local targetState = states[target]
+	return targetState ~= nil and targetState.inGame and now >= targetState.invulnUntil
+end
+
+local function setBowStacks(player: Player, state: PlayerState, stacks: number)
+	local maxStacks = WeaponConfig.Skill.bow.maxStacks or 5
+	state.bowStacks = math.clamp(stacks, 0, maxStacks)
+	player:SetAttribute("BowStacks", state.bowStacks)
+end
+
+local function addBowStack(player: Player, amount: number)
+	local state = getState(player)
+	setBowStacks(player, state, state.bowStacks + amount)
+end
+
+local function applyBurn(attacker: Player, victimHumanoid: Humanoid, dps: number?, duration: number?)
+	if not dps or not duration or dps <= 0 or duration <= 0 then
+		return
+	end
+
+	local tickInterval = 0.5
+	local ticks = math.floor(duration / tickInterval)
+	task.spawn(function()
+		for _ = 1, ticks do
+			task.wait(tickInterval)
+			if victimHumanoid.Health <= 0 then
+				return
+			end
+			damageVictim(attacker, victimHumanoid, dps * tickInterval)
+		end
+	end)
+end
+
+local function stunPlayer(player: Player, duration: number)
+	local state = getState(player)
+	state.stunnedUntil = math.max(state.stunnedUntil, os.clock() + duration)
+	local _, humanoid = getCharacterParts(player)
+	if humanoid then
+		humanoid.WalkSpeed = 0
+		task.delay(duration, function()
+			if states[player] == state then
+				applyWeaponStats(player)
+			end
+		end)
+	end
+end
+
+local function findNearestEnemy(player: Player, origin: Vector3, maxRange: number)
+	local bestPlayer = nil
+	local bestHumanoid = nil
+	local bestRoot = nil
+	local bestDist = nil
+	local now = os.clock()
+	for _, other in ipairs(Players:GetPlayers()) do
+		if canHitTarget(player, other, now) then
+			local _, humanoid, root = getCharacterParts(other)
+			if humanoid and root then
+				local dist = HitboxUtil.flat(root.Position - origin).Magnitude
+				if dist <= maxRange and (not bestDist or dist < bestDist) then
+					bestPlayer = other
+					bestHumanoid = humanoid
+					bestRoot = root
+					bestDist = dist
+				end
+			end
+		end
+	end
+	return bestPlayer, bestHumanoid, bestRoot, bestDist
+end
+
 local function withFinisher(base, finisher)
 	local swing = table.clone(base)
 	for key, value in pairs(finisher) do
@@ -224,8 +366,77 @@ local function withFinisher(base, finisher)
 	return swing
 end
 
-local function attack(player: Player)
+local spawnProjectile
+
+local function castIceShards(player: Player, target: Vector3?)
 	local state = getState(player)
+	local ice = WeaponConfig.Magic.iceShard
+	local _, humanoid, root = getCharacterParts(player)
+	if not humanoid or not root then
+		return
+	end
+
+	local now = os.clock()
+	if now - state.lastAttack < ice.cooldown then
+		return
+	end
+	state.lastAttack = now
+	state.attackCooldown = ice.cooldown
+
+	local targetPoint = if typeof(target) == "Vector3" then target else root.Position + state.aimDirection * 20
+	CombatRemote:FireAllClients("Telegraph", {
+		userId = player.UserId,
+		kind = "magic_target",
+		hitType = "circle",
+		origin = targetPoint,
+		range = 3.8,
+		duration = 0.45,
+		color = Color3.fromRGB(80, 170, 255),
+	})
+	for i = 1, ice.count do
+		task.delay((i - 1) * ice.interval, function()
+			local _, hum, rt = getCharacterParts(player)
+			if not (hum and rt) then
+				return
+			end
+			local direction = HitboxUtil.safeUnit(targetPoint - rt.Position, state.aimDirection)
+			spawnProjectile(player, rt.Position, direction, {
+				kind = "ice_shard",
+				speed = ice.speed,
+				range = WeaponConfig.REACH,
+				damage = ice.damage,
+				radius = ice.radius,
+				color = WeaponConfig.getWeapon("magicstaff").color,
+			})
+		end)
+	end
+	CombatRemote:FireAllClients("Telegraph", {
+		userId = player.UserId,
+		hitType = "line",
+		origin = root.Position,
+		direction = HitboxUtil.safeUnit(targetPoint - root.Position, state.aimDirection),
+		range = WeaponConfig.REACH,
+		width = 0.7,
+		duration = 0.3,
+		color = WeaponConfig.getWeapon("magicstaff").color,
+	})
+end
+
+local function attack(player: Player, payload)
+	local state = getState(player)
+	if not state.inGame or os.clock() < state.stunnedUntil then
+		return
+	end
+
+	if NO_BASIC_ATTACK[state.weaponId] then
+		return
+	end
+
+	if state.weaponId == "magicstaff" then
+		castIceShards(player, if typeof(payload) == "table" then payload.target else nil)
+		return
+	end
+
 	-- While an F-skill buff is up (axe rage / gauntlet lance / rapier riposte),
 	-- the basic attack uses the buffed stats and does not combo.
 	local weapon = WeaponConfig.getEffectiveWeapon(state.weaponId, state.buffType)
@@ -236,6 +447,22 @@ local function attack(player: Player)
 
 	local now = os.clock()
 	if now - state.lastAttack < state.attackCooldown then
+		return
+	end
+
+	local origin = root.Position
+	local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
+	if state.weaponId == "bow" then
+		state.lastAttack = now
+		state.attackCooldown = weapon.cooldown
+		spawnProjectile(player, origin, direction, {
+			kind = "bow_arrow",
+			speed = weapon.projectileSpeed or 64,
+			range = WeaponConfig.REACH,
+			damage = weapon.damage,
+			radius = math.max(weapon.width or 0.6, 0.55),
+			color = weapon.color,
+		})
 		return
 	end
 
@@ -259,17 +486,11 @@ local function attack(player: Player)
 	state.lastAttack = now
 	state.attackCooldown = swing.cooldown or weapon.cooldown
 
-	local origin = root.Position
-	local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
 	local hitCount = 0
 	local hitPoints = {}
 
 	for _, other in ipairs(Players:GetPlayers()) do
-		if other ~= player then
-			local otherState = states[other]
-			if otherState and now < otherState.invulnUntil then
-				continue -- dodging (dash i-frames)
-			end
+		if canHitTarget(player, other, now) then
 			local _, otherHumanoid, otherRoot = getCharacterParts(other)
 			if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, swing) then
 				hitCount += 1
@@ -283,6 +504,8 @@ local function attack(player: Player)
 		userId = player.UserId,
 		weaponId = state.weaponId,
 		hitType = swing.hitType,
+		vfx = swing.vfx or weapon.vfx,
+		follow = swing.hitType ~= "projectile",
 		origin = origin,
 		direction = direction,
 		range = swing.range,
@@ -293,12 +516,17 @@ local function attack(player: Player)
 		hits = hitPoints,
 		isFinisher = isFinisher,
 	})
+
+	if state.weaponId == "bow" and hitCount > 0 then
+		addBowStack(player, hitCount)
+	end
 end
 
 -- Spawn a server-simulated projectile + tell clients to render it flying.
-local function spawnProjectile(owner: Player, origin: Vector3, direction: Vector3, opts)
+function spawnProjectile(owner: Player, origin: Vector3, direction: Vector3, opts)
 	table.insert(projectiles, {
 		owner = owner,
+		kind = opts.kind,
 		pos = origin,
 		dir = direction,
 		speed = opts.speed,
@@ -307,9 +535,12 @@ local function spawnProjectile(owner: Player, origin: Vector3, direction: Vector
 		radius = opts.radius or 0.6,
 		pierce = opts.pierce or false,
 		color = opts.color,
+		burnDps = opts.burnDps,
+		burnDuration = opts.burnDuration,
 		hitSet = {},
 	})
 	CombatRemote:FireAllClients("Projectile", {
+		kind = opts.kind,
 		origin = origin,
 		direction = direction,
 		speed = opts.speed,
@@ -324,14 +555,11 @@ local function damageInShape(attacker: Player, origin: Vector3, direction: Vecto
 	local hits = {}
 	local now = os.clock()
 	for _, other in ipairs(Players:GetPlayers()) do
-		if other ~= attacker then
-			local otherState = states[other]
-			if not (otherState and now < otherState.invulnUntil) then
-				local _, otherHumanoid, otherRoot = getCharacterParts(other)
-				if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, shape) then
-					table.insert(hits, otherRoot.Position)
-					damageVictim(attacker, otherHumanoid, damage)
-				end
+		if canHitTarget(attacker, other, now) then
+			local _, otherHumanoid, otherRoot = getCharacterParts(other)
+			if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, shape) then
+				table.insert(hits, otherRoot.Position)
+				damageVictim(attacker, otherHumanoid, damage)
 			end
 		end
 	end
@@ -347,6 +575,9 @@ end
 
 local function performSkill(player: Player)
 	local state = getState(player)
+	if not state.inGame or os.clock() < state.stunnedUntil then
+		return
+	end
 	local sk = WeaponConfig.Skill[state.weaponId]
 	if not sk then
 		return
@@ -388,11 +619,7 @@ local function performSkill(player: Player)
 		local hitCount = 0
 		local hitPoints = {}
 		for _, other in ipairs(Players:GetPlayers()) do
-			if other ~= player then
-				local otherState = states[other]
-				if otherState and now < otherState.invulnUntil then
-					continue
-				end
+			if canHitTarget(player, other, now) then
 				local _, otherHumanoid, otherRoot = getCharacterParts(other)
 				if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, shape) then
 					local dist = HitboxUtil.flat(otherRoot.Position - origin).Magnitude
@@ -408,6 +635,8 @@ local function performSkill(player: Player)
 			weaponId = state.weaponId,
 			kind = "sweep",
 			hitType = sk.hitType,
+			follow = true,
+			vfx = sk.vfx,
 			origin = origin,
 			direction = direction,
 			range = sk.range,
@@ -428,6 +657,7 @@ local function performSkill(player: Player)
 				local _, hum, rt = getCharacterParts(player)
 				if rt and hum then
 					spawnProjectile(player, rt.Position, direction, {
+						kind = "sword_wave",
 						speed = sk.waveSpeed,
 						range = WeaponConfig.REACH,
 						damage = sk.directDamage,
@@ -443,20 +673,36 @@ local function performSkill(player: Player)
 	-- Hammer F: three expanding shockwaves at the cast spot after a telegraph.
 	if state.weaponId == "hammer" then
 		state.skillReadyAt = now + sk.cooldown
-		local castPos = root.Position
+		local maxRange = sk.waves[#sk.waves].range
+		CombatRemote:FireAllClients("Telegraph", {
+			userId = player.UserId,
+			weaponId = "hammer",
+			hitType = "circle",
+			follow = true,
+			grow = true,
+			origin = root.Position,
+			range = maxRange,
+			duration = sk.preview,
+			color = WeaponConfig.getWeapon("hammer").color,
+		})
 		local t = sk.preview
 		for idx, wave in ipairs(sk.waves) do
 			t += sk.waveDelays[idx]
 			local w = wave
 			task.delay(t, function()
 				local tnow = os.clock()
+				local _, hum, rt = getCharacterParts(player)
+				if not (hum and rt) then
+					return
+				end
+				local waveOrigin = rt.Position
 				for _, other in ipairs(Players:GetPlayers()) do
-					if other ~= player then
-						local otherState = states[other]
-						if not (otherState and tnow < otherState.invulnUntil) then
-							local _, oh, orh = getCharacterParts(other)
-							if oh and orh and HitboxUtil.flat(orh.Position - castPos).Magnitude <= w.range then
-								damageVictim(player, oh, w.damage)
+					if canHitTarget(player, other, tnow) then
+						local _, oh, orh = getCharacterParts(other)
+						if oh and orh and HitboxUtil.flat(orh.Position - waveOrigin).Magnitude <= w.range then
+							damageVictim(player, oh, w.damage)
+							if w.stun then
+								stunPlayer(other, w.stun)
 							end
 						end
 					end
@@ -466,7 +712,7 @@ local function performSkill(player: Player)
 					weaponId = "hammer",
 					kind = "sweep",
 					hitType = "circle",
-					origin = castPos,
+					origin = waveOrigin,
 					range = w.range,
 					color = WeaponConfig.getWeapon("hammer").color,
 				})
@@ -480,13 +726,27 @@ local function performSkill(player: Player)
 
 	-- Bow F: instant piercing railgun beam.
 	if state.weaponId == "bow" then
+		if state.bowStacks <= 0 then
+			return
+		end
+		local stacks = state.bowStacks
+		setBowStacks(player, state, 0)
 		state.skillReadyAt = now + sk.cooldown
-		local shape = { hitType = "line", range = WeaponConfig.REACH, width = 0.9 }
-		local hits = damageInShape(player, root.Position, aim, shape, sk.damage)
-		CombatRemote:FireAllClients("SkillEffect", {
-			userId = player.UserId, kind = "sweep", hitType = "line", origin = root.Position,
-			direction = aim, range = WeaponConfig.REACH, width = 0.9, color = weaponColor, hits = hits,
-		})
+		for i = 1, stacks do
+			task.delay((i - 1) * sk.burstInterval, function()
+				local _, hum, rt = getCharacterParts(player)
+				if not (hum and rt) then
+					return
+				end
+				local beamAim = HitboxUtil.safeUnit(state.aimDirection, aim)
+				local shape = { hitType = "line", range = WeaponConfig.REACH, width = 0.9 }
+				local hits = damageInShape(player, rt.Position, beamAim, shape, sk.damage)
+				CombatRemote:FireAllClients("SkillEffect", {
+					userId = player.UserId, kind = "sweep", hitType = "line", origin = rt.Position,
+					direction = beamAim, range = WeaponConfig.REACH, width = 0.9, color = weaponColor, hits = hits,
+				})
+			end)
+		end
 		return
 	end
 
@@ -502,10 +762,11 @@ local function performSkill(player: Player)
 		task.delay(0.5, function()
 			local _, hum, rt = getCharacterParts(player)
 			if rt and hum then
-				local h2 = damageInShape(player, rt.Position, aim, shape, sk.returnDamage)
+				local returnAim = HitboxUtil.safeUnit(state.aimDirection, aim)
+				local h2 = damageInShape(player, rt.Position, returnAim, shape, sk.returnDamage)
 				CombatRemote:FireAllClients("SkillEffect", {
 					userId = player.UserId, kind = "sweep", hitType = "line", origin = rt.Position,
-					direction = aim, range = WeaponConfig.REACH, width = 1.6, color = weaponColor, hits = h2,
+					direction = returnAim, range = WeaponConfig.REACH, width = 1.6, color = weaponColor, hits = h2,
 				})
 			end
 		end)
@@ -521,66 +782,232 @@ local function performSkill(player: Player)
 				if not (rt and hum) then
 					return
 				end
+				local slashAim = HitboxUtil.safeUnit(state.aimDirection, aim)
 				local arc = { hitType = "arc", range = sk.directRange, angle = sk.directAngle }
-				local hits = damageInShape(player, rt.Position, aim, arc, sk.directDamage)
+				local hits = damageInShape(player, rt.Position, slashAim, arc, sk.directDamage)
 				CombatRemote:FireAllClients("SkillEffect", {
 					userId = player.UserId, kind = "sweep", hitType = "arc", origin = rt.Position,
-					direction = aim, range = sk.directRange, angle = sk.directAngle, color = weaponColor, hits = hits,
+					direction = slashAim, range = sk.directRange, angle = sk.directAngle, color = weaponColor,
+					vfx = sk.vfx, follow = true, hits = hits,
 				})
-				spawnProjectile(player, rt.Position, aim, {
-					speed = sk.waveSpeed, range = WeaponConfig.REACH, damage = sk.waveDamage, radius = 0.8, color = weaponColor,
+				spawnProjectile(player, rt.Position, slashAim, {
+					kind = "sword_wave", speed = sk.waveSpeed, range = WeaponConfig.REACH,
+					damage = sk.waveDamage, radius = 0.8, color = weaponColor,
 				})
 			end)
 		end
 		return
 	end
 
-	-- Greatsword F: instant heavy cleave (charge windup comes later).
+	-- Greatsword F is handled by SkillStart / SkillRelease so hold duration is authoritative.
 	if state.weaponId == "greatsword" then
-		state.skillReadyAt = now + sk.cooldown
-		local shape = { hitType = sk.hitType, range = sk.range, angle = sk.angle }
-		local hits = damageInShape(player, root.Position, aim, shape, sk.damage)
-		CombatRemote:FireAllClients("SkillEffect", {
-			userId = player.UserId, kind = "sweep", hitType = sk.hitType, origin = root.Position,
-			direction = aim, range = sk.range, angle = sk.angle, color = weaponColor, hits = hits,
-		})
 		return
 	end
 
-	-- Dagger F: backstab the nearest enemy in reach (QTE timing comes later).
+	-- Dagger F: lock onto nearest enemy and wait for the client timing press.
 	if state.weaponId == "dagger" then
 		state.skillReadyAt = now + sk.cooldown
-		local best, bestRoot, bestDist
-		for _, other in ipairs(Players:GetPlayers()) do
-			if other ~= player then
-				local otherState = states[other]
-				if not (otherState and now < otherState.invulnUntil) then
-					local _, oh, orh = getCharacterParts(other)
-					if oh and orh then
-						local d = HitboxUtil.flat(orh.Position - root.Position).Magnitude
-						if d <= 12 and (not bestDist or d < bestDist) then
-							best, bestRoot, bestDist = oh, orh, d
-						end
-					end
-				end
-			end
-		end
-		if best and bestRoot then
-			damageVictim(player, best, sk.damage)
-			CombatRemote:FireAllClients("Spark", { pos = bestRoot.Position, color = weaponColor })
+		local targetPlayer = findNearestEnemy(player, root.Position, 18)
+		if targetPlayer then
+			local qteExpire = now + sk.lock + sk.window
+			state.invulnUntil = math.max(state.invulnUntil, qteExpire)
+			state.daggerQte = {
+				target = targetPlayer,
+				startedAt = now,
+				expiresAt = qteExpire,
+			}
+			CombatRemote:FireClient(player, "QTEStart", {
+				targetUserId = targetPlayer.UserId,
+				lock = sk.lock,
+				window = sk.window,
+				perfect = sk.perfect,
+				tolerance = sk.tolerance,
+			})
 		end
 		return
 	end
 
-	-- Magic staff F: launch a fireball projectile (burn/ice-shard come later).
+	-- Magic staff F: launch a fireball projectile that burns after direct contact.
 	if state.weaponId == "magicstaff" then
 		local fb = WeaponConfig.Magic.fireball
 		state.skillReadyAt = now + fb.cooldown
 		spawnProjectile(player, root.Position, aim, {
+			kind = "fireball",
 			speed = fb.speed, range = WeaponConfig.REACH, damage = fb.damage,
 			radius = math.max(fb.radius, 1), color = weaponColor,
+			burnDps = fb.burnDps,
+			burnDuration = fb.burnDuration,
 		})
 		return
+	end
+
+	if state.weaponId == "sniper" then
+		local weapon = WeaponConfig.getWeapon("sniper")
+		state.skillReadyAt = now + sk.cooldown
+		local shape = { hitType = "line", range = WeaponConfig.REACH, width = weapon.width }
+		local hits = damageInShape(player, root.Position, aim, shape, weapon.damage)
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId, kind = "sweep", hitType = "line", origin = root.Position,
+			direction = aim, range = WeaponConfig.REACH, width = weapon.width, color = weaponColor, hits = hits,
+		})
+		return
+	end
+
+	if state.weaponId == "matchlock" then
+		local weapon = WeaponConfig.getWeapon("matchlock")
+		state.skillReadyAt = now + sk.cooldown
+		spawnProjectile(player, root.Position, aim, {
+			kind = "matchlock_shot",
+			speed = 110,
+			range = WeaponConfig.REACH,
+			damage = sk.damage or weapon.damage,
+			radius = math.max(weapon.width or 0.45, 0.45),
+			color = weaponColor,
+		})
+		return
+	end
+end
+
+local function startSkill(player: Player)
+	local state = getState(player)
+	local now = os.clock()
+	if not state.inGame or os.clock() < state.stunnedUntil then
+		return
+	end
+	if state.weaponId ~= "greatsword" then
+		performSkill(player)
+		return
+	end
+	if now < state.skillReadyAt then
+		return
+	end
+
+	local sk = WeaponConfig.Skill.greatsword
+	local _, humanoid, root = getCharacterParts(player)
+	if not humanoid or not root then
+		return
+	end
+
+	state.greatswordChargeStart = now
+	CombatRemote:FireAllClients("Telegraph", {
+		userId = player.UserId,
+		weaponId = "greatsword",
+		hitType = sk.hitType,
+		follow = true,
+		origin = root.Position,
+		direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector)),
+		range = sk.range,
+		angle = sk.angle,
+		duration = sk.chargeMax,
+		color = WeaponConfig.getWeapon("greatsword").color,
+	})
+end
+
+local function releaseSkill(player: Player)
+	local state = getState(player)
+	if not state.inGame then
+		return
+	end
+	if state.weaponId ~= "greatsword" then
+		return
+	end
+
+	local chargeStart = state.greatswordChargeStart
+	if not chargeStart then
+		return
+	end
+	state.greatswordChargeStart = nil
+
+	local now = os.clock()
+	local sk = WeaponConfig.Skill.greatsword
+	if now < state.skillReadyAt then
+		return
+	end
+
+	local _, humanoid, root = getCharacterParts(player)
+	if not humanoid or not root then
+		return
+	end
+
+	local held = math.clamp(now - chargeStart, 0, sk.chargeMax)
+	local damage = sk.minDamage
+	if held >= sk.chargeThreshold then
+		local t = math.clamp((held - sk.chargeThreshold) / math.max(sk.chargeMax - sk.chargeThreshold, 0.01), 0, 1)
+		damage = sk.thresholdDamage + (sk.damage - sk.thresholdDamage) * t
+	end
+
+	state.skillReadyAt = now + sk.cooldown
+	local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
+	task.delay(sk.delayDamage or 0, function()
+		local _, hum, rt = getCharacterParts(player)
+		if not (hum and rt) then
+			return
+		end
+		local shape = { hitType = sk.hitType, range = sk.range, angle = sk.angle, bladeHalfWidth = sk.bladeHalfWidth }
+		local hits = damageInShape(player, rt.Position, direction, shape, damage)
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId,
+			kind = "sweep",
+			hitType = sk.hitType,
+			vfx = sk.vfx,
+			follow = true,
+			origin = rt.Position,
+			direction = direction,
+			range = sk.range,
+			angle = sk.angle,
+			color = WeaponConfig.getWeapon("greatsword").color,
+			hits = hits,
+		})
+	end)
+end
+
+local function resolveDaggerQTE(player: Player)
+	local state = getState(player)
+	if not state.inGame then
+		return
+	end
+	local qte = state.daggerQte
+	if not qte then
+		return
+	end
+	state.daggerQte = nil
+
+	local sk = WeaponConfig.Skill.dagger
+	local now = os.clock()
+	local targetPlayer = qte.target
+	local _, humanoid, root = getCharacterParts(player)
+	local _, targetHumanoid, targetRoot = getCharacterParts(targetPlayer)
+	CombatRemote:FireClient(player, "QTEEnd")
+
+	if not humanoid or not root or not targetHumanoid or not targetRoot or now > qte.expiresAt then
+		state.invulnUntil = now
+		return
+	end
+
+	local elapsedAfterLock = now - qte.startedAt - sk.lock
+	local success = elapsedAfterLock >= 0 and math.abs(elapsedAfterLock - sk.perfect) <= sk.tolerance
+	if success then
+		local targetState = getState(targetPlayer)
+		local behindDir = HitboxUtil.safeUnit(targetState.aimDirection, Vector3.new(0, 0, -1))
+		local destination = targetRoot.Position - behindDir * 3.2
+		root.CFrame = CFrame.new(destination.X, root.Position.Y, destination.Z)
+		damageVictim(player, targetHumanoid, sk.damage)
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId,
+			kind = "sweep",
+			hitType = "line",
+			origin = root.Position,
+			direction = HitboxUtil.safeUnit(targetRoot.Position - root.Position, state.aimDirection),
+			range = 6.5,
+			width = 0.5,
+			color = WeaponConfig.getWeapon("dagger").color,
+			hits = { targetRoot.Position },
+		})
+	else
+		state.invulnUntil = now
+		damageVictim(player, humanoid, sk.failDamage)
+		stunPlayer(player, sk.failStun)
+		CombatRemote:FireAllClients("Spark", { pos = root.Position, color = Color3.fromRGB(255, 80, 80) })
 	end
 end
 
@@ -588,6 +1015,9 @@ end
 -- katana iaijutsu forward slash. (Greatsword charge / other holds come later.)
 local function performAltSkill(player: Player)
 	local state = getState(player)
+	if not state.inGame or os.clock() < state.stunnedUntil then
+		return
+	end
 	local now = os.clock()
 	if now < state.altReadyAt then
 		return
@@ -618,33 +1048,105 @@ local function performAltSkill(player: Player)
 		return
 	end
 
-	if weaponId == "katana" then
-		local sk = WeaponConfig.Skill.katana
-		state.altReadyAt = now + sk.iaijutsuCooldown
-		local origin = root.Position
+	local alt = WeaponConfig.AltSkill and WeaponConfig.AltSkill[weaponId]
+	if alt then
+		state.altReadyAt = now + (alt.cooldown or 0)
 		local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
-		local shape = { hitType = "line", range = sk.iaijutsuRange, width = sk.iaijutsuWidth }
-		local hitPoints = {}
-		for _, other in ipairs(Players:GetPlayers()) do
-			if other ~= player then
-				local otherState = states[other]
-				if otherState and now < otherState.invulnUntil then
-					continue
-				end
-				local _, otherHumanoid, otherRoot = getCharacterParts(other)
-				if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, shape) then
-					table.insert(hitPoints, otherRoot.Position)
-					damageVictim(player, otherHumanoid, sk.iaijutsuDamage)
-				end
-			end
-		end
+		local shape = {
+			hitType = alt.hitType,
+			range = alt.range,
+			width = alt.width,
+			angle = alt.angle,
+		}
+		local hitPoints = damageInShape(player, root.Position, direction, shape, alt.damage or 0)
 		CombatRemote:FireAllClients("SkillEffect", {
-			userId = player.UserId, kind = "sweep", hitType = "line",
-			origin = origin, direction = direction, range = sk.iaijutsuRange,
-			width = sk.iaijutsuWidth, color = color, hits = hitPoints,
+			userId = player.UserId, kind = "sweep", hitType = alt.hitType,
+			origin = root.Position, direction = direction, range = alt.range,
+			width = alt.width, angle = alt.angle, color = color, hits = hitPoints,
+			vfx = alt.vfx or WeaponConfig.getWeapon(weaponId).vfx,
+			follow = alt.hitType == "circle" or alt.hitType == "arc" or alt.hitType == "blade_sweep",
 		})
 		return
 	end
+end
+
+local function startAltSkill(player: Player)
+	local state = getState(player)
+	local now = os.clock()
+	if not state.inGame or now < state.stunnedUntil then
+		return
+	end
+	if state.weaponId ~= "katana" then
+		performAltSkill(player)
+		return
+	end
+	if now < state.altReadyAt or state.katanaChargeStart then
+		return
+	end
+
+	local _, humanoid, root = getCharacterParts(player)
+	if not humanoid or not root then
+		return
+	end
+
+	local sk = WeaponConfig.Skill.katana
+	state.katanaChargeStart = now
+	CombatRemote:FireAllClients("Telegraph", {
+		userId = player.UserId,
+		weaponId = "katana",
+		hitType = "line",
+		follow = true,
+		origin = root.Position,
+		direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector)),
+		range = sk.iaijutsuRange,
+		width = sk.iaijutsuWidth,
+		duration = sk.iaijutsuCharge,
+		color = WeaponConfig.getWeapon("katana").color,
+	})
+end
+
+local function releaseAltSkill(player: Player)
+	local state = getState(player)
+	local now = os.clock()
+	if not state.inGame or now < state.stunnedUntil or state.weaponId ~= "katana" then
+		return
+	end
+
+	local chargeStart = state.katanaChargeStart
+	if not chargeStart then
+		return
+	end
+	state.katanaChargeStart = nil
+	if now < state.altReadyAt then
+		return
+	end
+
+	local _, humanoid, root = getCharacterParts(player)
+	if not humanoid or not root then
+		return
+	end
+
+	local sk = WeaponConfig.Skill.katana
+	local held = math.clamp(now - chargeStart, 0, sk.iaijutsuCharge)
+	local chargeRatio = math.clamp(held / math.max(sk.iaijutsuCharge, 0.01), 0, 1)
+	local damage = math.max(1, math.floor(sk.iaijutsuDamage * chargeRatio + 0.5))
+	local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
+	local shape = { hitType = "line", range = sk.iaijutsuRange, width = sk.iaijutsuWidth }
+	local hits = damageInShape(player, root.Position, direction, shape, damage)
+	state.altReadyAt = now + sk.iaijutsuCooldown
+
+	CombatRemote:FireAllClients("SkillEffect", {
+		userId = player.UserId,
+		kind = "sweep",
+		hitType = "line",
+		vfx = sk.vfx,
+		origin = root.Position,
+		direction = direction,
+		range = sk.iaijutsuRange,
+		width = sk.iaijutsuWidth,
+		color = WeaponConfig.getWeapon("katana").color,
+		hits = hits,
+	})
 end
 
 CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payload)
@@ -662,12 +1164,37 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 		state.buffType = nil
 		state.skillReadyAt = 0
 		state.altReadyAt = 0
+		state.greatswordChargeStart = nil
+		state.katanaChargeStart = nil
+		state.daggerQte = nil
+		if payload ~= "bow" then
+			setBowStacks(player, state, 0)
+		end
+		applyWeaponStats(player)
+	elseif action == "EnterGame" then
+		state.inGame = true
+		player:SetAttribute("InGame", true)
+		local character = player.Character
+		if character then
+			spawnNearArena(player, character)
+		end
+		applyWeaponStats(player)
+	elseif action == "LeaveGame" then
+		state.inGame = false
+		state.buffType = nil
+		state.daggerQte = nil
+		state.greatswordChargeStart = nil
+		state.katanaChargeStart = nil
+		state.comboStep = 0
+		state.attackCooldown = 0
+		player:SetAttribute("InGame", false)
+		setBowStacks(player, state, 0)
 		applyWeaponStats(player)
 	elseif action == "Attack" then
-		attack(player)
+		attack(player, payload)
 	elseif action == "Dash" then
 		local now = os.clock()
-		if now - state.lastDash >= Dash.cooldown then
+		if state.inGame and now - state.lastDash >= Dash.cooldown then
 			state.lastDash = now
 			state.invulnUntil = now + Dash.iframe
 			CombatRemote:FireAllClients("DashEffect", {
@@ -677,8 +1204,18 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 		end
 	elseif action == "Skill" then
 		performSkill(player)
+	elseif action == "SkillStart" then
+		startSkill(player)
+	elseif action == "SkillRelease" then
+		releaseSkill(player)
+	elseif action == "DaggerQTE" then
+		resolveDaggerQTE(player)
 	elseif action == "AltSkill" then
 		performAltSkill(player)
+	elseif action == "AltStart" then
+		startAltSkill(player)
+	elseif action == "AltRelease" then
+		releaseAltSkill(player)
 	end
 end)
 
@@ -690,7 +1227,11 @@ RunService.Heartbeat:Connect(function(dt)
 		if state.buffType and now > state.buffExpire then
 			clearBuff(player, state)
 		end
-		if WeaponConfig.getWeapon(state.weaponId).automaticAttack ~= false then
+		if state.daggerQte and now > state.daggerQte.expiresAt then
+			state.daggerQte = nil
+			CombatRemote:FireClient(player, "QTEEnd")
+		end
+		if state.inGame and WeaponConfig.getWeapon(state.weaponId).automaticAttack ~= false then
 			attack(player)
 		end
 	end
@@ -704,19 +1245,20 @@ RunService.Heartbeat:Connect(function(dt)
 		local dead = p.remaining <= 0 or math.abs(p.pos.X) > 70 or math.abs(p.pos.Z) > 70
 		if not dead then
 			for _, other in ipairs(Players:GetPlayers()) do
-				if other ~= p.owner and not p.hitSet[other] then
-					local otherState = states[other]
-					if not (otherState and now < otherState.invulnUntil) then
-						local _, otherHumanoid, otherRoot = getCharacterParts(other)
-						if otherHumanoid and otherRoot
-							and HitboxUtil.flat(otherRoot.Position - p.pos).Magnitude <= p.radius + PROJ_TARGET_RADIUS then
-							damageVictim(p.owner, otherHumanoid, p.damage)
-							p.hitSet[other] = true
-							CombatRemote:FireAllClients("Spark", { pos = otherRoot.Position, color = p.color })
-							if not p.pierce then
-								dead = true
-								break
-							end
+				if not p.hitSet[other] and canHitTarget(p.owner, other, now) then
+					local _, otherHumanoid, otherRoot = getCharacterParts(other)
+					if otherHumanoid and otherRoot
+						and HitboxUtil.flat(otherRoot.Position - p.pos).Magnitude <= p.radius + PROJ_TARGET_RADIUS then
+						damageVictim(p.owner, otherHumanoid, p.damage)
+						applyBurn(p.owner, otherHumanoid, p.burnDps, p.burnDuration)
+						if p.kind == "bow_arrow" then
+							addBowStack(p.owner, 1)
+						end
+						p.hitSet[other] = true
+						CombatRemote:FireAllClients("Spark", { pos = otherRoot.Position, color = p.color })
+						if not p.pierce then
+							dead = true
+							break
 						end
 					end
 				end

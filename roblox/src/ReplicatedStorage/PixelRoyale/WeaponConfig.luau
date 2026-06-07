@@ -21,11 +21,11 @@ WeaponConfig.Weapons = {
 	sword = {
 		displayName = "Sword", damage = 24, maxHealth = 120, cooldown = 0.55,
 		moveSpeed = 1.1, range = 7, angle = 110, hitType = "blade_sweep",
-		bladeHalfWidth = 1.2, color = Color3.fromRGB(69, 243, 255),
+		bladeHalfWidth = 1.2, vfx = "slash", color = Color3.fromRGB(69, 243, 255),
 	},
 	axe = {
-		displayName = "Axe", damage = 40, maxHealth = 150, cooldown = 0.9,
-		moveSpeed = 0.8, range = 5.8, angle = 360, hitType = "circle",
+		displayName = "Axe", damage = 36, maxHealth = 150, cooldown = 0.82,
+		moveSpeed = 0.85, range = 6.3, angle = 360, hitType = "circle", vfx = "slash",
 		color = Color3.fromRGB(245, 85, 85),
 	},
 	bow = {
@@ -40,7 +40,7 @@ WeaponConfig.Weapons = {
 	},
 	gauntlet = {
 		displayName = "Gauntlet", damage = 19, maxHealth = 110, cooldown = 0.16,
-		moveSpeed = 1.3, range = 5.8, angle = 110, hitType = "arc",
+		moveSpeed = 1.3, range = 5.8, angle = 110, hitType = "arc", vfx = "punch",
 		color = Color3.fromRGB(255, 69, 219),
 	},
 	greatsword = {
@@ -79,7 +79,7 @@ WeaponConfig.Weapons = {
 	katana = {
 		displayName = "Katana", damage = 24, maxHealth = 110, cooldown = 0.43,
 		moveSpeed = 1.2, range = 7, angle = 110, hitType = "blade_sweep",
-		bladeHalfWidth = 1.2, color = Color3.fromRGB(244, 63, 94),
+		bladeHalfWidth = 1.2, vfx = "slash", color = Color3.fromRGB(244, 63, 94),
 	},
 	magicstaff = {
 		displayName = "Magic Staff", damage = 40, maxHealth = 95, cooldown = 2,
@@ -110,8 +110,8 @@ WeaponConfig.Skill = {
 		directDamage = 24, explosionRadius = 7, explosionDamage = 20,
 	},
 	axe = { -- "rage": stationary fan-slash buff
-		cooldown = 6, buff = 4, hitType = "arc", damage = 50,
-		attackCooldown = 0.3, range = 10, angle = 120,
+		cooldown = 6, buff = 4, hitType = "arc", vfx = "slash", damage = 48,
+		attackCooldown = 0.32, range = 10, angle = 120,
 	},
 	bow = { -- stacking railgun burst
 		cooldown = 8, damage = 60, maxStacks = 5, burstInterval = 0.25,
@@ -120,12 +120,13 @@ WeaponConfig.Skill = {
 		cooldown = 2, damage = 35, returnDamage = 35, returnSpeed = 76, returnTime = 1.8,
 	},
 	gauntlet = { -- "lance": punches become a long line
-		cooldown = 7, buff = 7, damage = 20, range = 11.5, width = 2.2, hitType = "line",
+		cooldown = 7, buff = 7, damage = 20, range = 11.5, width = 2.2, hitType = "line", vfx = "punch",
 	},
 	greatsword = { -- charge-up heavy cleave
 		cooldown = 0.8, chargeMax = 1, chargeThreshold = 0.5, minDamage = 1,
 		thresholdDamage = 35, damage = 70, hitType = "blade_sweep", range = 12.8,
 		angle = 210, bladeHalfWidth = 1.8, delayDamage = 0.07, attackLock = 0.8, knockback = 8.2,
+		vfx = "slash",
 	},
 	scythe = {
 		cooldown = 6.5, hitType = "sweet_arc", damage = 24, sweetDamage = 46,
@@ -153,9 +154,24 @@ WeaponConfig.Skill = {
 		cooldown = 7, dashDistance = 15, slashCount = 2, slashInterval = 0.15,
 		directDamage = 40, directRange = 8.2, directAngle = 130, waveDamage = 30, waveSpeed = 83.2,
 		attackLock = 0.25, iaijutsuCooldown = 3, iaijutsuCharge = 1, iaijutsuDamage = 80,
-		iaijutsuRange = 15, iaijutsuWidth = 4,
+		iaijutsuRange = 15, iaijutsuWidth = 4, vfx = "slash",
 	},
 	sniper = { cooldown = 2, teleportCooldown = 2 }, -- F: instakill shot, R: random teleport
+	magicstaff = { cooldown = 2 }, -- F: fireball; LMB: targeted ice shards
+}
+
+WeaponConfig.AltSkill = {
+	sword = { cooldown = 5, hitType = "circle", vfx = "slash", damage = 22, range = 6.8 },
+	axe = { cooldown = 5.8, hitType = "circle", vfx = "slash", damage = 34, range = 8.5 },
+	bow = { cooldown = 4, hitType = "line", damage = 40, range = WeaponConfig.REACH, width = 0.8 },
+	spear = { cooldown = 4, hitType = "line", damage = 28, range = 18, width = 1.6 },
+	gauntlet = { cooldown = 4.5, hitType = "circle", vfx = "punch", damage = 22, range = 6.5 },
+	greatsword = { cooldown = 5, hitType = "circle", vfx = "slash", damage = 24, range = 7.2 },
+	scythe = { cooldown = 5, hitType = "sweet_arc", damage = 22, sweetDamage = 36, range = 11, innerRange = 5.2, angle = 210 },
+	dagger = { cooldown = 4.5, hitType = "line", damage = 26, range = 9, width = 0.7 },
+	rapier = { cooldown = 4, hitType = "precise_line", damage = 32, range = 13, width = 0.5 },
+	hammer = { cooldown = 6, hitType = "circle", damage = 26, range = 8 },
+	matchlock = { cooldown = 6, hitType = "line", damage = 60, range = WeaponConfig.REACH, width = 0.65 },
 }
 
 -- Automatic-attack combos (finisher every `cycle` hits).
@@ -222,12 +238,14 @@ function WeaponConfig.getEffectiveWeapon(weaponId: string, buffType: string?)
 		merged.cooldown = sk.attackCooldown
 		merged.range = sk.range
 		merged.angle = sk.angle
+		merged.vfx = sk.vfx or merged.vfx
 	elseif buffType == "gauntlet_lance" and weaponId == "gauntlet" then
 		local sk = WeaponConfig.Skill.gauntlet
 		merged.hitType = sk.hitType
 		merged.damage = sk.damage
 		merged.range = sk.range
 		merged.width = sk.width
+		merged.vfx = sk.vfx or merged.vfx
 	elseif buffType == "rapier_riposte" and weaponId == "rapier" then
 		local sk = WeaponConfig.Skill.rapier
 		merged.cooldown = sk.buffCooldown

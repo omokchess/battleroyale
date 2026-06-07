@@ -147,7 +147,7 @@ function CombatantTokenClient.updateAll(localAim: Vector3?)
 	for _, player in ipairs(Players:GetPlayers()) do
 		local token = tokens[player] or makeToken(player)
 		local _, root = getCharacterRoot(player)
-		if not root then
+		if not root or player:GetAttribute("InGame") ~= true then
 			setVisible(token, false)
 			continue
 		end
