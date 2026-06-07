@@ -1,6 +1,6 @@
 local WeaponConfig = {}
 
-WeaponConfig.BaseWalkSpeed = 18
+WeaponConfig.BaseWalkSpeed = 20
 WeaponConfig.DefaultWeapon = "sword"
 WeaponConfig.Order = {
 	"sword",
@@ -20,7 +20,7 @@ WeaponConfig.Order = {
 
 WeaponConfig.Weapons = {
 	sword = {
-		displayName = "검",
+		displayName = "Sword",
 		damage = 24,
 		maxHealth = 120,
 		cooldown = 0.55,
@@ -31,7 +31,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(69, 243, 255),
 	},
 	axe = {
-		displayName = "도끼",
+		displayName = "Axe",
 		damage = 40,
 		maxHealth = 150,
 		cooldown = 0.9,
@@ -42,7 +42,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(245, 85, 85),
 	},
 	bow = {
-		displayName = "활",
+		displayName = "Bow",
 		damage = 33,
 		maxHealth = 80,
 		cooldown = 0.8,
@@ -53,7 +53,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(163, 255, 69),
 	},
 	spear = {
-		displayName = "창",
+		displayName = "Spear",
 		damage = 17,
 		maxHealth = 100,
 		cooldown = 0.5,
@@ -64,7 +64,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(255, 163, 69),
 	},
 	gauntlet = {
-		displayName = "건틀릿",
+		displayName = "Gauntlet",
 		damage = 19,
 		maxHealth = 110,
 		cooldown = 0.16,
@@ -75,7 +75,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(255, 69, 219),
 	},
 	greatsword = {
-		displayName = "대검",
+		displayName = "Greatsword",
 		damage = 38,
 		maxHealth = 140,
 		cooldown = 0.9,
@@ -86,7 +86,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(139, 211, 255),
 	},
 	scythe = {
-		displayName = "대낫",
+		displayName = "Scythe",
 		damage = 18,
 		maxHealth = 115,
 		cooldown = 0.68,
@@ -97,7 +97,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(217, 70, 239),
 	},
 	dagger = {
-		displayName = "단검",
+		displayName = "Dagger",
 		damage = 14,
 		maxHealth = 90,
 		cooldown = 0.3,
@@ -108,7 +108,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(248, 250, 252),
 	},
 	rapier = {
-		displayName = "레이피어",
+		displayName = "Rapier",
 		damage = 20,
 		maxHealth = 100,
 		cooldown = 0.43,
@@ -119,7 +119,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(250, 204, 21),
 	},
 	hammer = {
-		displayName = "망치",
+		displayName = "Hammer",
 		damage = 36,
 		maxHealth = 145,
 		cooldown = 1.15,
@@ -130,7 +130,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(251, 146, 60),
 	},
 	matchlock = {
-		displayName = "화승총",
+		displayName = "Matchlock",
 		damage = 120,
 		maxHealth = 80,
 		cooldown = 15,
@@ -141,7 +141,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(239, 68, 68),
 	},
 	katana = {
-		displayName = "카타나",
+		displayName = "Katana",
 		damage = 24,
 		maxHealth = 110,
 		cooldown = 0.43,
@@ -152,7 +152,7 @@ WeaponConfig.Weapons = {
 		color = Color3.fromRGB(244, 63, 94),
 	},
 	sniper = {
-		displayName = "스나이퍼",
+		displayName = "Sniper",
 		damage = 120,
 		maxHealth = 90,
 		cooldown = 2,
@@ -169,4 +169,3 @@ function WeaponConfig.getWeapon(weaponId: string?)
 end
 
 return WeaponConfig
-

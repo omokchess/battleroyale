@@ -5,10 +5,13 @@ local WeaponConfig = require(script.Parent:WaitForChild("WeaponConfig"))
 local CombatantTokenClient = {}
 
 local TOKEN_Y = 0.92
-local TOKEN_SIZE = 4.25
+local TOKEN_SIZE = 4.35
 local POINTER_OFFSET = 3.25
+local GUIDE_OFFSET = 8.1
+local GUIDE_LENGTH = 12.6
 local FOLDER_NAME = "_PixelRoyaleLocalTokens"
 
+local localPlayer = Players.LocalPlayer
 local folder: Folder? = nil
 local tokens = {}
 
@@ -30,70 +33,59 @@ local function getFolder(): Folder
 	return created
 end
 
-local function configurePart(part: BasePart)
+local function configurePart(part: BasePart, material)
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanTouch = false
 	part.CanQuery = false
 	part.CastShadow = false
-	part.Material = Enum.Material.Neon
+	part.Material = material or Enum.Material.Neon
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
 end
 
+local function makePart(name: string, size: Vector3, color: Color3, transparency: number, material)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.Color = color
+	part.Transparency = transparency
+	configurePart(part, material)
+	part.Parent = getFolder()
+	return part
+end
+
 local function makeToken(player: Player)
 	local model = Instance.new("Model")
-	model.Name = `Token_{player.UserId}`
+	model.Name = "Token_" .. tostring(player.UserId)
 	model.Parent = getFolder()
 
-	local border = Instance.new("Part")
-	border.Name = "Border"
-	border.Size = Vector3.new(TOKEN_SIZE + 0.72, 0.26, TOKEN_SIZE + 0.72)
-	border.Color = Color3.fromRGB(3, 5, 9)
-	border.Transparency = 0.04
-	configurePart(border)
+	local shadow = makePart("Shadow", Vector3.new(TOKEN_SIZE + 1.15, 0.1, TOKEN_SIZE + 1.15), Color3.fromRGB(0, 0, 0), 0.35, Enum.Material.SmoothPlastic)
+	shadow.Parent = model
+
+	local border = makePart("Border", Vector3.new(TOKEN_SIZE + 0.7, 0.28, TOKEN_SIZE + 0.7), Color3.fromRGB(4, 8, 14), 0.03, Enum.Material.Neon)
 	border.Parent = model
 
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Size = Vector3.new(TOKEN_SIZE, 0.46, TOKEN_SIZE)
-	body.Color = Color3.fromRGB(69, 243, 255)
-	body.Transparency = 0
-	configurePart(body)
+	local body = makePart("Body", Vector3.new(TOKEN_SIZE, 0.48, TOKEN_SIZE), Color3.fromRGB(69, 243, 255), 0, Enum.Material.Neon)
 	body.Parent = model
 
-	local pointer = Instance.new("Part")
-	pointer.Name = "AimPointer"
-	pointer.Size = Vector3.new(0.62, 0.54, 2.1)
-	pointer.Color = Color3.fromRGB(255, 255, 255)
-	pointer.Transparency = 0
-	configurePart(pointer)
+	local core = makePart("Core", Vector3.new(TOKEN_SIZE * 0.52, 0.55, TOKEN_SIZE * 0.52), Color3.fromRGB(255, 255, 255), 0.82, Enum.Material.Neon)
+	core.Parent = model
+
+	local pointer = makePart("AimPointer", Vector3.new(0.66, 0.58, 2.12), Color3.fromRGB(255, 255, 255), 0, Enum.Material.Neon)
 	pointer.Parent = model
 
-	local nameBillboard = Instance.new("BillboardGui")
-	nameBillboard.Name = "Name"
-	nameBillboard.Size = UDim2.fromOffset(120, 24)
-	nameBillboard.StudsOffsetWorldSpace = Vector3.new(0, 3.7, 0)
-	nameBillboard.AlwaysOnTop = true
-	nameBillboard.Parent = body
-
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.fromScale(1, 1)
-	nameLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	nameLabel.BackgroundTransparency = 0.35
-	nameLabel.BorderSizePixel = 0
-	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.TextSize = 12
-	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	nameLabel.Text = player.DisplayName
-	nameLabel.Parent = nameBillboard
+	local guide = makePart("AimGuide", Vector3.new(0.18, 0.1, GUIDE_LENGTH), Color3.fromRGB(69, 243, 255), 0.62, Enum.Material.Neon)
+	guide.Parent = model
 
 	tokens[player] = {
 		model = model,
+		shadow = shadow,
 		border = border,
 		body = body,
+		core = core,
 		pointer = pointer,
-		label = nameLabel,
+		guide = guide,
 	}
 
 	return tokens[player]
@@ -115,22 +107,43 @@ local function getCharacterRoot(player: Player)
 end
 
 local function setVisible(token, visible: boolean)
-	token.border.Transparency = visible and 0.04 or 1
+	token.shadow.Transparency = visible and 0.35 or 1
+	token.border.Transparency = visible and 0.03 or 1
 	token.body.Transparency = visible and 0 or 1
+	token.core.Transparency = visible and 0.82 or 1
 	token.pointer.Transparency = visible and 0 or 1
-	token.label.Visible = visible
+	token.guide.Transparency = visible and 0.62 or 1
 end
 
-local function getFlatDirection(root: BasePart): Vector3
-	local look = root.CFrame.LookVector
-	local direction = Vector3.new(look.X, 0, look.Z)
-	if direction.Magnitude <= 0.01 then
-		return Vector3.new(0, 0, -1)
+local function safeFlat(vector: Vector3?, fallback: Vector3): Vector3
+	if not vector then
+		return fallback
 	end
-	return direction.Unit
+
+	local flat = Vector3.new(vector.X, 0, vector.Z)
+	if flat.Magnitude <= 0.01 then
+		return fallback
+	end
+
+	return flat.Unit
 end
 
-function CombatantTokenClient.updateAll()
+local function getAimDirection(player: Player, root: BasePart, localAim: Vector3?): Vector3
+	local rootDirection = safeFlat(root.CFrame.LookVector, Vector3.new(0, 0, -1))
+	if player == localPlayer then
+		return safeFlat(localAim, rootDirection)
+	end
+
+	local aimX = player:GetAttribute("AimX")
+	local aimZ = player:GetAttribute("AimZ")
+	if typeof(aimX) == "number" and typeof(aimZ) == "number" then
+		return safeFlat(Vector3.new(aimX, 0, aimZ), rootDirection)
+	end
+
+	return rootDirection
+end
+
+function CombatantTokenClient.updateAll(localAim: Vector3?)
 	for _, player in ipairs(Players:GetPlayers()) do
 		local token = tokens[player] or makeToken(player)
 		local _, root = getCharacterRoot(player)
@@ -140,15 +153,18 @@ function CombatantTokenClient.updateAll()
 		end
 
 		local weapon = WeaponConfig.getWeapon(player:GetAttribute("Weapon") or WeaponConfig.DefaultWeapon)
-		local direction = getFlatDirection(root)
+		local direction = getAimDirection(player, root, localAim)
 		local position = Vector3.new(root.Position.X, TOKEN_Y, root.Position.Z)
 		local cframe = CFrame.lookAt(position, position + direction)
 
 		token.body.Color = weapon.color
+		token.guide.Color = weapon.color
+		token.shadow.CFrame = cframe * CFrame.new(0, -0.36, 0)
 		token.border.CFrame = cframe * CFrame.new(0, -0.18, 0)
 		token.body.CFrame = cframe
-		token.pointer.CFrame = cframe * CFrame.new(0, 0.12, -POINTER_OFFSET)
-		token.label.Text = `{player.DisplayName} [{player:GetAttribute("WeaponName") or weapon.displayName}]`
+		token.core.CFrame = cframe * CFrame.new(0, 0.12, 0)
+		token.pointer.CFrame = cframe * CFrame.new(0, 0.14, -POINTER_OFFSET)
+		token.guide.CFrame = cframe * CFrame.new(0, -0.16, -GUIDE_OFFSET)
 		setVisible(token, true)
 	end
 end
@@ -166,4 +182,3 @@ end
 Players.PlayerRemoving:Connect(CombatantTokenClient.cleanupPlayer)
 
 return CombatantTokenClient
-

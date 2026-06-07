@@ -47,36 +47,57 @@ local function ensureArena()
 		return
 	end
 
+	local baseplate = workspace:FindFirstChild("Baseplate")
+	if baseplate and baseplate:IsA("BasePart") then
+		baseplate.Transparency = 1
+		baseplate.CanCollide = false
+		baseplate.CanQuery = false
+	end
+
 	local arena = Instance.new("Folder")
 	arena.Name = "PixelRoyaleArena"
 	arena.Parent = workspace
 
-	local floor = Instance.new("Part")
-	floor.Name = "ArenaFloor"
-	floor.Anchored = true
-	floor.Size = Vector3.new(140, 1, 140)
-	-- Keep the arena top slightly above the default Baseplate to avoid z-fighting flicker.
-	floor.Position = Vector3.new(0, -0.45, 0)
-	floor.Color = Color3.fromRGB(22, 28, 36)
-	floor.Material = Enum.Material.SmoothPlastic
-	floor.Parent = arena
-
-	local function wall(name: string, size: Vector3, position: Vector3)
+	local function staticPart(name: string, size: Vector3, position: Vector3, color: Color3, material, transparency: number, canCollide: boolean)
 		local part = Instance.new("Part")
 		part.Name = name
 		part.Anchored = true
 		part.Size = size
 		part.Position = position
-		part.Color = Color3.fromRGB(31, 245, 255)
-		part.Material = Enum.Material.Neon
-		part.Transparency = 0.2
+		part.Color = color
+		part.Material = material
+		part.Transparency = transparency
+		part.CanCollide = canCollide
+		part.CanQuery = canCollide
+		part.CastShadow = false
 		part.Parent = arena
+		return part
 	end
 
-	wall("NorthWall", Vector3.new(142, 5, 2), Vector3.new(0, 2, -71))
-	wall("SouthWall", Vector3.new(142, 5, 2), Vector3.new(0, 2, 71))
-	wall("EastWall", Vector3.new(2, 5, 142), Vector3.new(71, 2, 0))
-	wall("WestWall", Vector3.new(2, 5, 142), Vector3.new(-71, 2, 0))
+	local floor = Instance.new("Part")
+	floor.Name = "ArenaFloor"
+	floor.Anchored = true
+	floor.Size = Vector3.new(140, 1, 140)
+	floor.Position = Vector3.new(0, -0.45, 0)
+	floor.Color = Color3.fromRGB(18, 24, 33)
+	floor.Material = Enum.Material.SmoothPlastic
+	floor.CastShadow = false
+	floor.Parent = arena
+
+	for offset = -63, 63, 7 do
+		staticPart("GridX_" .. tostring(offset), Vector3.new(140, 0.08, 0.08), Vector3.new(0, 0.09, offset), Color3.fromRGB(45, 68, 82), Enum.Material.Neon, 0.68, false)
+		staticPart("GridZ_" .. tostring(offset), Vector3.new(0.08, 0.08, 140), Vector3.new(offset, 0.1, 0), Color3.fromRGB(45, 68, 82), Enum.Material.Neon, 0.68, false)
+	end
+
+	staticPart("NorthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, -71), Color3.fromRGB(31, 245, 255), Enum.Material.SmoothPlastic, 1, true)
+	staticPart("SouthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, 71), Color3.fromRGB(31, 245, 255), Enum.Material.SmoothPlastic, 1, true)
+	staticPart("EastWall", Vector3.new(2, 8, 142), Vector3.new(71, 3.5, 0), Color3.fromRGB(31, 245, 255), Enum.Material.SmoothPlastic, 1, true)
+	staticPart("WestWall", Vector3.new(2, 8, 142), Vector3.new(-71, 3.5, 0), Color3.fromRGB(31, 245, 255), Enum.Material.SmoothPlastic, 1, true)
+
+	staticPart("NorthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, -70), Color3.fromRGB(31, 245, 255), Enum.Material.Neon, 0.05, false)
+	staticPart("SouthNeonEdge", Vector3.new(142, 0.25, 0.45), Vector3.new(0, 0.3, 70), Color3.fromRGB(31, 245, 255), Enum.Material.Neon, 0.05, false)
+	staticPart("EastNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(70, 0.3, 0), Color3.fromRGB(31, 245, 255), Enum.Material.Neon, 0.05, false)
+	staticPart("WestNeonEdge", Vector3.new(0.45, 0.25, 142), Vector3.new(-70, 0.3, 0), Color3.fromRGB(31, 245, 255), Enum.Material.Neon, 0.05, false)
 end
 
 local function getState(player: Player): PlayerState
@@ -92,6 +113,8 @@ local function getState(player: Player): PlayerState
 	}
 	states[player] = state
 	player:SetAttribute("Weapon", state.weaponId)
+	player:SetAttribute("AimX", state.aimDirection.X)
+	player:SetAttribute("AimZ", state.aimDirection.Z)
 	return state
 end
 
@@ -213,6 +236,8 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 
 	if action == "SetAim" and typeof(payload) == "Vector3" then
 		state.aimDirection = HitboxUtil.safeUnit(payload, state.aimDirection)
+		player:SetAttribute("AimX", state.aimDirection.X)
+		player:SetAttribute("AimZ", state.aimDirection.Z)
 	elseif action == "SetWeapon" and typeof(payload) == "string" and WeaponConfig.Weapons[payload] then
 		state.weaponId = payload
 		state.lastAttack = 0
