@@ -129,45 +129,44 @@ function EffectsClient.drawLine(payload)
 	makeBlock(endPoint, Vector3.new(0.9, 0.12, 0.9), Color3.fromRGB(255, 255, 255), life, 0.2)
 end
 
+-- Web-style slash: a faint cone + a bright crescent that sweeps edge-to-edge
+-- with a glowing white leading tip.
 function EffectsClient.drawArc(payload)
 	local origin = payload.origin
-	local direction = payload.direction
+	local direction = payload.direction or Vector3.new(0, 0, -1)
 	local range = payload.range or 6
 	local color = payload.color or Color3.fromRGB(69, 243, 255)
-	local angle = math.rad(payload.angle or 100)
-	local life = payload.life or 0.2
-	local rays = 17
+	local half = math.rad(payload.angle or 100) * 0.5
+	local life = payload.life or 0.22
+	local aim = math.atan2(direction.Z, direction.X)
+	local swing = if payload.swingDirection == -1 then -1 else 1
 
-	for i = 0, rays - 1 do
-		local t = i / (rays - 1)
-		local offset = (t - 0.5) * angle
-		local dir = rotateFlat(direction, offset)
-		local inner = range * 0.12
-		local outer = range * (0.72 + 0.22 * math.sin(t * math.pi))
-		makePart(withHeight(origin + dir * inner), withHeight(origin + dir * outer), 0.1, color, life, 0.72)
+	-- faint cone fill (radial slices)
+	local coneSegs = 8
+	for i = 0, coneSegs - 1 do
+		local mid = aim - half + (2 * half) * ((i + 0.5) / coneSegs)
+		makePart(
+			withHeight(origin),
+			withHeight(origin + Vector3.new(math.cos(mid), 0, math.sin(mid)) * range),
+			(2 * half * range) / coneSegs + 0.1, color, life * 0.7, 0.82
+		)
 	end
 
-	for layer = 1, 4 do
-		local radius = range * (0.34 + layer * 0.17)
-		local arcSegments = 18
-		for i = 1, arcSegments do
-			local t0 = (i - 1) / arcSegments
-			local t1 = i / arcSegments
-			local a0 = (t0 - 0.5) * angle
-			local a1 = (t1 - 0.5) * angle
-			local p0 = withHeight(origin + rotateFlat(direction, a0) * radius)
-			local p1 = withHeight(origin + rotateFlat(direction, a1) * radius)
-			local slashColor = layer == 4 and Color3.fromRGB(255, 255, 255) or color
-			local slashWidth = layer == 4 and 0.26 or 0.16
-			local slashAlpha = layer == 4 and 0.08 or 0.32
-			makePart(p0, p1, slashWidth, slashColor, life, slashAlpha)
-		end
+	-- bright crescent at the outer edge, lit up segment-by-segment to sweep
+	local segs = 12
+	local r = range * 0.92
+	local function angAt(t)
+		return if swing > 0 then aim - half + 2 * half * t else aim + half - 2 * half * t
 	end
-
-	local left = rotateFlat(direction, -angle * 0.5)
-	local right = rotateFlat(direction, angle * 0.5)
-	makePart(withHeight(origin + left * range * 0.2), withHeight(origin + left * range), 0.18, color, life, 0.35)
-	makePart(withHeight(origin + right * range * 0.2), withHeight(origin + right * range), 0.18, color, life, 0.35)
+	for i = 0, segs - 1 do
+		local a0, a1 = angAt(i / segs), angAt((i + 1) / segs)
+		local p0 = withHeight(origin + Vector3.new(math.cos(a0), 0, math.sin(a0)) * r)
+		local p1 = withHeight(origin + Vector3.new(math.cos(a1), 0, math.sin(a1)) * r)
+		task.delay(i * 0.012, function()
+			makePart(p0, p1, 0.55, color, life * 0.85, 0.12)
+			makePart(p0, p1, 0.22, Color3.fromRGB(255, 255, 255), life * 0.55, 0.04)
+		end)
+	end
 end
 
 -- Map every weapon hitType onto the matching visual (mirrors HitboxUtil).
@@ -247,14 +246,30 @@ function EffectsClient.drawProjectile(payload)
 	local range = payload.range or 30
 	local life = math.clamp(range / math.max(speed, 1), 0.1, 2.2)
 	local origin = withHeight(payload.origin)
+	local dir = (payload.direction or Vector3.new(0, 0, -1))
+	local color = payload.color or Color3.fromRGB(120, 220, 255)
 	local d = (payload.radius or 0.6) * 2 + 0.7
 	local ball = Instance.new("Part")
 	ball.Shape = Enum.PartType.Ball
-	configure(ball, payload.color or Color3.fromRGB(120, 220, 255), 0.05)
+	configure(ball, color, 0.05)
 	ball.Size = Vector3.new(d, d, d)
-	ball.CFrame = CFrame.new(origin)
-	local endPos = origin + (payload.direction or Vector3.new(0, 0, -1)) * range
-	TweenService:Create(ball, TweenInfo.new(life, Enum.EasingStyle.Linear), { CFrame = CFrame.new(endPos) }):Play()
+	ball.CFrame = CFrame.lookAt(origin, origin + dir)
+
+	-- neon trail (attachments offset along RightVector so it reads from top-down)
+	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0.5, 0, 0); a0.Parent = ball
+	local a1 = Instance.new("Attachment"); a1.Position = Vector3.new(-0.5, 0, 0); a1.Parent = ball
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = a0
+	trail.Attachment1 = a1
+	trail.Lifetime = 0.2
+	trail.LightEmission = 1
+	trail.Color = ColorSequence.new(color)
+	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+	trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
+	trail.Parent = ball
+
+	local endPos = origin + dir * range
+	TweenService:Create(ball, TweenInfo.new(life, Enum.EasingStyle.Linear), { CFrame = CFrame.lookAt(endPos, endPos + dir) }):Play()
 	Debris:AddItem(ball, life + 0.05)
 end
 
