@@ -9,6 +9,7 @@ import { Weapons } from './game/Weapons.js';
 import { Protocol } from './multiplayer/Protocol.js';
 import { RoomRegistry } from './multiplayer/RoomRegistry.js';
 import * as accountUI from './ui/account-ui.js';
+import { isMobileDevice } from './game/Device.js';
 
 // Dom Elements
 const authScreen = document.getElementById('authScreen');
@@ -98,8 +99,11 @@ function setupWeaponSelector() {
       iconBox.style.aspectRatio = '1 / 1';
       iconBox.style.maxWidth = '5.25rem';
       // Stand every weapon upright pointing downward in the picker — except the
-      // bow, whose sprite is already drawn vertically.
-      const rot = w === 'bow' ? '' : 'transform:rotate(90deg);';
+      // bow, whose sprite is already drawn vertically. The greatsword sprite
+      // points the opposite way, so flip it a further 180° to match the others.
+      let rot = 'transform:rotate(90deg);';
+      if (w === 'bow') rot = '';
+      else if (w === 'greatsword') rot = 'transform:rotate(270deg);';
       iconBox.innerHTML =
         `<img src="/assets/weapons/${w}.png?v=${WEAPON_ICON_VERSION}" alt="${w}" draggable="false" ` +
         `class="w-full h-full object-contain" style="image-rendering:pixelated;${rot}" />`;
@@ -302,17 +306,44 @@ joinBtn.addEventListener('click', () => startJoin(joinRoomInput.value.trim()));
 /**
  * 5. Lobby / game screen transitions
  */
+/**
+ * On mobile, force the arena into landscape so the wide battlefield fits. This
+ * is best-effort: orientation lock needs fullscreen on most browsers and is
+ * unsupported on iOS Safari, so every call is guarded and never throws.
+ */
+async function lockLandscapeForArena() {
+  if (!isMobileDevice()) return;
+  try {
+    const el = document.documentElement;
+    if (el.requestFullscreen && !document.fullscreenElement) {
+      await el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+    }
+    if (screen.orientation && screen.orientation.lock) {
+      await screen.orientation.lock('landscape').catch(() => {});
+    }
+  } catch (_) { /* unsupported — leave orientation as-is */ }
+}
+
+function releaseLandscapeLock() {
+  try {
+    if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  } catch (_) {}
+}
+
 function enterGameScreen(isHost) {
   lobbyMenu.classList.add('hidden');
   gameScreen.classList.remove('hidden');
   hostServerIndicator.classList.toggle('hidden', !isHost);
   stopLobbyBrowsing();
+  lockLandscapeForArena();
 }
 
 function showLobbyScreen() {
   lobbyMenu.classList.remove('hidden');
   gameScreen.classList.add('hidden');
   hostServerIndicator.classList.add('hidden');
+  releaseLandscapeLock();
 
   // Tear down any room advertisement and resume browsing the list.
   roomRegistry.stopHosting();
@@ -503,7 +534,14 @@ function setupLobbyPerfToggle() {
   const read = () => {
     try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; }
   };
-  box.checked = Boolean(read().performanceMode);
+  box.checked = read().performanceMode === undefined ? isMobileDevice() : Boolean(read().performanceMode);
+  // If we're defaulting it ON for mobile, persist that once so the in-game panel
+  // and Renderer agree on first entry (still fully togglable afterwards).
+  if (read().performanceMode === undefined && box.checked) {
+    const s = read();
+    s.performanceMode = true;
+    try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* storage blocked */ }
+  }
   box.addEventListener('change', () => {
     const s = read();
     s.performanceMode = box.checked;
