@@ -42,55 +42,6 @@ local function hideAvatar(character: Model, humanoid: Humanoid?)
 	end
 end
 
-local function createSquareCombatant(player: Player, character: Model, root: BasePart)
-	local oldToken = character:FindFirstChild("PixelRoyaleToken")
-	if oldToken then
-		oldToken:Destroy()
-	end
-
-	local weapon = WeaponConfig.getWeapon(getState(player).weaponId)
-
-	local token = Instance.new("Part")
-	token.Name = "PixelRoyaleToken"
-	token.Size = Vector3.new(3.2, 0.42, 3.2)
-	token.CFrame = root.CFrame * CFrame.new(0, -2.75, 0)
-	token.Color = weapon.color
-	token.Material = Enum.Material.Neon
-	token.Transparency = 0
-	token.CanCollide = false
-	token.CanQuery = false
-	token.Massless = true
-	token.CastShadow = false
-	token.Parent = character
-
-	local bevel = Instance.new("BlockMesh")
-	bevel.Name = "PixelTokenBevel"
-	bevel.Scale = Vector3.new(1, 0.8, 1)
-	bevel.Parent = token
-
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = root
-	weld.Part1 = token
-	weld.Parent = token
-
-	local pointer = Instance.new("Part")
-	pointer.Name = "PixelRoyaleAimPointer"
-	pointer.Size = Vector3.new(0.42, 0.5, 1.5)
-	pointer.CFrame = root.CFrame * CFrame.new(0, -2.65, -1.95)
-	pointer.Color = Color3.fromRGB(255, 255, 255)
-	pointer.Material = Enum.Material.Neon
-	pointer.CanCollide = false
-	pointer.CanQuery = false
-	pointer.Massless = true
-	pointer.CastShadow = false
-	pointer.Parent = character
-
-	local pointerWeld = Instance.new("WeldConstraint")
-	pointerWeld.Part0 = root
-	pointerWeld.Part1 = pointer
-	pointerWeld.Parent = pointer
-end
-
 local function ensureArena()
 	if workspace:FindFirstChild("PixelRoyaleArena") then
 		return
@@ -178,11 +129,6 @@ local function applyWeaponStats(player: Player)
 	player:SetAttribute("WeaponName", weapon.displayName)
 	player:SetAttribute("MaxHealth", weapon.maxHealth)
 
-	local character = player.Character
-	local token = character and character:FindFirstChild("PixelRoyaleToken")
-	if token and token:IsA("BasePart") then
-		token.Color = weapon.color
-	end
 end
 
 local function setupLeaderstats(player: Player)
@@ -288,7 +234,6 @@ Players.PlayerAdded:Connect(function(player: Player)
 			local _, humanoid, root = getCharacterParts(player)
 			if humanoid and root then
 				hideAvatar(character, humanoid)
-				createSquareCombatant(player, character, root)
 			end
 			applyWeaponStats(player)
 		end)

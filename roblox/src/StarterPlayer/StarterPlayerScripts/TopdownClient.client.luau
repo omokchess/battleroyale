@@ -9,6 +9,7 @@ local camera = workspace.CurrentCamera
 local PixelRoyale = ReplicatedStorage:WaitForChild("PixelRoyale")
 local WeaponConfig = require(PixelRoyale:WaitForChild("WeaponConfig"))
 local EffectsClient = require(PixelRoyale:WaitForChild("EffectsClient"))
+local CombatantTokenClient = require(PixelRoyale:WaitForChild("CombatantTokenClient"))
 local CombatRemote = PixelRoyale:WaitForChild("Remotes"):WaitForChild("Combat")
 
 local CAMERA_POSITION = Vector3.new(0, 165, 0)
@@ -253,6 +254,7 @@ RunService.RenderStepped:Connect(function()
 	camera.CameraType = Enum.CameraType.Scriptable
 	camera.FieldOfView = 50
 	camera.CFrame = CFrame.lookAt(CAMERA_POSITION, CAMERA_TARGET, CAMERA_UP)
+	CombatantTokenClient.updateAll()
 
 	aimDirection = computeAim(root)
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + aimDirection)
