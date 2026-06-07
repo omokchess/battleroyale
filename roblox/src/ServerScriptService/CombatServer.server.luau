@@ -50,8 +50,8 @@ local states: { [Player]: PlayerState } = {}
 local projectiles = {} -- live server-simulated projectiles (waves, fireballs, …)
 local PROJ_TARGET_RADIUS = 2 -- studs; combatant body half-size for projectile contact
 local NO_BASIC_ATTACK = { greatsword = true, matchlock = true, sniper = true }
-local ARENA_FLOOR = Color3.fromRGB(18, 24, 33)
-local WEB_CYAN = Color3.fromRGB(69, 243, 255)
+local ARENA_FLOOR = Color3.fromRGB(30, 27, 38) -- warm cobblestone (#1e1b26)
+local WEB_CYAN = Color3.fromRGB(212, 175, 55) -- gilded brass trim (#d4af37), web medieval theme
 
 local function hideAvatar(character: Model, humanoid: Humanoid?)
 	if humanoid then
@@ -72,8 +72,8 @@ local function configureWorldLighting()
 	Lighting.Brightness = 0.65
 	Lighting.ClockTime = 0
 	Lighting.GlobalShadows = false
-	Lighting.Ambient = Color3.fromRGB(18, 18, 24)
-	Lighting.OutdoorAmbient = Color3.fromRGB(4, 4, 8)
+	Lighting.Ambient = Color3.fromRGB(34, 24, 16) -- warm torch-lit dungeon
+	Lighting.OutdoorAmbient = Color3.fromRGB(10, 7, 4)
 	Lighting.EnvironmentDiffuseScale = 0
 	Lighting.EnvironmentSpecularScale = 0
 	Lighting.FogColor = Color3.fromRGB(0, 0, 0)
@@ -112,7 +112,7 @@ local function ensureArena()
 				if descendant.Name:find("Wall") or descendant.Name:find("NeonEdge") then
 					descendant.Color = WEB_CYAN
 				elseif descendant.Name == "ArenaFloor" then
-					descendant.Material = Enum.Material.Slate
+					descendant.Material = Enum.Material.Cobblestone
 					descendant.Color = ARENA_FLOOR
 				end
 			end
@@ -156,14 +156,14 @@ local function ensureArena()
 	floor.Size = Vector3.new(140, 1, 140)
 	floor.Position = Vector3.new(0, -0.45, 0)
 	floor.Color = ARENA_FLOOR
-	floor.Material = Enum.Material.Slate
+	floor.Material = Enum.Material.Cobblestone
 	floor.CastShadow = false
 	floor.Reflectance = 0
 	floor.Parent = arena
 
 	for offset = -63, 63, 7 do
-		staticPart("GridX_" .. tostring(offset), Vector3.new(140, 0.08, 0.08), Vector3.new(0, 0.09, offset), Color3.fromRGB(45, 68, 82), Enum.Material.Neon, 0.68, false)
-		staticPart("GridZ_" .. tostring(offset), Vector3.new(0.08, 0.08, 140), Vector3.new(offset, 0.1, 0), Color3.fromRGB(45, 68, 82), Enum.Material.Neon, 0.68, false)
+		staticPart("GridX_" .. tostring(offset), Vector3.new(140, 0.08, 0.08), Vector3.new(0, 0.09, offset), Color3.fromRGB(96, 78, 36), Enum.Material.Neon, 0.68, false)
+		staticPart("GridZ_" .. tostring(offset), Vector3.new(0.08, 0.08, 140), Vector3.new(offset, 0.1, 0), Color3.fromRGB(96, 78, 36), Enum.Material.Neon, 0.68, false)
 	end
 
 	staticPart("NorthWall", Vector3.new(142, 8, 2), Vector3.new(0, 3.5, -71), WEB_CYAN, Enum.Material.SmoothPlastic, 1, true)

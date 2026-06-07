@@ -19,10 +19,11 @@ local CAMERA_UP = Vector3.new(0, 0, -1)
 local AIM_PLANE_Y = 0.55
 local ARENA_HALF_SIZE = 66
 
-local STONE = Color3.fromRGB(31, 40, 51)
-local DARK = Color3.fromRGB(11, 12, 16)
-local BRASS = Color3.fromRGB(69, 243, 255)
-local GOLD = Color3.fromRGB(69, 243, 255)
+-- Web "neon dungeon" (medieval) palette — matches styles.css.
+local STONE = Color3.fromRGB(27, 22, 34)   -- warm stone panel (#1b1622)
+local DARK = Color3.fromRGB(12, 10, 18)    -- inner dark (#0c0a12)
+local BRASS = Color3.fromRGB(168, 132, 44) -- antique brass border (#a8842c)
+local GOLD = Color3.fromRGB(224, 188, 92)  -- gilded text (#d8b24a)
 local GRAY = Color3.fromRGB(156, 163, 175)
 local WHITE = Color3.fromRGB(240, 240, 245)
 local GREEN = Color3.fromRGB(34, 197, 94)
