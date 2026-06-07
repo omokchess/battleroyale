@@ -10,6 +10,7 @@ import { Camera } from './Camera.js';
 import { Input } from './Input.js';
 import { Renderer } from './Renderer.js';
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig, MagicConfig } from './Weapons.js';
+import { isMobileDevice } from './Device.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 
 // Time a dead player waits before respawning.
@@ -47,8 +48,6 @@ export class Game {
     this.isRunning = false;
     this.localPlayerId = null;
     this.remainingPlayersCount = 0;
-    this.gameOver = false;
-    this.winnerNickname = '';
 
     this.lastFrameTime = 0;
     this.animationFrameId = null;
@@ -77,7 +76,6 @@ export class Game {
     this.onQuitCallback = onQuit;
     this.isRunning = true;
     this._hasQuit = false;
-    this.gameOver = false;
     this.players = {};
     this.projectiles = [];
     this.pendingSwordWaves = [];
@@ -211,18 +209,22 @@ export class Game {
   }
 
   _loadVisualSettings() {
+    // When the player has never touched the toggle, default performance mode ON
+    // for mobile/tablet devices (they get the worst frame rates) — but an
+    // explicit stored choice (true OR false) always wins, so it stays togglable.
+    const perfDefault = isMobileDevice();
     try {
       const parsed = JSON.parse(localStorage.getItem('battle_visual_settings_v1') || '{}') || {};
       return {
         hideEnemyAttackPreviews: Boolean(parsed.hideEnemyAttackPreviews),
         minimizeEnemyAttackEffects: Boolean(parsed.minimizeEnemyAttackEffects),
-        performanceMode: Boolean(parsed.performanceMode)
+        performanceMode: parsed.performanceMode === undefined ? perfDefault : Boolean(parsed.performanceMode)
       };
     } catch {
       return {
         hideEnemyAttackPreviews: false,
         minimizeEnemyAttackEffects: false,
-        performanceMode: false
+        performanceMode: perfDefault
       };
     }
   }
@@ -2555,6 +2557,13 @@ export class Game {
       }
     }
 
+    // Mobile skill button: only show it when the equipped weapon actually has a
+    // skill (e.g. magicstaff has none), so players never see a dead button.
+    const skillBtnEl = document.getElementById('skillBtn');
+    if (skillBtnEl) {
+      skillBtnEl.classList.toggle('hidden', !SkillConfig[local.weapon]);
+    }
+
     // HP Bar
     const hpBar = document.getElementById('hudHpBar');
     const hpText = document.getElementById('hudHpText');
@@ -2856,30 +2865,6 @@ export class Game {
     }
 
     return { x: chosenX, y: chosenY };
-  }
-
-  /**
-   * Tear down loops and close windows
-   */
-  _endGame(showLeaderboard, winnerName) {
-    // Show End Modal
-    const overlay = document.getElementById('resultOverlay');
-    const title = document.getElementById('resultTitle');
-    const desc = document.getElementById('resultDesc');
-    
-    if (overlay && title && desc) {
-      overlay.classList.remove('hidden');
-
-      if (winnerName === this.players[this.localPlayerId]?.nickname) {
-        title.style.color = '#eab308'; // Gold yellow
-        title.textContent = '최후의 승리';
-        desc.textContent = `축하합니다! 전장의 모든 결투자를 물리치고 생존에 성공하셨습니다!`;
-      } else {
-        title.style.color = '#ef4444'; // Red
-        title.textContent = '아쉬운 생존 실패';
-        desc.textContent = `최종 생존자는 "${winnerName}" 입니다. 더 나은 전술을 다듬어 한 번 더 도전해 보세요!`;
-      }
-    }
   }
 
   /**

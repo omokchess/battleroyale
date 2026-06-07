@@ -23,6 +23,8 @@ export class Input {
 
     this.aimAngle = 0;
     this.isRightJoystickActive = false;
+    // True while the skill button is held and being dragged as an aim stick.
+    this.isSkillAimActive = false;
     // True once any real mouse movement is seen → treat as a desktop/mouse user
     // even if the device also reports touch support (touchscreen laptops etc.).
     this.hasMouseInput = false;
@@ -263,14 +265,36 @@ export class Input {
 
     const skillBtn = document.getElementById('skillBtn');
     if (skillBtn) {
+      // The skill button doubles as a directional aim stick: press to begin the
+      // skill (or start a charge), drag away from the press point to steer the
+      // attack direction, then release to fire in the aimed direction. This lets
+      // mobile players aim a skill with the same thumb that triggers it.
+      let skillAimOrigin = null;
+
       this._skillBtnDownHandler = (e) => {
         if (e.cancelable) e.preventDefault();
         this.lastSkillPointerAt = Date.now();
+        skillAimOrigin = { x: e.clientX, y: e.clientY };
+        this.isSkillAimActive = true;
+        // Keep receiving move/up even when the finger slides off the small button.
+        try { skillBtn.setPointerCapture(e.pointerId); } catch (_) {}
         this._requestSkillDown();
+      };
+      this._skillBtnMoveHandler = (e) => {
+        if (!this.isSkillAimActive || !skillAimOrigin) return;
+        if (e.cancelable) e.preventDefault();
+        const dx = e.clientX - skillAimOrigin.x;
+        const dy = e.clientY - skillAimOrigin.y;
+        // ~10px deadzone so a tap (no drag) keeps the existing aim.
+        if (dx * dx + dy * dy > 100) {
+          this.aimAngle = Math.atan2(dy, dx);
+        }
       };
       this._skillBtnUpHandler = (e) => {
         if (e.cancelable) e.preventDefault();
         this.lastSkillPointerAt = Date.now();
+        this.isSkillAimActive = false;
+        skillAimOrigin = null;
         this._requestSkillUp();
       };
       this._skillBtnClickHandler = (e) => {
@@ -279,6 +303,7 @@ export class Input {
         if (!this.skillHeld) this._requestSkillDown();
       };
       skillBtn.addEventListener('pointerdown', this._skillBtnDownHandler);
+      skillBtn.addEventListener('pointermove', this._skillBtnMoveHandler);
       skillBtn.addEventListener('pointerup', this._skillBtnUpHandler);
       skillBtn.addEventListener('pointercancel', this._skillBtnUpHandler);
       skillBtn.addEventListener('pointerleave', this._skillBtnUpHandler);
@@ -545,6 +570,8 @@ export class Input {
   updateAimAngle(player, camera, canvasWidth, canvasHeight, mapWidth = 0, mapHeight = 0) {
     // While actively dragging the right joystick, it owns the aim.
     if (this.isRightJoystickActive) return;
+    // Likewise while the skill button is being used as an aim stick.
+    if (this.isSkillAimActive) return;
     // Pure touch mode (joystick enabled AND no mouse ever used): hold the last
     // angle so releasing the joystick doesn't snap aim to a stale mouse pos.
     // As soon as a real mouse move is seen we always aim at the cursor, even on
@@ -589,6 +616,7 @@ export class Input {
     const skillBtn = document.getElementById('skillBtn');
     if (skillBtn) {
       if (this._skillBtnDownHandler) skillBtn.removeEventListener('pointerdown', this._skillBtnDownHandler);
+      if (this._skillBtnMoveHandler) skillBtn.removeEventListener('pointermove', this._skillBtnMoveHandler);
       if (this._skillBtnUpHandler) {
         skillBtn.removeEventListener('pointerup', this._skillBtnUpHandler);
         skillBtn.removeEventListener('pointercancel', this._skillBtnUpHandler);
@@ -616,6 +644,7 @@ export class Input {
     this.skillDownRequested = false;
     this.skillUpRequested = false;
     this.skillHeld = false;
+    this.isSkillAimActive = false;
     this.targetCastRequested = false;
     this.targetCastPointer = null;
 
