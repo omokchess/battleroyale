@@ -113,7 +113,7 @@ hintLabel.TextXAlignment = Enum.TextXAlignment.Left
 hintLabel.Font = Enum.Font.Gotham
 hintLabel.TextSize = 12
 hintLabel.TextColor3 = Color3.fromRGB(156, 163, 175)
-hintLabel.Text = "WASD | Mouse aim | LMB attack | Space dash | F skill"
+hintLabel.Text = "WASD | Aim | Auto-attack | Space dash | F skill | R ability"
 hintLabel.Parent = statusFrame
 
 local attackButton = Instance.new("TextButton")
@@ -348,6 +348,13 @@ ContextActionService:BindActionAtPriority("PixelRoyaleSkill", function(_, inputS
 	end
 	return Enum.ContextActionResult.Sink
 end, false, 3000, Enum.KeyCode.F)
+
+ContextActionService:BindActionAtPriority("PixelRoyaleAltSkill", function(_, inputState)
+	if inputState == Enum.UserInputState.Begin then
+		CombatRemote:FireServer("AltSkill")
+	end
+	return Enum.ContextActionResult.Sink
+end, false, 3000, Enum.KeyCode.R)
 
 attackButton.MouseButton1Click:Connect(attack)
 

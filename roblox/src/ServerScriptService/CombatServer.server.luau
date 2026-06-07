@@ -36,6 +36,7 @@ type PlayerState = {
 	buffType: string?,
 	buffExpire: number,
 	skillReadyAt: number,
+	altReadyAt: number,
 }
 
 local states: { [Player]: PlayerState } = {}
@@ -131,6 +132,7 @@ local function getState(player: Player): PlayerState
 		buffType = nil,
 		buffExpire = 0,
 		skillReadyAt = 0,
+		altReadyAt = 0,
 	}
 	states[player] = state
 	player:SetAttribute("Weapon", state.weaponId)
@@ -376,6 +378,69 @@ local function performSkill(player: Player)
 	-- charge, dagger QTE, hammer slam, katana dash, projectiles, and R abilities.
 end
 
+-- R abilities (alt-skill): sniper random teleport, magicstaff self-heal,
+-- katana iaijutsu forward slash. (Greatsword charge / other holds come later.)
+local function performAltSkill(player: Player)
+	local state = getState(player)
+	local now = os.clock()
+	if now < state.altReadyAt then
+		return
+	end
+	local _, humanoid, root = getCharacterParts(player)
+	if not humanoid or not root then
+		return
+	end
+	local weaponId = state.weaponId
+	local color = WeaponConfig.getWeapon(weaponId).color
+
+	if weaponId == "sniper" then
+		state.altReadyAt = now + WeaponConfig.Skill.sniper.teleportCooldown
+		local x = (math.random() * 2 - 1) * 60
+		local z = (math.random() * 2 - 1) * 60
+		root.CFrame = CFrame.new(x, root.Position.Y, z)
+		CombatRemote:FireAllClients("DashEffect", { userId = player.UserId })
+		return
+	end
+
+	if weaponId == "magicstaff" then
+		state.altReadyAt = now + WeaponConfig.Magic.lifebound.cooldown
+		humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + WeaponConfig.Magic.lifebound.heal)
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId, kind = "sweep", hitType = "circle",
+			origin = root.Position, range = 3.5, color = Color3.fromRGB(80, 255, 140),
+		})
+		return
+	end
+
+	if weaponId == "katana" then
+		local sk = WeaponConfig.Skill.katana
+		state.altReadyAt = now + sk.iaijutsuCooldown
+		local origin = root.Position
+		local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
+		local shape = { hitType = "line", range = sk.iaijutsuRange, width = sk.iaijutsuWidth }
+		local hitPoints = {}
+		for _, other in ipairs(Players:GetPlayers()) do
+			if other ~= player then
+				local otherState = states[other]
+				if otherState and now < otherState.invulnUntil then
+					continue
+				end
+				local _, otherHumanoid, otherRoot = getCharacterParts(other)
+				if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, shape) then
+					table.insert(hitPoints, otherRoot.Position)
+					damageVictim(player, otherHumanoid, sk.iaijutsuDamage)
+				end
+			end
+		end
+		CombatRemote:FireAllClients("SkillEffect", {
+			userId = player.UserId, kind = "sweep", hitType = "line",
+			origin = origin, direction = direction, range = sk.iaijutsuRange,
+			width = sk.iaijutsuWidth, color = color, hits = hitPoints,
+		})
+		return
+	end
+end
+
 CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payload)
 	local state = getState(player)
 
@@ -390,6 +455,7 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 		state.comboStep = 0
 		state.buffType = nil
 		state.skillReadyAt = 0
+		state.altReadyAt = 0
 		applyWeaponStats(player)
 	elseif action == "Attack" then
 		attack(player)
@@ -405,15 +471,21 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 		end
 	elseif action == "Skill" then
 		performSkill(player)
+	elseif action == "AltSkill" then
+		performAltSkill(player)
 	end
 end)
 
--- Expire F-skill buffs (restores walkspeed when rage / lance / riposte ends).
+-- Per-frame: expire buffs + drive auto-attack (non-F-triggered weapons swing on
+-- their own cadence; attack() self-gates on the per-swing cooldown).
 RunService.Heartbeat:Connect(function()
 	local now = os.clock()
 	for player, state in pairs(states) do
 		if state.buffType and now > state.buffExpire then
 			clearBuff(player, state)
+		end
+		if WeaponConfig.getWeapon(state.weaponId).automaticAttack ~= false then
+			attack(player)
 		end
 	end
 end)
