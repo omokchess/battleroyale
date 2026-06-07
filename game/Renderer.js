@@ -21,7 +21,7 @@ const WEAPON_SPRITE_META = {
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
-const WEAPON_ASSET_VERSION = '20260608f';
+const WEAPON_ASSET_VERSION = '20260608g';
 
 export class Renderer {
   constructor(canvas) {
@@ -2437,9 +2437,9 @@ export class Renderer {
       const chargeT = motionProgress < windupPortion ? easeOutCubic(motionProgress / windupPortion) : 1;
       const releaseT = progress < windupPortion ? 0 : easeOutBack((progress - windupPortion) / (1 - windupPortion));
       const swingDirection = effect.swingDirection === -1 ? -1 : 1;
-      lunge = (isGreatsword ? -7 : -8) * chargeT + (isGreatsword ? 18 : 13) * releaseT;
-      weaponReach = (isGreatsword ? -14 : -12) * chargeT + (isGreatsword ? 28 : 20) * releaseT;
-      weaponAngle = angle + swingDirection * ((isGreatsword ? -2.05 : -1.15) * chargeT + (isGreatsword ? 3.25 : 2.25) * releaseT);
+      lunge = (isGreatsword ? -7 : -8) * chargeT + (isGreatsword ? 21 : 13) * releaseT;
+      weaponReach = (isGreatsword ? -14 : -12) * chargeT + (isGreatsword ? 36 : 20) * releaseT;
+      weaponAngle = angle + swingDirection * ((isGreatsword ? -2.18 : -1.15) * chargeT + (isGreatsword ? 3.85 : 2.25) * releaseT);
       bodyScale = 2.1 * Math.sin(Math.PI * clamp01(progress));
 
     } else if (effect.type === 'melee_sweet_arc') {
@@ -3163,7 +3163,7 @@ export class Renderer {
 
     else if (weaponType === 'scythe') {
       const scytheAngle = active ? weaponAngle + 0.35 : player.angle + Math.PI * 1.5;
-      const idleForward = active ? 0 : radius * 2.8;
+      const idleForward = active ? 0 : radius * 3.5;
       const gripX = scr.x + Math.cos(player.angle) * ((active ? 5 : 7) + idleForward);
       const gripY = scr.y + Math.sin(player.angle) * ((active ? 5 : 7) + idleForward);
       const handleTop = -31 - Math.max(0, reach * 0.12);
@@ -3430,7 +3430,7 @@ export class Renderer {
     const spriteScale = meta.scale * (active ? 1.06 : 1);
     const size = Math.max(38, 147 * spriteScale + Math.max(0, reach) * 0.08); // base 92 → 147 (~1.6x bigger weapons)
     const handDist = Math.max(radius - 3, radius + 6 + reach * 0.2);
-    const idleForward = weaponType === 'scythe' && !active ? radius * 2.8 : 0;
+    const idleForward = weaponType === 'scythe' && !active ? radius * 3.5 : 0;
     const handX = scr.x + Math.cos(drawAngle) * handDist + Math.cos(player.angle) * idleForward;
     const handY = scr.y + Math.sin(drawAngle) * handDist + Math.sin(player.angle) * idleForward;
 
