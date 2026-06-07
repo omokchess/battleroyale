@@ -21,7 +21,7 @@ const WEAPON_SPRITE_META = {
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
-const WEAPON_ASSET_VERSION = '20260608g';
+const WEAPON_ASSET_VERSION = '20260608h';
 
 export class Renderer {
   constructor(canvas) {
@@ -2500,11 +2500,19 @@ export class Renderer {
       }
 
     } else if (effect.weapon === 'axe') {
-      // Axe: spin the weapon around the body on every attack (regular + finisher)
-      const spinMult = effect.comboFinisher ? 3.0 : 2.2;
-      const spin = easeOutCubic(Math.min(1, progress / 0.65));
-      weaponAngle = angle + spin * Math.PI * spinMult;
-      bodyScale = (effect.comboFinisher ? 2.6 : 1.8) * Math.sin(Math.PI * clamp01(progress));
+      const angleDeg = effect.type === 'melee_circle'
+        ? 360
+        : (Number.isFinite(effect.angleDeg) ? effect.angleDeg : 120);
+      const halfAngle = (angleDeg * Math.PI) / 360;
+      const startAngle = angle - halfAngle;
+      const endAngle = angleDeg >= 359 ? startAngle + Math.PI * 2 : angle + halfAngle;
+      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const sweep = easeOutCubic(clamp01(progress / 0.58));
+      weaponAngle = swingDirection > 0
+        ? startAngle + (endAngle - startAngle) * sweep
+        : endAngle - (endAngle - startAngle) * sweep;
+      weaponReach = Math.max(0, (effect.range || 0) * 0.18) * Math.sin(Math.PI * clamp01(progress));
+      bodyScale = (effect.comboFinisher ? 2.25 : 1.65) * Math.sin(Math.PI * clamp01(progress));
 
     } else if (effect.weapon === 'gauntlet') {
       const punch = progress < 0.2

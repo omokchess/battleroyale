@@ -51,6 +51,7 @@ test('axe rage buff turns the axe into a fast arc burst', () => {
 
 test('gauntlet lance buff turns the punch into a straight spear-like thrust', () => {
   const buffed = getEffectiveWeapon('gauntlet', 'gauntlet_lance');
+  assert.equal(SkillConfig.gauntlet.buffMs, 4000);
   assert.equal(buffed.type, 'melee_line');
   assert.equal(buffed.damage, 20);
   assert.equal(buffed.range, 115);

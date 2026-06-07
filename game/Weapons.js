@@ -70,7 +70,7 @@ export const Weapons = {
     punchConvergeOffset: 8,
     type: 'melee_line',
     description: '쉴 새 없는 연속 펀치 공격입니다. 사거리는 극도로 짧지만 공격 속도가 무시무시합니다.',
-    skill: 'F 스킬: 7초간 공격이 창처럼 직선으로 뻗어 사거리 115px로 늘어납니다(피해 20) · 쿨타임 버프 종료 후 7초',
+    skill: 'F 스킬: 4초간 공격이 창처럼 직선으로 뻗어 사거리 115px로 늘어납니다(피해 20) · 쿨타임 버프 종료 후 7초',
     color: '#ff45db'
   },
   greatsword: {
@@ -295,7 +295,7 @@ export const SkillConfig = {
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends
-    buffMs: 7000,
+    buffMs: 4000,
     damage: 20,
     range: 115,            // matches spear
     width: 22,
