@@ -42,10 +42,21 @@ function HitboxUtil.isInLine(origin: Vector3, direction: Vector3, target: Vector
 	return perpendicular <= math.max(width * 0.5, 0.1)
 end
 
+-- Map every weapon hitType onto one of the three primitive shapes. The richer
+-- nuances (scythe sweet/inner ring, precise-line crits, hammer slam delay,
+-- blade-sweep band) are resolved by the combat layer; geometry-wise they reduce
+-- to circle / line / arc.
+local HIT_SHAPE = {
+	circle = "circle", slam = "circle",
+	line = "line", precise_line = "line", projectile = "line",
+	arc = "arc", sweet_arc = "arc", blade_sweep = "arc",
+}
+
 function HitboxUtil.check(origin: Vector3, direction: Vector3, target: Vector3, weapon): boolean
-	if weapon.hitType == "circle" then
+	local shape = HIT_SHAPE[weapon.hitType] or "arc"
+	if shape == "circle" then
 		return HitboxUtil.isInCircle(origin, target, weapon.range)
-	elseif weapon.hitType == "line" then
+	elseif shape == "line" then
 		return HitboxUtil.isInLine(origin, direction, target, weapon.range, weapon.width or 1)
 	end
 

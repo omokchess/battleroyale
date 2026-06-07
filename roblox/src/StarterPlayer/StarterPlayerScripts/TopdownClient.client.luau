@@ -19,10 +19,14 @@ local CAMERA_UP = Vector3.new(0, 0, -1)
 local AIM_PLANE_Y = 0.55
 local ARENA_HALF_SIZE = 66
 
+local Dash = WeaponConfig.Dash
 local aimDirection = Vector3.new(0, 0, -1)
 local lastAimSent = 0
 local selectedWeapon = WeaponConfig.DefaultWeapon
 local heldMoveKeys = {}
+local dashUntil = 0
+local dashReadyAt = 0
+local dashDir = Vector3.new(0, 0, -1)
 
 local MOVE_KEYS = {
 	[Enum.KeyCode.W] = Vector3.new(0, 0, -1),
@@ -109,7 +113,7 @@ hintLabel.TextXAlignment = Enum.TextXAlignment.Left
 hintLabel.Font = Enum.Font.Gotham
 hintLabel.TextSize = 12
 hintLabel.TextColor3 = Color3.fromRGB(156, 163, 175)
-hintLabel.Text = "WASD move  |  Mouse aim  |  LMB attack"
+hintLabel.Text = "WASD move | Mouse aim | LMB attack | Space dash"
 hintLabel.Parent = statusFrame
 
 local attackButton = Instance.new("TextButton")
@@ -282,6 +286,27 @@ local function attack()
 	CombatRemote:FireServer("Attack")
 end
 
+local function tryDash()
+	if not getRoot() then
+		return
+	end
+	local now = os.clock()
+	if now < dashReadyAt then
+		return
+	end
+	-- Dash toward movement input, or toward the aim if standing still.
+	local move = getMoveDirection()
+	local dir = (move.Magnitude > 0.05) and move or aimDirection
+	local flat = Vector3.new(dir.X, 0, dir.Z)
+	if flat.Magnitude <= 0.001 then
+		flat = aimDirection
+	end
+	dashDir = flat.Unit
+	dashUntil = now + Dash.duration
+	dashReadyAt = now + Dash.cooldown
+	CombatRemote:FireServer("Dash")
+end
+
 local function handleMoveAction(_, inputState, inputObject)
 	if not inputObject then
 		return Enum.ContextActionResult.Sink
@@ -310,6 +335,13 @@ ContextActionService:BindActionAtPriority(
 	Enum.KeyCode.Right
 )
 
+ContextActionService:BindActionAtPriority("PixelRoyaleDash", function(_, inputState)
+	if inputState == Enum.UserInputState.Begin then
+		tryDash()
+	end
+	return Enum.ContextActionResult.Sink
+end, false, 3000, Enum.KeyCode.Space)
+
 attackButton.MouseButton1Click:Connect(attack)
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -328,7 +360,7 @@ CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 	end
 end)
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(dt)
 	local root = getRoot()
 	if not root then
 		return
@@ -343,7 +375,13 @@ RunService.RenderStepped:Connect(function()
 	local humanoid = getHumanoid()
 	if humanoid then
 		humanoid.AutoRotate = false
-		humanoid:Move(getMoveDirection(), false)
+		if os.clock() < dashUntil then
+			-- Dash lunge overrides normal walking for its short window.
+			humanoid:Move(Vector3.zero, false)
+			root.CFrame = root.CFrame + dashDir * (Dash.speed * dt)
+		else
+			humanoid:Move(getMoveDirection(), false)
+		end
 	end
 
 	clampRootToArena(root)

@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PixelRoyale = ReplicatedStorage:WaitForChild("PixelRoyale")
 local WeaponConfig = require(PixelRoyale:WaitForChild("WeaponConfig"))
 local HitboxUtil = require(PixelRoyale:WaitForChild("HitboxUtil"))
+local Dash = WeaponConfig.Dash
 
 local Remotes = PixelRoyale:FindFirstChild("Remotes")
 if not Remotes then
@@ -23,6 +24,8 @@ type PlayerState = {
 	weaponId: string,
 	aimDirection: Vector3,
 	lastAttack: number,
+	lastDash: number,
+	invulnUntil: number,
 }
 
 local states: { [Player]: PlayerState } = {}
@@ -110,6 +113,8 @@ local function getState(player: Player): PlayerState
 		weaponId = WeaponConfig.DefaultWeapon,
 		aimDirection = Vector3.new(0, 0, -1),
 		lastAttack = 0,
+		lastDash = 0,
+		invulnUntil = 0,
 	}
 	states[player] = state
 	player:SetAttribute("Weapon", state.weaponId)
@@ -209,6 +214,10 @@ local function attack(player: Player)
 
 	for _, other in ipairs(Players:GetPlayers()) do
 		if other ~= player then
+			local otherState = states[other]
+			if otherState and now < otherState.invulnUntil then
+				continue -- dodging (dash i-frames)
+			end
 			local _, otherHumanoid, otherRoot = getCharacterParts(other)
 			if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, weapon) then
 				hitCount += 1
@@ -244,6 +253,16 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 		applyWeaponStats(player)
 	elseif action == "Attack" then
 		attack(player)
+	elseif action == "Dash" then
+		local now = os.clock()
+		if now - state.lastDash >= Dash.cooldown then
+			state.lastDash = now
+			state.invulnUntil = now + Dash.iframe
+			CombatRemote:FireAllClients("DashEffect", {
+				userId = player.UserId,
+				iframe = Dash.iframe,
+			})
+		end
 	end
 end)
 
