@@ -21,7 +21,7 @@ const WEAPON_SPRITE_META = {
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
-const WEAPON_ASSET_VERSION = '20260608b';
+const WEAPON_ASSET_VERSION = '20260608c';
 
 export class Renderer {
   constructor(canvas) {
@@ -3162,7 +3162,7 @@ export class Renderer {
     }
 
     else if (weaponType === 'scythe') {
-      const scytheAngle = active ? weaponAngle + 0.35 : player.angle + Math.PI / 2;
+      const scytheAngle = active ? weaponAngle + 0.35 : player.angle + Math.PI * 1.5;
       const gripX = scr.x + Math.cos(player.angle) * (active ? 5 : 7);
       const gripY = scr.y + Math.sin(player.angle) * (active ? 5 : 7);
       const handleTop = -31 - Math.max(0, reach * 0.12);
@@ -3432,25 +3432,29 @@ export class Renderer {
     const handX = scr.x + Math.cos(drawAngle) * handDist;
     const handY = scr.y + Math.sin(drawAngle) * handDist;
 
-    const drawSingle = (offsetAngle = 0, offsetDist = 0, flipY = 1) => {
+    const idleScytheFlip = weaponType === 'scythe' && !active ? Math.PI : 0;
+    const drawSingle = (offsetAngle = 0, offsetDist = 0, flipY = 1, options = {}) => {
       const a = drawAngle + offsetAngle;
-      const x = handX + Math.cos(drawAngle + Math.PI / 2) * offsetDist;
-      const y = handY + Math.sin(drawAngle + Math.PI / 2) * offsetDist;
+      const forward = Number.isFinite(options.forward) ? options.forward : 0;
+      const drawScale = Number.isFinite(options.scale) ? options.scale : 1;
+      const drawSize = size * drawScale;
+      const x = handX + Math.cos(drawAngle) * forward + Math.cos(drawAngle + Math.PI / 2) * offsetDist;
+      const y = handY + Math.sin(drawAngle) * forward + Math.sin(drawAngle + Math.PI / 2) * offsetDist;
       ctx.save();
       const smoothing = ctx.imageSmoothingEnabled;
       ctx.imageSmoothingEnabled = false;
       ctx.translate(x, y);
-      ctx.rotate(a + (meta.angleOffset || 0));
+      ctx.rotate(a + (meta.angleOffset || 0) + idleScytheFlip);
       ctx.scale(1, flipY);
-      ctx.globalAlpha = active ? 1 : 0.94;
+      ctx.globalAlpha = Number.isFinite(options.alpha) ? options.alpha : (active ? 1 : 0.94);
       ctx.shadowBlur = this._glow * (active ? 8 : 2);
       ctx.shadowColor = player.accentColor;
       ctx.drawImage(
         sprite.image,
-        -size * meta.anchorX,
-        -size * meta.anchorY,
-        size,
-        size
+        -drawSize * meta.anchorX,
+        -drawSize * meta.anchorY,
+        drawSize,
+        drawSize
       );
       ctx.imageSmoothingEnabled = smoothing;
       ctx.restore();
@@ -3463,7 +3467,18 @@ export class Renderer {
     if (weaponType === 'gauntlet') {
       const side = Number.isFinite(motion.punchSide) ? Math.sign(motion.punchSide) : 0;
       if (active && side !== 0) {
-        drawSingle(0, side * 5.5, side < 0 ? aimFlip : -aimFlip);
+        const flipForSide = (handSide) => handSide < 0 ? aimFlip : -aimFlip;
+        const guardSide = -side;
+        drawSingle(-0.04 * side, guardSide * 5.1, flipForSide(guardSide), {
+          forward: -Math.max(3, reach * 0.28),
+          alpha: 0.82,
+          scale: 0.92
+        });
+        drawSingle(0.03 * side, side * 5.9, flipForSide(side), {
+          forward: Math.max(7, reach * 0.62),
+          alpha: 1,
+          scale: 1.08
+        });
       } else {
         drawSingle(0.05, -5, aimFlip);
         drawSingle(-0.05, 5, -aimFlip);
