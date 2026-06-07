@@ -80,15 +80,15 @@ end
 
 local function skillLabelFor(id: string): string
 	if id == "greatsword" then
-		return "CHARGE"
+		return "차징"
 	elseif id == "dagger" then
 		return "QTE"
 	elseif id == "bow" then
-		return "RAIL"
+		return "레일건"
 	elseif id == "magicstaff" then
-		return "FIRE"
+		return "파이어볼"
 	end
-	return "SKILL"
+	return "스킬"
 end
 
 local function altCooldownFor(id: string): number
@@ -105,13 +105,13 @@ end
 
 local function altLabelFor(id: string): string
 	if id == "sniper" then
-		return "BLINK"
+		return "순간이동"
 	elseif id == "magicstaff" then
-		return "HEAL"
+		return "자가회복"
 	elseif id == "katana" then
-		return "IAI"
+		return "발도술"
 	end
-	return "R-SKILL"
+	return "능력"
 end
 
 local screenGui = Instance.new("ScreenGui")
@@ -180,27 +180,27 @@ hpText.TextColor3 = WHITE
 hpText.Text = "100 / 100"
 hpText.Parent = hpBack
 
-local killsLabel = label(playerPanel, "KILLS 0", UDim2.fromOffset(312, 20), UDim2.fromOffset(14, 88), GRAY, 15)
+local killsLabel = label(playerPanel, "처치 0", UDim2.fromOffset(312, 20), UDim2.fromOffset(14, 88), GRAY, 15)
 local stackLabel = label(playerPanel, "", UDim2.fromOffset(312, 20), UDim2.fromOffset(14, 114), GOLD, 15, true)
 
 local roomPanel = stonePanel("RoomPanel")
 roomPanel.Size = UDim2.fromOffset(340, 96)
 roomPanel.Position = UDim2.fromOffset(16, 172)
 
-local roomHeader = label(roomPanel, "ROOM CODE", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 12), GRAY, 12)
+local roomHeader = label(roomPanel, "방 코드", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 12), GRAY, 12)
 roomHeader.TextXAlignment = Enum.TextXAlignment.Right
 local roomCode = label(roomPanel, "ROBLOX", UDim2.fromOffset(312, 24), UDim2.fromOffset(14, 30), GOLD, 20, true)
 roomCode.TextXAlignment = Enum.TextXAlignment.Right
-local pingLabel = label(roomPanel, "LATENCY 0 ms", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 58), GRAY, 13)
+local pingLabel = label(roomPanel, "지연 시간 0 ms", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 58), GRAY, 13)
 pingLabel.TextXAlignment = Enum.TextXAlignment.Right
-local hostLabel = label(roomPanel, "HOST SERVER", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 76), GREEN, 12, true)
+local hostLabel = label(roomPanel, "호스트 서버", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 76), GREEN, 12, true)
 hostLabel.TextXAlignment = Enum.TextXAlignment.Right
 
 local settingsPanel = stonePanel("SettingsPanel")
 settingsPanel.Size = UDim2.fromOffset(340, 140)
 settingsPanel.Position = UDim2.fromOffset(16, 280)
 
-local settingsHeader = label(settingsPanel, "SETTINGS", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 12), GRAY, 12)
+local settingsHeader = label(settingsPanel, "설정", UDim2.fromOffset(312, 18), UDim2.fromOffset(14, 12), GRAY, 12)
 
 local joystickButton = Instance.new("TextButton")
 joystickButton.Name = "JoystickToggle"
@@ -212,7 +212,7 @@ joystickButton.BorderSizePixel = 1
 joystickButton.Font = HUD_FONT
 joystickButton.TextSize = 13
 joystickButton.TextColor3 = GOLD
-joystickButton.Text = "JOYSTICK ON"
+joystickButton.Text = "조이스틱 켜짐"
 joystickButton.Parent = settingsPanel
 
 local leaveButton = Instance.new("TextButton")
@@ -225,7 +225,7 @@ leaveButton.BorderSizePixel = 1
 leaveButton.Font = HUD_FONT
 leaveButton.TextSize = 14
 leaveButton.TextColor3 = WHITE
-leaveButton.Text = "LEAVE GAME"
+leaveButton.Text = "게임 나가기"
 leaveButton.Parent = settingsPanel
 
 local function settingRow(y: number, text: string)
@@ -239,16 +239,16 @@ local function settingRow(y: number, text: string)
 	toggle.Font = HUD_FONT
 	toggle.TextSize = 12
 	toggle.TextColor3 = GOLD
-	toggle.Text = "OFF"
+	toggle.Text = "꺼짐"
 	toggle.Parent = settingsPanel
 	return rowLabel, toggle
 end
 
-local _, previewToggle = settingRow(84, "HIDE ENEMY PREVIEW")
-local _, effectsToggle = settingRow(112, "MIN ENEMY EFFECTS")
+local _, previewToggle = settingRow(84, "적 미리보기 끄기")
+local _, effectsToggle = settingRow(112, "적 효과 최소화")
 
 local function syncToggle(button: TextButton, enabled: boolean)
-	button.Text = if enabled then "ON" else "OFF"
+	button.Text = if enabled then "켜짐" else "꺼짐"
 	button.TextColor3 = if enabled then WHITE else GRAY
 	button.BackgroundColor3 = if enabled then Color3.fromRGB(34, 51, 60) else DARK
 end
@@ -273,7 +273,7 @@ abilityPanel.Position = UDim2.fromOffset(16, 432)
 local function abilityRow(y: number, keyText: string, keyColor: Color3, name: string)
 	local key = label(abilityPanel, keyText, UDim2.fromOffset(50, 14), UDim2.fromOffset(14, y), keyColor, 12, true)
 	local nameL = label(abilityPanel, name, UDim2.fromOffset(140, 14), UDim2.fromOffset(66, y), GRAY, 11)
-	local state = label(abilityPanel, "READY", UDim2.fromOffset(112, 14), UDim2.fromOffset(214, y), WHITE, 11)
+	local state = label(abilityPanel, "준비!", UDim2.fromOffset(112, 14), UDim2.fromOffset(214, y), WHITE, 11)
 	state.TextXAlignment = Enum.TextXAlignment.Right
 	local back = Instance.new("Frame")
 	back.Size = UDim2.fromOffset(312, 8)
@@ -289,10 +289,10 @@ local function abilityRow(y: number, keyText: string, keyColor: Color3, name: st
 	return { key = key, nameL = nameL, state = state, fill = fill }
 end
 
-local skillRow = abilityRow(8, "F", GOLD, "SKILL")
-local dashRow = abilityRow(44, "SPACE", GOLD, "DASH")
+local skillRow = abilityRow(8, "F", GOLD, "스킬")
+local dashRow = abilityRow(44, "SPACE", GOLD, "대시")
 dashRow.fill.BackgroundColor3 = GOLD
-local altRow = abilityRow(80, "R", GREEN, "ALT")
+local altRow = abilityRow(80, "R", GREEN, "능력")
 altRow.fill.BackgroundColor3 = GREEN
 
 local weaponPanel = stonePanel("WeaponPanel")
@@ -320,7 +320,7 @@ wheader.BackgroundTransparency = 1
 wheader.Font = HUD_FONT
 wheader.TextSize = 12
 wheader.TextColor3 = GRAY
-wheader.Text = "WEAPONS"
+wheader.Text = "무기 교체"
 wheader.Parent = weaponPanel
 
 local lobbyPanel = Instance.new("Frame")
@@ -332,11 +332,11 @@ lobbyPanel.BorderSizePixel = 0
 lobbyPanel.ZIndex = 20
 lobbyPanel.Parent = screenGui
 
-local lobbyTitle = label(lobbyPanel, "PIXEL ROYALE", UDim2.fromOffset(520, 64), UDim2.new(0.5, -260, 0.32, -32), GOLD, 42, true)
+local lobbyTitle = label(lobbyPanel, "PIXELROYALE", UDim2.fromOffset(520, 64), UDim2.new(0.5, -260, 0.32, -32), GOLD, 42, true)
 lobbyTitle.TextXAlignment = Enum.TextXAlignment.Center
 lobbyTitle.ZIndex = 21
 
-local lobbySubtitle = label(lobbyPanel, "TOPDOWN ROBLOX REMAKE", UDim2.fromOffset(520, 28), UDim2.new(0.5, -260, 0.42, -14), GRAY, 18)
+local lobbySubtitle = label(lobbyPanel, "실시간 결투장", UDim2.fromOffset(520, 28), UDim2.new(0.5, -260, 0.42, -14), GRAY, 18)
 lobbySubtitle.TextXAlignment = Enum.TextXAlignment.Center
 lobbySubtitle.ZIndex = 21
 
@@ -350,7 +350,7 @@ startButton.BorderSizePixel = 3
 startButton.Font = HUD_FONT
 startButton.TextSize = 24
 startButton.TextColor3 = GOLD
-startButton.Text = "START"
+startButton.Text = "게임 시작"
 startButton.ZIndex = 21
 startButton.Parent = lobbyPanel
 
@@ -420,7 +420,7 @@ local function setWeapon(weaponId: string)
 
 	local hasAlt = altCooldown > 0
 	altRow.key.TextTransparency = if hasAlt then 0 else 0.6
-	altRow.nameL.Text = if hasAlt then altLabelFor(weaponId) else "NONE"
+	altRow.nameL.Text = if hasAlt then altLabelFor(weaponId) else "없음"
 	altRow.nameL.TextTransparency = if hasAlt then 0 else 0.5
 	altRow.state.TextTransparency = if hasAlt then 0 else 0.5
 	altRow.fill.BackgroundTransparency = if hasAlt then 0 else 0.7
@@ -470,11 +470,11 @@ local function updateHud()
 	end
 
 	nameLabel.Text = player.DisplayName
-	killsLabel.Text = "KILLS " .. tostring(getKills())
+	killsLabel.Text = "처치 " .. tostring(getKills())
 
 	local bowStacks = player:GetAttribute("BowStacks") or 0
 	if selectedWeapon == "bow" then
-		stackLabel.Text = string.format("[%d / %d STACK]", bowStacks, WeaponConfig.Skill.bow.maxStacks)
+		stackLabel.Text = string.format("[%d / %d 스택]", bowStacks, WeaponConfig.Skill.bow.maxStacks)
 	else
 		stackLabel.Text = ""
 	end
@@ -483,7 +483,7 @@ local function updateHud()
 	local function setBar(row, readyAt: number, cooldown: number)
 		if cooldown <= 0 or now >= readyAt then
 			row.fill.Size = UDim2.fromScale(1, 1)
-			row.state.Text = "READY"
+			row.state.Text = "준비!"
 		else
 			row.fill.Size = UDim2.fromScale(math.clamp(1 - (readyAt - now) / cooldown, 0, 1), 1)
 			row.state.Text = string.format("%.1f", readyAt - now)
