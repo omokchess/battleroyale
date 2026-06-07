@@ -19,7 +19,6 @@ local CAMERA_UP = Vector3.new(0, 0, -1)
 local AIM_PLANE_Y = 0.55
 local ARENA_HALF_SIZE = 66
 
--- ── web "neon dungeon" palette ──────────────────────────────────────────────
 local STONE = Color3.fromRGB(27, 22, 34)
 local DARK = Color3.fromRGB(11, 12, 16)
 local BRASS = Color3.fromRGB(168, 132, 44)
@@ -31,17 +30,33 @@ local HUD_FONT = Enum.Font.Code
 
 local Dash = WeaponConfig.Dash
 local aimDirection = Vector3.new(0, 0, -1)
+local aimPoint = Vector3.new(0, AIM_PLANE_Y, -1)
 local lastAimSent = 0
 local selectedWeapon = WeaponConfig.DefaultWeapon
 local heldMoveKeys = {}
 local dashUntil = 0
 local dashReadyAt = 0
 local dashDir = Vector3.new(0, 0, -1)
--- local cooldown prediction for the F / R bars
-local skillReadyAt, skillCooldown = 0, 0
-local altReadyAt, altCooldown = 0, 0
+local skillReadyAt = 0
+local skillCooldown = 0
+local altReadyAt = 0
+local altCooldown = 0
+local chargingGreatsword = false
+local greatswordChargeStart = 0
+local qteState = nil
 
 local BUFF_WEAPONS = { axe = true, gauntlet = true, rapier = true }
+
+local MOVE_KEYS = {
+	[Enum.KeyCode.W] = Vector3.new(0, 0, -1),
+	[Enum.KeyCode.Up] = Vector3.new(0, 0, -1),
+	[Enum.KeyCode.S] = Vector3.new(0, 0, 1),
+	[Enum.KeyCode.Down] = Vector3.new(0, 0, 1),
+	[Enum.KeyCode.A] = Vector3.new(-1, 0, 0),
+	[Enum.KeyCode.Left] = Vector3.new(-1, 0, 0),
+	[Enum.KeyCode.D] = Vector3.new(1, 0, 0),
+	[Enum.KeyCode.Right] = Vector3.new(1, 0, 0),
+}
 
 local function skillCooldownFor(id: string): number
 	local sk = WeaponConfig.Skill[id]
@@ -57,6 +72,19 @@ local function skillCooldownFor(id: string): number
 	return sk.cooldown or 0
 end
 
+local function skillLabelFor(id: string): string
+	if id == "greatsword" then
+		return "CHARGE"
+	elseif id == "dagger" then
+		return "QTE"
+	elseif id == "bow" then
+		return "RAIL"
+	elseif id == "magicstaff" then
+		return "FIRE"
+	end
+	return "SKILL"
+end
+
 local function altCooldownFor(id: string): number
 	if id == "sniper" then
 		return WeaponConfig.Skill.sniper.teleportCooldown
@@ -69,24 +97,16 @@ local function altCooldownFor(id: string): number
 end
 
 local function altLabelFor(id: string): string
-	if id == "sniper" then return "순간이동" end
-	if id == "magicstaff" then return "자가회복" end
-	if id == "katana" then return "발도술" end
-	return "능력"
+	if id == "sniper" then
+		return "BLINK"
+	elseif id == "magicstaff" then
+		return "HEAL"
+	elseif id == "katana" then
+		return "IAI"
+	end
+	return "ALT"
 end
 
-local MOVE_KEYS = {
-	[Enum.KeyCode.W] = Vector3.new(0, 0, -1),
-	[Enum.KeyCode.Up] = Vector3.new(0, 0, -1),
-	[Enum.KeyCode.S] = Vector3.new(0, 0, 1),
-	[Enum.KeyCode.Down] = Vector3.new(0, 0, 1),
-	[Enum.KeyCode.A] = Vector3.new(-1, 0, 0),
-	[Enum.KeyCode.Left] = Vector3.new(-1, 0, 0),
-	[Enum.KeyCode.D] = Vector3.new(1, 0, 0),
-	[Enum.KeyCode.Right] = Vector3.new(1, 0, 0),
-}
-
--- ── HUD construction helpers ────────────────────────────────────────────────
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PixelRoyaleHud"
 screenGui.ResetOnSpawn = false
@@ -118,7 +138,6 @@ local function label(parent: Instance, text: string, size: UDim2, pos: UDim2, co
 	return l
 end
 
--- ── Player panel (top-left): name + weapon tag, HP bar, kills ───────────────
 local playerPanel = stonePanel("PlayerPanel")
 playerPanel.Size = UDim2.fromOffset(224, 92)
 playerPanel.Position = UDim2.fromOffset(16, 16)
@@ -154,11 +173,9 @@ hpText.TextColor3 = WHITE
 hpText.Text = "100 / 100"
 hpText.Parent = hpBack
 
-local killsLabel = label(playerPanel, "처치 0", UDim2.fromOffset(204, 16), UDim2.fromOffset(10, 58), GRAY, 12)
-local killsValue = Instance.new("StringValue") -- placeholder (kills read from leaderstats)
-killsValue.Parent = playerPanel
+local killsLabel = label(playerPanel, "KILLS 0", UDim2.fromOffset(204, 16), UDim2.fromOffset(10, 58), GRAY, 12)
+local stackLabel = label(playerPanel, "", UDim2.fromOffset(204, 16), UDim2.fromOffset(10, 74), GOLD, 12, true)
 
--- ── Ability HUD (bottom-left): F skill / Space dash / R ability bars ────────
 local abilityPanel = stonePanel("AbilityHud")
 abilityPanel.Size = UDim2.fromOffset(206, 118)
 abilityPanel.AnchorPoint = Vector2.new(0, 1)
@@ -167,7 +184,7 @@ abilityPanel.Position = UDim2.new(0, 16, 1, -16)
 local function abilityRow(y: number, keyText: string, keyColor: Color3, name: string)
 	local key = label(abilityPanel, keyText, UDim2.fromOffset(44, 14), UDim2.fromOffset(10, y), keyColor, 12, true)
 	local nameL = label(abilityPanel, name, UDim2.fromOffset(80, 14), UDim2.fromOffset(50, y), GRAY, 11)
-	local state = label(abilityPanel, "준비!", UDim2.fromOffset(70, 14), UDim2.fromOffset(126, y), WHITE, 11)
+	local state = label(abilityPanel, "READY", UDim2.fromOffset(70, 14), UDim2.fromOffset(126, y), WHITE, 11)
 	state.TextXAlignment = Enum.TextXAlignment.Right
 	local back = Instance.new("Frame")
 	back.Size = UDim2.fromOffset(186, 8)
@@ -183,13 +200,12 @@ local function abilityRow(y: number, keyText: string, keyColor: Color3, name: st
 	return { key = key, nameL = nameL, state = state, fill = fill }
 end
 
-local skillRow = abilityRow(8, "F", GOLD, "스킬")
-local dashRow = abilityRow(44, "SPACE", GOLD, "대시")
+local skillRow = abilityRow(8, "F", GOLD, "SKILL")
+local dashRow = abilityRow(44, "SPACE", GOLD, "DASH")
 dashRow.fill.BackgroundColor3 = GOLD
-local altRow = abilityRow(80, "R", GREEN, "능력")
+local altRow = abilityRow(80, "R", GREEN, "ALT")
 altRow.fill.BackgroundColor3 = GREEN
 
--- ── Weapon switch panel (right gutter) ──────────────────────────────────────
 local weaponPanel = stonePanel("WeaponPanel")
 weaponPanel.BackgroundTransparency = 0.05
 weaponPanel.Size = UDim2.fromOffset(168, 36 + #WeaponConfig.Order * 30)
@@ -215,10 +231,9 @@ wheader.BackgroundTransparency = 1
 wheader.Font = HUD_FONT
 wheader.TextSize = 12
 wheader.TextColor3 = GRAY
-wheader.Text = "무기 교체\n다음 부활 시 적용"
+wheader.Text = "WEAPONS"
 wheader.Parent = weaponPanel
 
--- small ATTACK button (bottom-right) for manual weapons / touch
 local attackButton = Instance.new("TextButton")
 attackButton.Name = "AttackButton"
 attackButton.Size = UDim2.fromOffset(96, 96)
@@ -246,6 +261,12 @@ local function getRoot()
 	return character and character:FindFirstChild("HumanoidRootPart")
 end
 
+local function rootOfUser(userId: number?): BasePart?
+	local other = userId and Players:GetPlayerByUserId(userId)
+	local char = other and other.Character
+	return char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
 local function updateWeaponButtons()
 	for weaponId, button in pairs(weaponButtons) do
 		local active = weaponId == selectedWeapon
@@ -259,16 +280,21 @@ local function setWeapon(weaponId: string)
 	local weapon = WeaponConfig.getWeapon(weaponId)
 	selectedWeapon = weaponId
 	weaponTag.Text = string.upper(weapon.displayName)
+	skillRow.nameL.Text = skillLabelFor(weaponId)
 	skillRow.fill.BackgroundColor3 = weapon.color
 	skillCooldown = skillCooldownFor(weaponId)
 	altCooldown = altCooldownFor(weaponId)
-	-- R row only matters for weapons that have one
+
 	local hasAlt = altCooldown > 0
 	altRow.key.TextTransparency = if hasAlt then 0 else 0.6
-	altRow.nameL.Text = if hasAlt then altLabelFor(weaponId) else "—"
+	altRow.nameL.Text = if hasAlt then altLabelFor(weaponId) else "NONE"
 	altRow.nameL.TextTransparency = if hasAlt then 0 else 0.5
 	altRow.state.TextTransparency = if hasAlt then 0 else 0.5
 	altRow.fill.BackgroundTransparency = if hasAlt then 0 else 0.7
+
+	chargingGreatsword = false
+	qteState = nil
+	EffectsClient.clearQTE()
 	updateWeaponButtons()
 	CombatRemote:FireServer("SetWeapon", weaponId)
 end
@@ -307,20 +333,35 @@ local function updateHud()
 		hpFill.Size = UDim2.fromScale(math.clamp(humanoid.Health / maxHealth, 0, 1), 1)
 		hpText.Text = string.format("%d / %d", math.ceil(humanoid.Health), math.ceil(maxHealth))
 	end
+
 	nameLabel.Text = player.DisplayName
-	killsLabel.Text = "처치 " .. getKills()
+	killsLabel.Text = "KILLS " .. tostring(getKills())
+
+	local bowStacks = player:GetAttribute("BowStacks") or 0
+	if selectedWeapon == "bow" then
+		stackLabel.Text = string.format("[%d / %d STACK]", bowStacks, WeaponConfig.Skill.bow.maxStacks)
+	else
+		stackLabel.Text = ""
+	end
 
 	local now = os.clock()
 	local function setBar(row, readyAt: number, cooldown: number)
 		if cooldown <= 0 or now >= readyAt then
 			row.fill.Size = UDim2.fromScale(1, 1)
-			row.state.Text = "준비!"
+			row.state.Text = "READY"
 		else
 			row.fill.Size = UDim2.fromScale(math.clamp(1 - (readyAt - now) / cooldown, 0, 1), 1)
 			row.state.Text = string.format("%.1f", readyAt - now)
 		end
 	end
+
 	setBar(skillRow, skillReadyAt, skillCooldown)
+	if chargingGreatsword then
+		local sk = WeaponConfig.Skill.greatsword
+		local ratio = math.clamp((now - greatswordChargeStart) / sk.chargeMax, 0, 1)
+		skillRow.fill.Size = UDim2.fromScale(ratio, 1)
+		skillRow.state.Text = string.format("%d%%", math.floor(ratio * 100 + 0.5))
+	end
 	setBar(dashRow, dashReadyAt, Dash.cooldown)
 	if altCooldown > 0 then
 		setBar(altRow, altReadyAt, altCooldown)
@@ -341,24 +382,23 @@ if player.Character then
 	bindCharacter(player.Character)
 end
 player.CharacterAdded:Connect(bindCharacter)
-setWeapon(selectedWeapon)
 
 local function computeAim(root)
 	local mouseLocation = UserInputService:GetMouseLocation()
 	local ray = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
 	if math.abs(ray.Direction.Y) <= 0.001 then
-		return aimDirection
+		return aimDirection, aimPoint
 	end
 	local t = (AIM_PLANE_Y - ray.Origin.Y) / ray.Direction.Y
 	if t <= 0 then
-		return aimDirection
+		return aimDirection, aimPoint
 	end
 	local hit = ray.Origin + ray.Direction * t
 	local flat = Vector3.new(hit.X - root.Position.X, 0, hit.Z - root.Position.Z)
 	if flat.Magnitude <= 0.01 then
-		return aimDirection
+		return aimDirection, hit
 	end
-	return flat.Unit
+	return flat.Unit, hit
 end
 
 local function getMoveDirection(): Vector3
@@ -384,7 +424,7 @@ local function clampRootToArena(root: BasePart)
 end
 
 local function attack()
-	CombatRemote:FireServer("Attack")
+	CombatRemote:FireServer("Attack", { target = aimPoint })
 end
 
 local function tryDash()
@@ -405,6 +445,45 @@ local function tryDash()
 	dashUntil = now + Dash.duration
 	dashReadyAt = now + Dash.cooldown
 	CombatRemote:FireServer("Dash")
+end
+
+local function pressSkill()
+	if qteState then
+		CombatRemote:FireServer("DaggerQTE")
+		qteState = nil
+		EffectsClient.clearQTE()
+		return
+	end
+
+	local now = os.clock()
+	if selectedWeapon == "greatsword" then
+		if now < skillReadyAt or chargingGreatsword then
+			return
+		end
+		chargingGreatsword = true
+		greatswordChargeStart = now
+		CombatRemote:FireServer("SkillStart")
+		return
+	end
+
+	if selectedWeapon == "bow" and (player:GetAttribute("BowStacks") or 0) <= 0 then
+		return
+	end
+
+	if now >= skillReadyAt then
+		skillReadyAt = now + skillCooldown
+	end
+	CombatRemote:FireServer("Skill")
+end
+
+local function releaseSkill()
+	if selectedWeapon ~= "greatsword" or not chargingGreatsword then
+		return
+	end
+	chargingGreatsword = false
+	skillReadyAt = os.clock() + skillCooldown
+	CombatRemote:FireServer("SkillRelease")
+	EffectsClient.clearChargePreview()
 end
 
 local function handleMoveAction(_, inputState, inputObject)
@@ -434,10 +513,9 @@ end, false, 3000, Enum.KeyCode.Space)
 
 ContextActionService:BindActionAtPriority("PixelRoyaleSkill", function(_, inputState)
 	if inputState == Enum.UserInputState.Begin then
-		if os.clock() >= skillReadyAt then
-			skillReadyAt = os.clock() + skillCooldown
-		end
-		CombatRemote:FireServer("Skill")
+		pressSkill()
+	elseif inputState == Enum.UserInputState.End then
+		releaseSkill()
 	end
 	return Enum.ContextActionResult.Sink
 end, false, 3000, Enum.KeyCode.F)
@@ -463,12 +541,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
-local function rootOfUser(userId: number?): BasePart?
-	local other = userId and Players:GetPlayerByUserId(userId)
-	local char = other and other.Character
-	return char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
-end
-
 CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 	if action == "AttackEffect" and typeof(payload) == "table" then
 		EffectsClient.drawAttackEffect(payload)
@@ -481,6 +553,20 @@ CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 				EffectsClient.drawBuff(root, payload.color, payload.duration)
 			end
 		end
+	elseif action == "Telegraph" and typeof(payload) == "table" then
+		EffectsClient.drawTelegraph(payload)
+	elseif action == "QTEStart" and typeof(payload) == "table" then
+		qteState = {
+			targetUserId = payload.targetUserId,
+			startedAt = os.clock(),
+			lock = payload.lock or 0.7,
+			window = payload.window or 0.9,
+			perfect = payload.perfect or 0.56,
+			tolerance = payload.tolerance or 0.15,
+		}
+	elseif action == "QTEEnd" then
+		qteState = nil
+		EffectsClient.clearQTE()
 	elseif action == "DashEffect" and typeof(payload) == "table" then
 		local root = rootOfUser(payload.userId)
 		if root then
@@ -493,6 +579,8 @@ CombatRemote.OnClientEvent:Connect(function(action: string, payload)
 	end
 end)
 
+setWeapon(selectedWeapon)
+
 RunService.RenderStepped:Connect(function(dt)
 	local root = getRoot()
 	if not root then
@@ -503,7 +591,7 @@ RunService.RenderStepped:Connect(function(dt)
 	camera.FieldOfView = 50
 	camera.CFrame = CFrame.lookAt(CAMERA_POSITION, CAMERA_TARGET, CAMERA_UP)
 
-	aimDirection = computeAim(root)
+	aimDirection, aimPoint = computeAim(root)
 
 	local humanoid = getHumanoid()
 	if humanoid then
@@ -518,6 +606,28 @@ RunService.RenderStepped:Connect(function(dt)
 
 	clampRootToArena(root)
 	CombatantTokenClient.updateAll(aimDirection)
+
+	local weapon = WeaponConfig.getEffectiveWeapon(selectedWeapon, nil)
+	EffectsClient.updateAttackPreview(root.Position, aimDirection, weapon, aimPoint)
+
+	if chargingGreatsword then
+		local sk = WeaponConfig.Skill.greatsword
+		local chargeRatio = math.clamp((os.clock() - greatswordChargeStart) / sk.chargeMax, 0, 1)
+		EffectsClient.updateChargePreview(root.Position, aimDirection, sk, chargeRatio, WeaponConfig.getWeapon("greatsword").color)
+	else
+		EffectsClient.clearChargePreview()
+	end
+
+	if qteState then
+		local targetRoot = rootOfUser(qteState.targetUserId)
+		local elapsed = os.clock() - qteState.startedAt
+		if not targetRoot or elapsed > qteState.lock + qteState.window then
+			qteState = nil
+			EffectsClient.clearQTE()
+		else
+			EffectsClient.updateDaggerQTE(root.Position, targetRoot.Position, qteState, elapsed)
+		end
+	end
 
 	local now = os.clock()
 	if now - lastAimSent >= 0.05 then

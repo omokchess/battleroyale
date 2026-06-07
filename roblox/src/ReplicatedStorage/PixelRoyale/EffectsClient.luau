@@ -5,8 +5,14 @@ local EffectsClient = {}
 
 local EFFECT_HEIGHT = 0.36
 local FOLDER_NAME = "_PixelRoyaleEffects"
+local PREVIEW_FOLDER_NAME = "_PixelRoyalePreview"
+local CHARGE_FOLDER_NAME = "_PixelRoyaleChargePreview"
+local QTE_FOLDER_NAME = "_PixelRoyaleQTE"
 
 local folder: Folder? = nil
+local previewFolder: Folder? = nil
+local chargeFolder: Folder? = nil
+local qteFolder: Folder? = nil
 
 local function getFolder(): Folder
 	if folder and folder.Parent then
@@ -24,6 +30,31 @@ local function getFolder(): Folder
 	created.Parent = workspace
 	folder = created
 	return created
+end
+
+local function getNamedFolder(name: string, current: Folder?): Folder
+	if current and current.Parent then
+		return current
+	end
+
+	local existing = workspace:FindFirstChild(name)
+	if existing and existing:IsA("Folder") then
+		return existing
+	end
+
+	local created = Instance.new("Folder")
+	created.Name = name
+	created.Parent = workspace
+	return created
+end
+
+local function clearFolder(target: Folder?)
+	if not target then
+		return
+	end
+	for _, child in ipairs(target:GetChildren()) do
+		child:Destroy()
+	end
 end
 
 local function withHeight(point: Vector3): Vector3
@@ -52,6 +83,18 @@ local function configure(part: BasePart, color: Color3, transparency: number)
 	part.Parent = getFolder()
 end
 
+local function configureStatic(part: BasePart, color: Color3, transparency: number, parent: Folder)
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+	part.CastShadow = false
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.Transparency = transparency
+	part.Parent = parent
+end
+
 local function makePart(startPoint: Vector3, endPoint: Vector3, width: number, color: Color3, life: number, transparency: number?)
 	local offset = endPoint - startPoint
 	local length = offset.Magnitude
@@ -74,6 +117,26 @@ local function makeBlock(position: Vector3, size: Vector3, color: Color3, life: 
 	fade(part, life)
 end
 
+local function makeStaticLine(parent: Folder, startPoint: Vector3, endPoint: Vector3, width: number, color: Color3, transparency: number)
+	local offset = endPoint - startPoint
+	local length = offset.Magnitude
+	if length <= 0.05 then
+		return
+	end
+
+	local part = Instance.new("Part")
+	configureStatic(part, color, transparency, parent)
+	part.Size = Vector3.new(width, 0.08, length)
+	part.CFrame = CFrame.lookAt((startPoint + endPoint) * 0.5, endPoint)
+end
+
+local function makeStaticBlock(parent: Folder, position: Vector3, size: Vector3, color: Color3, transparency: number)
+	local part = Instance.new("Part")
+	configureStatic(part, color, transparency, parent)
+	part.Size = size
+	part.CFrame = CFrame.new(withHeight(position))
+end
+
 local function rotateFlat(direction: Vector3, radians: number): Vector3
 	local cos = math.cos(radians)
 	local sin = math.sin(radians)
@@ -86,6 +149,50 @@ local function rotateFlat(direction: Vector3, radians: number): Vector3
 		return Vector3.new(0, 0, -1)
 	end
 	return rotated.Unit
+end
+
+local function drawPreviewCircle(parent: Folder, origin: Vector3, range: number, color: Color3, transparency: number)
+	local segments = 42
+	for i = 1, segments do
+		local a0 = (i - 1) / segments * math.pi * 2
+		local a1 = i / segments * math.pi * 2
+		local p0 = withHeight(origin + Vector3.new(math.cos(a0) * range, 0, math.sin(a0) * range))
+		local p1 = withHeight(origin + Vector3.new(math.cos(a1) * range, 0, math.sin(a1) * range))
+		makeStaticLine(parent, p0, p1, 0.12, color, transparency)
+	end
+end
+
+local function drawPreviewLine(parent: Folder, origin: Vector3, direction: Vector3, range: number, width: number, color: Color3, transparency: number)
+	local startPoint = withHeight(origin)
+	local endPoint = withHeight(origin + direction * range)
+	makeStaticLine(parent, startPoint, endPoint, math.max(width, 0.12), color, transparency)
+	makeStaticLine(parent, startPoint, endPoint, 0.05, Color3.fromRGB(255, 255, 255), math.clamp(transparency - 0.08, 0, 1))
+end
+
+local function drawPreviewArc(parent: Folder, origin: Vector3, direction: Vector3, range: number, angle: number, color: Color3, transparency: number)
+	local half = math.rad(angle) * 0.5
+	local segments = 18
+	local startEdge = rotateFlat(direction, -half)
+	local endEdge = rotateFlat(direction, half)
+	makeStaticLine(parent, withHeight(origin), withHeight(origin + startEdge * range), 0.08, color, transparency + 0.08)
+	makeStaticLine(parent, withHeight(origin), withHeight(origin + endEdge * range), 0.08, color, transparency + 0.08)
+
+	for i = 1, segments do
+		local t0 = (i - 1) / segments
+		local t1 = i / segments
+		local a0 = -half + t0 * half * 2
+		local a1 = -half + t1 * half * 2
+		local p0 = withHeight(origin + rotateFlat(direction, a0) * range)
+		local p1 = withHeight(origin + rotateFlat(direction, a1) * range)
+		makeStaticLine(parent, p0, p1, 0.14, color, transparency)
+	end
+
+	for i = 0, 6 do
+		local t = i / 6
+		local a = -half + t * half * 2
+		local dir = rotateFlat(direction, a)
+		makeStaticLine(parent, withHeight(origin + dir * range * 0.25), withHeight(origin + dir * range * 0.94), 0.05, color, transparency + 0.2)
+	end
 end
 
 function EffectsClient.drawCircle(payload)
@@ -271,6 +378,125 @@ function EffectsClient.drawProjectile(payload)
 	local endPos = origin + dir * range
 	TweenService:Create(ball, TweenInfo.new(life, Enum.EasingStyle.Linear), { CFrame = CFrame.lookAt(endPos, endPos + dir) }):Play()
 	Debris:AddItem(ball, life + 0.05)
+end
+
+function EffectsClient.updateAttackPreview(origin: Vector3, direction: Vector3, weapon, targetPoint: Vector3?)
+	previewFolder = getNamedFolder(PREVIEW_FOLDER_NAME, previewFolder)
+	clearFolder(previewFolder)
+
+	if not weapon then
+		return
+	end
+
+	local color = weapon.color or Color3.fromRGB(69, 243, 255)
+	local hitType = weapon.hitType
+	local range = math.min(weapon.range or 7, 70)
+	local alpha = 0.72
+
+	if hitType == "circle" or hitType == "slam" then
+		drawPreviewCircle(previewFolder, origin, range, color, alpha)
+	elseif hitType == "line" or hitType == "precise_line" or hitType == "projectile" then
+		local previewRange = range
+		if targetPoint and hitType == "projectile" then
+			previewRange = math.clamp((Vector3.new(targetPoint.X, 0, targetPoint.Z) - Vector3.new(origin.X, 0, origin.Z)).Magnitude, 2, range)
+		end
+		drawPreviewLine(previewFolder, origin, direction, previewRange, math.max(weapon.width or 0.6, 0.16), color, alpha)
+	else
+		drawPreviewArc(previewFolder, origin, direction, range, weapon.angle or 100, color, alpha)
+	end
+end
+
+function EffectsClient.clearPreview()
+	if previewFolder then
+		clearFolder(previewFolder)
+	end
+end
+
+function EffectsClient.updateChargePreview(origin: Vector3, direction: Vector3, skill, ratio: number, color: Color3?)
+	chargeFolder = getNamedFolder(CHARGE_FOLDER_NAME, chargeFolder)
+	clearFolder(chargeFolder)
+
+	local chargeColor = color or Color3.fromRGB(139, 211, 255)
+	local range = skill.range or 12.8
+	local angle = skill.angle or 210
+	drawPreviewArc(chargeFolder, origin, direction, range, angle, chargeColor, 0.48)
+
+	local halfLineDirection = rotateFlat(direction, 0)
+	makeStaticLine(
+		chargeFolder,
+		withHeight(origin),
+		withHeight(origin + halfLineDirection * range * (skill.chargeThreshold or 0.5)),
+		0.26,
+		if ratio >= (skill.chargeThreshold or 0.5) then Color3.fromRGB(255, 255, 255) else Color3.fromRGB(255, 90, 90),
+		0.1
+	)
+
+	local barRange = range * math.clamp(ratio, 0, 1)
+	drawPreviewArc(chargeFolder, origin, direction, barRange, angle, Color3.fromRGB(255, 255, 255), 0.18)
+end
+
+function EffectsClient.clearChargePreview()
+	if chargeFolder then
+		clearFolder(chargeFolder)
+	end
+end
+
+function EffectsClient.drawTelegraph(payload)
+	if typeof(payload) ~= "table" or typeof(payload.origin) ~= "Vector3" then
+		return
+	end
+
+	local color = payload.color or Color3.fromRGB(255, 220, 120)
+	local duration = payload.duration or 1
+	local origin = payload.origin
+	local telegraphFolder = Instance.new("Folder")
+	telegraphFolder.Name = "Telegraph"
+	telegraphFolder.Parent = getFolder()
+	Debris:AddItem(telegraphFolder, duration + 0.35)
+
+	if payload.hitType == "circle" then
+		local range = payload.range or 10
+		for step = 0, 3 do
+			task.delay(step * duration / 4, function()
+				if telegraphFolder.Parent then
+					drawPreviewCircle(telegraphFolder, origin, range * (0.25 + step * 0.25), color, 0.28)
+				end
+			end)
+		end
+	elseif payload.hitType == "line" then
+		drawPreviewLine(telegraphFolder, origin, payload.direction or Vector3.new(0, 0, -1), payload.range or 12, payload.width or 1, color, 0.35)
+	elseif payload.hitType == "arc" or payload.hitType == "blade_sweep" then
+		drawPreviewArc(telegraphFolder, origin, payload.direction or Vector3.new(0, 0, -1), payload.range or 12, payload.angle or 180, color, 0.38)
+	end
+end
+
+function EffectsClient.updateDaggerQTE(origin: Vector3, target: Vector3, state, elapsed: number)
+	qteFolder = getNamedFolder(QTE_FOLDER_NAME, qteFolder)
+	clearFolder(qteFolder)
+
+	makeStaticLine(qteFolder, withHeight(origin), withHeight(target), 0.12, Color3.fromRGB(180, 180, 190), 0.32)
+	drawPreviewCircle(qteFolder, origin, 2.0, Color3.fromRGB(255, 255, 255), 0.25)
+
+	local lock = state.lock or 0.7
+	local window = state.window or 0.9
+	local perfect = state.perfect or 0.56
+	local tolerance = state.tolerance or 0.15
+	if elapsed < lock then
+		drawPreviewCircle(qteFolder, origin, 4.4, Color3.fromRGB(160, 160, 170), 0.4)
+		return
+	end
+
+	local t = math.clamp((elapsed - lock) / window, 0, 1)
+	local bigRadius = 4.4 - 2.4 * t
+	local delta = math.abs((elapsed - lock) - perfect)
+	local color = if delta <= tolerance then Color3.fromRGB(80, 255, 160) else Color3.fromRGB(255, 255, 255)
+	drawPreviewCircle(qteFolder, origin, bigRadius, color, 0.08)
+end
+
+function EffectsClient.clearQTE()
+	if qteFolder then
+		clearFolder(qteFolder)
+	end
 end
 
 function EffectsClient.drawAttackEffect(payload)
