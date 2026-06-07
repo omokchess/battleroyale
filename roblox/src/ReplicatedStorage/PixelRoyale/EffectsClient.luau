@@ -191,63 +191,56 @@ local function rotateFlat(direction: Vector3, radians: number): Vector3
 	return rotated.Unit
 end
 
+-- Bold, solid, weapon-coloured range previews (filled zone + thick outline) so
+-- the attack area reads clearly from the top-down camera.
 local function drawPreviewCircle(parent: Folder, origin: Vector3, range: number, color: Color3, transparency: number)
-	local segments = 42
+	-- faint filled disc
+	local fill = Instance.new("Part")
+	fill.Shape = Enum.PartType.Cylinder
+	configureStatic(fill, color, math.min(transparency + 0.18, 0.93), parent)
+	fill.Size = Vector3.new(0.08, range * 2, range * 2)
+	fill.CFrame = CFrame.new(withHeight(origin)) * CFrame.Angles(0, 0, math.rad(90))
+	-- bold ring
+	local segments = 52
 	for i = 1, segments do
-		if i % 2 == 0 then
-			continue
-		end
 		local a0 = (i - 1) / segments * math.pi * 2
 		local a1 = i / segments * math.pi * 2
 		local p0 = withHeight(origin + Vector3.new(math.cos(a0) * range, 0, math.sin(a0) * range))
 		local p1 = withHeight(origin + Vector3.new(math.cos(a1) * range, 0, math.sin(a1) * range))
-		makeStaticLine(parent, p0, p1, 0.12, color, transparency)
+		makeStaticLine(parent, p0, p1, 0.38, color, transparency)
 	end
 end
 
 local function drawPreviewLine(parent: Folder, origin: Vector3, direction: Vector3, range: number, width: number, color: Color3, transparency: number)
-	local startPoint = withHeight(origin)
-	local endPoint = withHeight(origin + direction * range)
-	local dashCount = math.max(6, math.floor(range / 2.4))
-	for i = 0, dashCount - 1 do
-		if i % 2 == 0 then
-			local t0 = i / dashCount
-			local t1 = math.min((i + 0.62) / dashCount, 1)
-			makeStaticLine(parent, startPoint:Lerp(endPoint, t0), startPoint:Lerp(endPoint, t1), math.max(width, 0.12), color, transparency)
-		end
-	end
-	makeStaticBlock(parent, origin + direction * range, Vector3.new(0.6, 0.08, 0.6), color, math.min(transparency + 0.08, 0.9))
+	local mid = withHeight(origin + direction * (range * 0.5))
+	-- faint filled band
+	local fill = Instance.new("Part")
+	configureStatic(fill, color, math.min(transparency + 0.18, 0.93), parent)
+	fill.Size = Vector3.new(math.max(width * 2, 0.7), 0.08, range)
+	fill.CFrame = CFrame.lookAt(mid, withHeight(origin + direction * range))
+	-- bold centre line + end cap
+	makeStaticLine(parent, withHeight(origin), withHeight(origin + direction * range), math.max(width, 0.42), color, transparency)
+	makeStaticBlock(parent, origin + direction * range, Vector3.new(1.1, 0.08, 1.1), color, transparency)
 end
 
 local function drawPreviewArc(parent: Folder, origin: Vector3, direction: Vector3, range: number, angle: number, color: Color3, transparency: number)
 	local half = math.rad(angle) * 0.5
-	local segments = 18
-	local startEdge = rotateFlat(direction, -half)
-	local endEdge = rotateFlat(direction, half)
-	makeStaticLine(parent, withHeight(origin), withHeight(origin + startEdge * range), 0.08, color, transparency + 0.08)
-	makeStaticLine(parent, withHeight(origin), withHeight(origin + endEdge * range), 0.08, color, transparency + 0.08)
-
+	local segments = 28
+	-- faint filled cone (radial slices)
+	for i = 0, segments - 1 do
+		local mid = -half + (i + 0.5) / segments * half * 2
+		local d = rotateFlat(direction, mid)
+		makeStaticLine(parent, withHeight(origin), withHeight(origin + d * range), (range * half * 2) / segments + 0.12, color, math.min(transparency + 0.18, 0.93))
+	end
+	-- bold outline: edges + outer arc
+	makeStaticLine(parent, withHeight(origin), withHeight(origin + rotateFlat(direction, -half) * range), 0.34, color, transparency)
+	makeStaticLine(parent, withHeight(origin), withHeight(origin + rotateFlat(direction, half) * range), 0.34, color, transparency)
 	for i = 1, segments do
-		if i % 2 == 0 then
-			continue
-		end
-		local t0 = (i - 1) / segments
-		local t1 = i / segments
-		local a0 = -half + t0 * half * 2
-		local a1 = -half + t1 * half * 2
+		local a0 = -half + (i - 1) / segments * half * 2
+		local a1 = -half + i / segments * half * 2
 		local p0 = withHeight(origin + rotateFlat(direction, a0) * range)
 		local p1 = withHeight(origin + rotateFlat(direction, a1) * range)
-		makeStaticLine(parent, p0, p1, 0.14, color, transparency)
-	end
-
-	for i = 0, 6 do
-		if i % 2 == 1 then
-			continue
-		end
-		local t = i / 6
-		local a = -half + t * half * 2
-		local dir = rotateFlat(direction, a)
-		makeStaticLine(parent, withHeight(origin + dir * range * 0.25), withHeight(origin + dir * range * 0.94), 0.05, color, transparency + 0.2)
+		makeStaticLine(parent, p0, p1, 0.34, color, transparency)
 	end
 end
 
@@ -343,21 +336,17 @@ function EffectsClient.drawArc(payload)
 		)
 	end
 
-	local segs = if fullCircle then 28 else 16
-	for band = 0, 4 do
-		local bandRadius = range * (0.18 + band * 0.18)
-		local bandColor = if band == 4 then Color3.fromRGB(255, 255, 255) else color
-		local bandWidth = if band == 4 then 0.32 else 0.2 + band * 0.05
-		local bandAlpha = if band == 4 then 0.06 else 0.22 + band * 0.04
-		for i = 0, segs - 1 do
-			local t0 = i / segs
-			local t1 = (i + 0.78) / segs
-			local a0 = angAt(t0)
-			local a1 = angAt(math.min(t1, 1))
-			local p0 = withHeight(origin + Vector3.new(math.cos(a0), 0, math.sin(a0)) * bandRadius)
-			local p1 = withHeight(origin + Vector3.new(math.cos(a1), 0, math.sin(a1)) * bandRadius)
-			makePart(p0, p1, bandWidth, bandColor, life, bandAlpha)
-		end
+	-- one clean crescent at the outer edge (weapon colour + bright white core),
+	-- instead of stacked concentric bands — reads as a single crisp slash.
+	local segs = if fullCircle then 30 else 16
+	local r = range * 0.9
+	for i = 0, segs - 1 do
+		local a0 = angAt(i / segs)
+		local a1 = angAt((i + 1) / segs)
+		local p0 = withHeight(origin + Vector3.new(math.cos(a0), 0, math.sin(a0)) * r)
+		local p1 = withHeight(origin + Vector3.new(math.cos(a1), 0, math.sin(a1)) * r)
+		makePart(p0, p1, 0.55, color, life * 0.9, 0.12)
+		makePart(p0, p1, 0.2, Color3.fromRGB(255, 255, 255), life * 0.55, 0.06)
 	end
 
 	local tipAngle = angAt(1)
@@ -537,10 +526,10 @@ function EffectsClient.updateAttackPreview(origin: Vector3, direction: Vector3, 
 		return
 	end
 
-	local color = Color3.fromRGB(209, 213, 219)
+	local color = weapon.color or Color3.fromRGB(224, 188, 92)
 	local hitType = weapon.hitType
 	local range = math.min(weapon.range or 7, 70)
-	local alpha = 0.8
+	local alpha = 0.42
 
 	if hitType == "circle" or hitType == "slam" then
 		drawPreviewCircle(previewFolder, origin, range, color, alpha)
