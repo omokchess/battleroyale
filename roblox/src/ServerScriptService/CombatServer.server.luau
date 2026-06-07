@@ -24,6 +24,9 @@ type PlayerState = {
 	weaponId: string,
 	aimDirection: Vector3,
 	lastAttack: number,
+	attackCooldown: number,
+	comboStep: number,
+	comboExpire: number,
 	lastDash: number,
 	invulnUntil: number,
 }
@@ -113,6 +116,9 @@ local function getState(player: Player): PlayerState
 		weaponId = WeaponConfig.DefaultWeapon,
 		aimDirection = Vector3.new(0, 0, -1),
 		lastAttack = 0,
+		attackCooldown = 0,
+		comboStep = 0,
+		comboExpire = 0,
 		lastDash = 0,
 		invulnUntil = 0,
 	}
@@ -194,6 +200,14 @@ local function damageVictim(attacker: Player, victimHumanoid: Humanoid, amount: 
 	end
 end
 
+local function withFinisher(base, finisher)
+	local swing = table.clone(base)
+	for key, value in pairs(finisher) do
+		swing[key] = value
+	end
+	return swing
+end
+
 local function attack(player: Player)
 	local state = getState(player)
 	local weapon = WeaponConfig.getWeapon(state.weaponId)
@@ -203,10 +217,29 @@ local function attack(player: Player)
 	end
 
 	local now = os.clock()
-	if now - state.lastAttack < weapon.cooldown then
+	if now - state.lastAttack < state.attackCooldown then
 		return
 	end
+
+	-- Combo: every `cycle`-th swing becomes the finisher (own shape/damage/cooldown).
+	local combo = WeaponConfig.Combo[state.weaponId]
+	local swing = weapon
+	local isFinisher = false
+	if combo then
+		if now > state.comboExpire then
+			state.comboStep = 0
+		end
+		state.comboStep += 1
+		if state.comboStep >= combo.cycle then
+			state.comboStep = 0
+			isFinisher = true
+			swing = withFinisher(weapon, combo.finisher)
+		end
+		state.comboExpire = now + combo.comboReset
+	end
+
 	state.lastAttack = now
+	state.attackCooldown = swing.cooldown or weapon.cooldown
 
 	local origin = root.Position
 	local direction = HitboxUtil.safeUnit(state.aimDirection, HitboxUtil.safeUnit(root.CFrame.LookVector))
@@ -219,9 +252,9 @@ local function attack(player: Player)
 				continue -- dodging (dash i-frames)
 			end
 			local _, otherHumanoid, otherRoot = getCharacterParts(other)
-			if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, weapon) then
+			if otherHumanoid and otherRoot and HitboxUtil.check(origin, direction, otherRoot.Position, swing) then
 				hitCount += 1
-				damageVictim(player, otherHumanoid, weapon.damage)
+				damageVictim(player, otherHumanoid, swing.damage)
 			end
 		end
 	end
@@ -229,14 +262,15 @@ local function attack(player: Player)
 	CombatRemote:FireAllClients("AttackEffect", {
 		userId = player.UserId,
 		weaponId = state.weaponId,
-		hitType = weapon.hitType,
+		hitType = swing.hitType,
 		origin = origin,
 		direction = direction,
-		range = weapon.range,
-		width = weapon.width or 1,
-		angle = weapon.angle or 0,
+		range = swing.range,
+		width = swing.width or 1,
+		angle = swing.angle or 0,
 		color = weapon.color,
 		hitCount = hitCount,
+		isFinisher = isFinisher,
 	})
 end
 
@@ -250,6 +284,8 @@ CombatRemote.OnServerEvent:Connect(function(player: Player, action: string, payl
 	elseif action == "SetWeapon" and typeof(payload) == "string" and WeaponConfig.Weapons[payload] then
 		state.weaponId = payload
 		state.lastAttack = 0
+		state.attackCooldown = 0
+		state.comboStep = 0
 		applyWeaponStats(player)
 	elseif action == "Attack" then
 		attack(player)
