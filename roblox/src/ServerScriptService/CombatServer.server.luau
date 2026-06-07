@@ -40,7 +40,8 @@ local function ensureArena()
 	floor.Name = "ArenaFloor"
 	floor.Anchored = true
 	floor.Size = Vector3.new(140, 1, 140)
-	floor.Position = Vector3.new(0, -0.5, 0)
+	-- Keep the arena top slightly above the default Baseplate to avoid z-fighting flicker.
+	floor.Position = Vector3.new(0, -0.45, 0)
 	floor.Color = Color3.fromRGB(22, 28, 36)
 	floor.Material = Enum.Material.SmoothPlastic
 	floor.Parent = arena
@@ -229,4 +230,3 @@ for _, player in ipairs(Players:GetPlayers()) do
 		setupLeaderstats(player)
 	end
 end
-
