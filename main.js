@@ -588,6 +588,10 @@ async function handleMatchEnd(stats) {
 }
 
 // Run Setup on page launch
+// Touch devices (phones AND large tablets like the Galaxy Tab) must use the
+// mobile layout regardless of CSS width — pin it via a root class the stylesheet
+// keys off, since the lg/md width breakpoints alone misclassify wide tablets.
+if (isMobileDevice()) document.documentElement.classList.add('touch-ui');
 registerPwa();
 setupWeaponSelector();
 buildWeaponSwitchPanel();

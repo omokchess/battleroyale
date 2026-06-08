@@ -646,3 +646,34 @@ canvas {
   /* Keep content clear of the taller fixed bottom tab bar. */
   #lobbyMenu { padding-bottom: 5.25rem; }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   FORCED TOUCH UI
+   Large tablets (e.g. Galaxy Tab S6 Lite) exceed the lg (1024px) breakpoint, so
+   the width-based layout would hand them the DESKTOP UI even though they are
+   touch devices. When JS detects a touch/mobile device it sets `html.touch-ui`;
+   these rules pin the mobile layout regardless of viewport width.
+   ────────────────────────────────────────────────────────────────────────── */
+html.touch-ui #lobbyMenu > div {
+  flex-direction: column !important;          /* stack the lobby columns */
+}
+html.touch-ui #lobbyAccount,
+html.touch-ui #lobbyLeft,
+html.touch-ui #lobbyRight {
+  width: 100% !important;                      /* override lg:w-80 / fixed column widths */
+}
+html.touch-ui #lobbyTabBar {
+  display: grid !important;                     /* show bottom tab nav (overrides lg:hidden) */
+}
+/* The bottom tab bar drives which section is visible — make it work at any width. */
+html.touch-ui .lobby-tab-hidden { display: none !important; }
+html.touch-ui #lobbyMenu { padding-bottom: 5.25rem; }
+/* Hide the redundant desktop-only "내 페이지" header inside the account card. */
+html.touch-ui #lobbyAccount > .lg\:block { display: none !important; }
+
+/* In-arena weapon switch: use the mobile toggle + drawer, never the desktop
+   always-on side panel. */
+html.touch-ui #weaponPanelToggle { display: flex !important; }       /* show toggle (overrides lg:hidden) */
+html.touch-ui #weaponSwitchPanel { display: none; }                  /* closed by default */
+html.touch-ui #weaponSwitchPanel.open { display: flex; }             /* opened via toggle */
+html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-enable the dimmer */
