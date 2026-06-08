@@ -23,6 +23,7 @@ const hostRoomInput = document.getElementById('hostRoomInput');
 const joinRoomInput = document.getElementById('joinRoomInput');
 
 const hostBtn = document.getElementById('hostBtn');
+const dummyBtn = document.getElementById('dummyBtn');
 const joinBtn = document.getElementById('joinBtn');
 const leaveBtn = document.getElementById('leaveBtn');
 const resultLobbyBtn = document.getElementById('resultLobbyBtn');
@@ -199,9 +200,11 @@ function hideError() {
 /**
  * 3. Match Hosting workflow
  */
-hostBtn.addEventListener('click', () => {
+function doHost(dummy = false) {
   const nickname = nicknameInput.value.trim();
   const roomCode = hostRoomInput.value.trim();
+  const btn = dummy ? dummyBtn : hostBtn;
+  const idleLabel = dummy ? '더미방 만들기' : '방 만들기';
 
   if (!nickname) {
     showError('방을 만들기 전에 닉네임을 입력해 주세요.');
@@ -213,20 +216,18 @@ hostBtn.addEventListener('click', () => {
   }
 
   hideError();
-  hostBtn.disabled = true;
-  hostBtn.textContent = 'P2P 세션 할당 중...';
+  if (btn) { btn.disabled = true; btn.textContent = 'P2P 세션 할당 중...'; }
 
   // Instantiate network manager
   netManager = new NetworkManager();
 
   netManager.on('onInit', (allocatedCode) => {
-    hostBtn.disabled = false;
-    hostBtn.textContent = '방 만들기';
+    if (btn) { btn.disabled = false; btn.textContent = idleLabel; }
 
     enterGameScreen(true);
 
     // Run Game (apply the player's equipped costume colors, if any)
-    activeGame = new Game(gameCanvas, netManager, accountUI.getEquippedCostume());
+    activeGame = new Game(gameCanvas, netManager, accountUI.getEquippedCostume(), { dummyRoom: dummy });
     activeGame.start((stats) => {
       // Match ended / disconnected — award coins then return to lobby.
       handleMatchEnd(stats);
@@ -237,20 +238,23 @@ hostBtn.addEventListener('click', () => {
     roomRegistry.startHosting(allocatedCode, () => ({
       host: nickname,
       weapon,
-      players: activeGame ? Object.keys(activeGame.players).length : 1
+      players: activeGame ? Object.values(activeGame.players).filter(p => !p.isDummy).length : 1,
+      dummy
     }));
   });
 
   netManager.on('onError', (err) => {
-    hostBtn.disabled = false;
-    hostBtn.textContent = '방 만들기';
+    if (btn) { btn.disabled = false; btn.textContent = idleLabel; }
     showError(err);
     netManager.stop();
   });
 
   // Host the server
   netManager.hostRoom(roomCode);
-});
+}
+
+hostBtn.addEventListener('click', () => doHost(false));
+if (dummyBtn) dummyBtn.addEventListener('click', () => doHost(true));
 
 /**
  * 4. Match Joining workflow (shared by the Join button and room-list clicks)
@@ -377,12 +381,29 @@ function showLobbyScreen() {
   startLobbyBrowsing();
 }
 
-leaveBtn.addEventListener('click', () => {
-  if (confirm('정말 전장에서 이탈하시겠습니까? 이번 판은 패배 처리됩니다!')) {
-    if (activeGame) {
-      activeGame.quit();
-    }
+const leaveConfirmModal = document.getElementById('leaveConfirmModal');
+const leaveConfirmYes = document.getElementById('leaveConfirmYes');
+const leaveConfirmNo = document.getElementById('leaveConfirmNo');
+
+function openLeaveConfirm() {
+  if (!leaveConfirmModal) {            // fallback if markup is missing
+    if (activeGame) activeGame.quit();
+    return;
   }
+  leaveConfirmModal.classList.remove('hidden');
+}
+function closeLeaveConfirm() {
+  if (leaveConfirmModal) leaveConfirmModal.classList.add('hidden');
+}
+
+leaveBtn.addEventListener('click', openLeaveConfirm);
+if (leaveConfirmYes) leaveConfirmYes.addEventListener('click', () => {
+  closeLeaveConfirm();
+  if (activeGame) activeGame.quit();
+});
+if (leaveConfirmNo) leaveConfirmNo.addEventListener('click', closeLeaveConfirm);
+if (leaveConfirmModal) leaveConfirmModal.addEventListener('click', (e) => {
+  if (e.target === leaveConfirmModal) closeLeaveConfirm(); // tap backdrop = cancel
 });
 
 resultLobbyBtn.addEventListener('click', () => {
@@ -418,7 +439,7 @@ function renderRoomList(rooms) {
   updateRoomListStatus();
 
   // Skip rebuilding identical DOM (the prune timer fires every 2.5s).
-  const sig = rooms.map(r => `${r.code}|${r.host}|${r.weapon}|${r.players}`).join(';');
+  const sig = rooms.map(r => `${r.code}|${r.host}|${r.weapon}|${r.players}|${r.dummy ? 1 : 0}`).join(';');
   if (sig === lastRoomSig) return;
   lastRoomSig = sig;
 
@@ -433,14 +454,22 @@ function renderRoomList(rooms) {
     const code = escapeHtml(room.code);
     const host = escapeHtml(room.host || room.code);
     const players = Number.isFinite(room.players) ? room.players : 1;
+    const isDummy = !!room.dummy;
+    // Dummy (practice) rooms get a bold red border + badge so they're obvious.
+    const borderCls = isDummy
+      ? 'border-red-500 hover:border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.35)]'
+      : 'border-gray-700 hover:border-[#66fcf1]';
+    const dummyBadge = isDummy
+      ? '<span class="font-mono text-[9px] text-red-300 border border-red-500 px-1 py-0.5 uppercase shrink-0">더미방</span>'
+      : '';
     return `
-      <button class="room-row w-full text-left bg-[#0b0c10] border-2 border-gray-700 hover:border-[#66fcf1] p-2.5 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2" data-code="${code}">
+      <button class="room-row w-full text-left bg-[#0b0c10] border-2 ${borderCls} p-2.5 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2" data-code="${code}">
         <div class="min-w-0">
-          <div class="font-mono text-sm text-white font-bold truncate">${code}</div>
+          <div class="font-mono text-sm text-white font-bold truncate flex items-center gap-1.5">${dummyBadge}<span class="truncate">${code}</span></div>
           <div class="font-mono text-[10px] text-gray-400 truncate">${uiIcon('user')} ${host} · <span style="color:${cfg.color}">${cfg.name}</span></div>
         </div>
         <div class="text-right shrink-0">
-          <div class="font-mono text-[10px] text-[#66fcf1] font-bold">${uiIcon('play')}참가</div>
+          <div class="font-mono text-[10px] ${isDummy ? 'text-red-300' : 'text-[#66fcf1]'} font-bold">${uiIcon('play')}참가</div>
           <div class="font-mono text-[10px] text-green-400">${uiIcon('users')}${players}명</div>
         </div>
       </button>`;
