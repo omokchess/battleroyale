@@ -23,6 +23,26 @@ const WEAPON_SPRITE_META = {
 };
 const WEAPON_ASSET_VERSION = '20260608h';
 
+// Idle resting pose: angle (radians) the weapon is held at relative to the aim
+// direction when NOT attacking, so each weapon looks naturally carried instead
+// of pointing dead-straight down the aim line. Negative = rotated up/back toward
+// the wielder. (axe / bow / scythe keep their own bespoke idle handling below.)
+// These are art-tuned offsets — easy to nudge per weapon to taste.
+const WEAPON_IDLE_POSE = {
+  sword:      -0.6,
+  spear:      -0.85,
+  gauntlet:   -0.4,
+  greatsword: -0.7,
+  dagger:     -0.75,
+  rapier:     -0.55,
+  hammer:     -0.8,
+  matchlock:  -0.5,
+  katana:     -0.5,
+  magicstaff: -0.85,
+  sniper:     -0.45,
+  bow:         0.45
+};
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -3482,12 +3502,18 @@ export class Renderer {
     const meta = sprite.meta;
     const rageActive = weaponType === 'axe' && player.buffType === 'axe_rage';
     let drawAngle = weaponAngle;
-    if (weaponType === 'axe' && !active) {
-      drawAngle = rageActive ? player.angle : -Math.PI / 4;
+    if (weaponType === 'axe') {
+      if (!active) drawAngle = rageActive ? player.angle : -Math.PI / 4;
     } else if (weaponType === 'bow') {
       drawAngle = player.angle;
+      if (!active) drawAngle += (WEAPON_IDLE_POSE.bow || 0);
     } else if (weaponType === 'scythe') {
       drawAngle = active ? weaponAngle + 0.35 : player.angle + Math.PI / 2;
+    } else if (!active) {
+      // Natural resting pose: hold the weapon angled to the side instead of
+      // pointing straight along the aim. Active swings keep their animation.
+      const idle = WEAPON_IDLE_POSE[weaponType];
+      if (Number.isFinite(idle)) drawAngle = player.angle + idle;
     }
 
     const spriteScale = meta.scale * (active ? 1.06 : 1);

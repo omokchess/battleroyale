@@ -977,10 +977,38 @@ export class Game {
     this.pendingWeaponChoice = weapon; // local UI hint (shown until respawn)
     if (this.networkManager.isHost) {
       const local = this.players[this.localPlayerId];
-      if (local) local.pendingWeapon = weapon;
+      if (!local) return;
+      // Dummy (practice) room: swap instantly so weapons can be tried back to
+      // back. Normal matches still queue the swap until the next respawn.
+      if (this.dummyRoom && !local.isDead) {
+        this._applyWeaponNow(local, weapon);
+        this.pendingWeaponChoice = null;
+      } else {
+        local.pendingWeapon = weapon;
+      }
     } else {
       this.networkManager.sendToHost(Protocol.selectWeapon(weapon));
     }
+  }
+
+  /**
+   * Apply a weapon swap immediately (dummy room). Clears any weapon-specific
+   * charge/buff/projectile state so the new weapon starts clean, and clamps HP
+   * to the new max without auto-healing.
+   */
+  _applyWeaponNow(player, weapon) {
+    if (!Weapons[weapon] || player.weapon === weapon) return;
+    player.weapon = weapon;
+    player.maxHp = Weapons[weapon].maxHp || 100;
+    player.hp = Math.min(player.hp, player.maxHp);
+    player.pendingWeapon = null;
+    player.lastAttackTime = 0;
+    player.clearCombatTimers();
+    this._clearPendingSwordWavesFor(player.id);
+    this._clearPendingRailgunsFor(player.id);
+    this._clearPendingMagicShardsFor(player.id);
+    this._clearPendingMeleeHitsFor(player.id);
+    this._clearPendingHammerSlamsFor(player.id);
   }
 
   /**
