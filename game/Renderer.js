@@ -113,12 +113,56 @@ export class Renderer {
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
     this._drawParticles(ctx, camera, cw, ch, 'onTop', gameState.players);
 
+    // Floating damage numbers above whoever just took a hit (dummy or player).
+    if (gameState.damagePopups && gameState.damagePopups.length) {
+      this._drawDamagePopups(ctx, camera, cw, ch, gameState.damagePopups, nowTime);
+    }
+
     // Cursor crosshair — drawn last so it's always on top. Coordinates are
     // already in canvas-buffer-space (no camera transform needed).
     if (gameState.cursorPos) {
       this._drawCursorCrosshair(ctx, gameState.cursorPos.x, gameState.cursorPos.y);
     }
 
+    ctx.restore();
+  }
+
+  /**
+   * Floating pixel-font damage numbers that rise and fade above a character.
+   * Local player's damage is red; dummies/enemies are gold for contrast.
+   */
+  _drawDamagePopups(ctx, camera, cw, ch, popups, now) {
+    const z = camera.zoom || 1;
+    // Readable on phones but still scales modestly with zoom (clamped — this is
+    // UI feedback, not a hitbox, so it keeps a legibility floor).
+    const size = Math.round(15 * Math.max(0.85, Math.min(1.5, z)));
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${size}px "Galmuri11", monospace`;
+    ctx.lineJoin = 'round';
+    for (const d of popups) {
+      const life = (now - d.born) / 900; // 0..1
+      if (life >= 1) continue;
+      const anchor = camera.toScreen(d.x, d.y, cw, ch);
+      const rise = 14 + life * 30;                    // drift upward (screen px)
+      const x = anchor.x;
+      const y = anchor.y - 22 * z - rise;
+      const alpha = life < 0.7 ? 1 : Math.max(0, 1 - (life - 0.7) / 0.3);
+      const pop = life < 0.12 ? 1 + (0.12 - life) * 2.2 : 1; // brief scale-in punch
+      const text = String(d.amount);
+      const fill = d.isLocal ? '#ff5555' : '#ffe27a';
+      ctx.globalAlpha = alpha;
+      ctx.save();
+      ctx.translate(x, y);
+      if (pop !== 1) ctx.scale(pop, pop);
+      ctx.lineWidth = Math.max(2, size * 0.28);
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.strokeText(text, 0, 0);
+      ctx.fillStyle = fill;
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    }
     ctx.restore();
   }
 

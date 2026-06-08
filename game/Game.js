@@ -17,11 +17,20 @@ import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 const RESPAWN_MS = 500;
 
 export class Game {
-  constructor(canvas, networkManager, costume = null) {
+  constructor(canvas, networkManager, costume = null, options = {}) {
     this.canvas = canvas;
     this.networkManager = networkManager;
     // Local player's equipped costume colors { color, accentColor } or null.
     this.localCostume = costume;
+
+    // Dummy (practice) room: the host spawns stationary training dummies.
+    this.dummyRoom = !!options.dummyRoom;
+    this.dummyCount = Number.isFinite(options.dummyCount) ? options.dummyCount : 3;
+
+    // Floating damage numbers (local render-only, derived from HP deltas so they
+    // work the same on host and clients without any extra netcode).
+    this._dmgPopups = [];
+    this._prevHpById = {};
 
     // Arena Boundaries
     this.mapWidth = 700;
@@ -105,8 +114,13 @@ export class Game {
       const spawnP = this._getRandomSpawnPoint();
       const hostPlayer = new Player(this.localPlayerId, localNick, localWeapon, spawnP.x, spawnP.y, this.localCostume);
       this.players[this.localPlayerId] = hostPlayer;
-      
-      this._announce('MATCH STARTED');
+
+      // Dummy room: drop a few stationary practice targets into the arena.
+      if (this.dummyRoom) {
+        this._spawnDummies(this.dummyCount);
+      }
+
+      this._announce(this.dummyRoom ? '더미 연습장 입장' : 'MATCH STARTED');
 
       // Preserve active ticking when Host's tab is backgrounded
       this._visibilityChangeHandler = () => {
@@ -396,6 +410,7 @@ export class Game {
     Object.keys(this.players).forEach(id => {
       const p = this.players[id];
       if (p.isDead) return;
+      if (p.isDummy) return; // training dummies just stand there
 
       const weaponConfig = getEffectiveWeapon(p.weapon, p.buffType);
 
@@ -514,7 +529,9 @@ export class Game {
           }
           p.pendingWeapon = null;
 
-          const spawnP = this._getRandomSpawnPoint();
+          const spawnP = p.isDummy
+            ? { x: p.homeX, y: p.homeY }
+            : this._getRandomSpawnPoint();
           p.isDead = false;
           p.hp = p.maxHp;
           p.x = spawnP.x;
@@ -522,7 +539,7 @@ export class Game {
           p.respawnTime = 0;
           p.respawnRemainingMs = 0;
           p.clearCombatTimers();
-          this._announce(`${p.nickname}님이 다시 부활했습니다!`);
+          if (!p.isDummy) this._announce(`${p.nickname}님이 다시 부활했습니다!`);
         }
       } else {
         p.respawnTime = 0;
@@ -913,12 +930,37 @@ export class Game {
   }
 
   /**
+   * Spawn stationary training dummies spread in a ring around the arena center.
+   * They are normal Players flagged isDummy: they never move or attack (guarded
+   * in the host loop) and respawn at their home spot when killed.
+   */
+  _spawnDummies(count) {
+    const n = Math.max(1, Math.min(8, Math.floor(count) || 3));
+    const cx = this.mapWidth / 2;
+    const cy = this.mapHeight / 2;
+    const ring = Math.min(this.mapWidth, this.mapHeight) * 0.3;
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n - Math.PI / 2;
+      const x = cx + Math.cos(a) * ring;
+      const y = cy + Math.sin(a) * ring;
+      const id = `dummy_${i}`;
+      const d = new Player(id, `더미 ${i + 1}`, 'sword', x, y, { color: '#9aa0a6', accentColor: '#e5e7eb' });
+      d.isDummy = true;
+      d.homeX = x;
+      d.homeY = y;
+      this.players[id] = d;
+    }
+  }
+
+  /**
    * Credit a kill + broadcast a feed line.
    */
   _creditKill(killerId, target, viaLabel = '') {
     const killer = this.players[killerId];
     if (killer) {
       killer.kills++;
+      // Dummies are practice targets — no kill-feed spam for them.
+      if (target.isDummy) return;
       const via = viaLabel ? `${viaLabel} ` : '';
       this._announce(`${killer.nickname}님이 ${via}${target.nickname}님을 처치했습니다!`);
     } else {
@@ -2490,11 +2532,14 @@ export class Game {
    * Render composite scene
    */
   _renderFrame() {
+    this._trackDamagePopups(Date.now());
+
     // Generate simple state packet to supply to standard renderer
     const state = {
       players: this.players,
       projectiles: this.projectiles,
       effects: this.effects,
+      damagePopups: this._dmgPopups,
       // Pass mouse in canvas-buffer-space so the renderer can draw the cursor crosshair.
       cursorPos: this.input ? { x: this.input.mouse.x, y: this.input.mouse.y } : null
     };
@@ -2507,6 +2552,45 @@ export class Game {
       this.mapHeight,
       this.visualSettings
     );
+  }
+
+  /**
+   * Spawn floating damage numbers by watching each player's HP drop frame to
+   * frame. Render-only and derived from the synced HP, so it shows on the host
+   * AND every client for any character (dummy or player) with no extra netcode.
+   */
+  _trackDamagePopups(now) {
+    const players = this.players || {};
+    Object.keys(players).forEach(id => {
+      const p = players[id];
+      if (!p) return;
+      const prev = this._prevHpById[id];
+      const cur = p.hp;
+      if (prev !== undefined && cur < prev - 0.5) {
+        const dmg = Math.round(prev - cur);
+        if (dmg > 0) {
+          // Merge rapid hits / DoT ticks on the same target into one number.
+          const recent = this._dmgPopups.find(d => d.targetId === id && now - d.born < 140);
+          if (recent) {
+            recent.amount += dmg;
+            recent.born = now;
+            recent.x = p.x;
+            recent.y = p.y;
+          } else {
+            this._dmgPopups.push({
+              targetId: id, amount: dmg, x: p.x, y: p.y,
+              born: now, isLocal: id === this.localPlayerId
+            });
+            if (this._dmgPopups.length > 60) this._dmgPopups.shift();
+          }
+        }
+      }
+      this._prevHpById[id] = cur;
+    });
+
+    // Drop tracking for players who left, and expire popups after ~900ms.
+    Object.keys(this._prevHpById).forEach(id => { if (!players[id]) delete this._prevHpById[id]; });
+    this._dmgPopups = this._dmgPopups.filter(d => now - d.born < 900);
   }
 
   /**

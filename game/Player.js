@@ -23,6 +23,9 @@ export class Player {
     this.kills = 0;
     this.isDead = false;
     this.respawnRemainingMs = 0;
+    // Training dummy: spawned by the host in a dummy room. Doesn't move or
+    // attack, respawns at its home spot, and is rendered with a clear label.
+    this.isDummy = false;
 
     // Cool down tracker
     this.lastAttackTime = 0;
@@ -271,6 +274,7 @@ export class Player {
       angle: this.angle,
       kills: this.kills,
       isDead: this.isDead,
+      isDummy: this.isDummy,
       respawnRemainingMs: this.respawnRemainingMs || 0,
       iframeMs: Math.round(this.iframeTimeLeft * 1000),
       buffType: this.buffType,
@@ -306,6 +310,7 @@ export class Player {
     this.hp = Number.isFinite(data.hp) ? Math.min(data.hp, this.maxHp) : this.maxHp;
     this.kills = data.kills;
     this.isDead = data.isDead;
+    this.isDummy = Boolean(data.isDummy);
     this.respawnRemainingMs = data.respawnRemainingMs || 0;
     this.iframeTimeLeft = (data.iframeMs || 0) / 1000;
     this.buffType = data.buffType || null;
