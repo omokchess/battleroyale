@@ -132,6 +132,7 @@ export class RoomRegistry {
       host: extra.host || this.hosting.roomId,
       weapon: extra.weapon || 'sword',
       players: extra.players || 1,
+      dummy: !!extra.dummy,
       ts: Date.now(),
       origin: this.instanceId
     };
