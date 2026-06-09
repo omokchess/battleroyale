@@ -19,7 +19,7 @@ const WEAPON_SPRITE_META = {
   matchlock: { src: '/assets/weapons/matchlock.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   katana: { src: '/assets/weapons/katana.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0, noAimFlip: true },
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
-  sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
+  sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: -30 }
 };
 const WEAPON_ASSET_VERSION = '20260608h';
 
