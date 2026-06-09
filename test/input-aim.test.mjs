@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { resolvePointerAimAngle } from '../game/Input.js';
+import { Input, resolvePointerAimAngle } from '../game/Input.js';
 
 const camera = {
   x: 350,
@@ -54,5 +54,54 @@ test('mouse aim keeps the previous angle at exact arena center', () => {
   );
 
   assert.equal(angle, fallbackAngle);
+});
+
+test('mobile joystick cursor only flashes after target casts', () => {
+  const originalWindow = globalThis.window;
+  const originalLocalStorage = globalThis.localStorage;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const originalDateNow = Date.now;
+
+  globalThis.window = { innerWidth: 800, innerHeight: 600 };
+  globalThis.localStorage = { getItem: () => 'true' };
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { maxTouchPoints: 1 }
+  });
+
+  try {
+    const input = new Input();
+    input.joystickEnabled = true;
+    input.hasMouseInput = false;
+    input.mouse = { x: 120, y: 180 };
+
+    assert.equal(input.getCursorPos(1000), null);
+
+    input.targetCursorVisibleUntil = 1100;
+    assert.deepEqual(input.getCursorPos(1050), { x: 120, y: 180 });
+    assert.equal(input.getCursorPos(1101), null);
+
+    input.hasMouseInput = true;
+    assert.deepEqual(input.getCursorPos(1101), { x: 120, y: 180 });
+
+    Date.now = () => 2000;
+    input._markTouchInput();
+    Date.now = () => 2200;
+    assert.equal(input._isSyntheticTouchMouseEvent(), true);
+    Date.now = () => 2701;
+    assert.equal(input._isSyntheticTouchMouseEvent(), false);
+    assert.equal(input._isSyntheticTouchMouseEvent({ sourceCapabilities: { firesTouchEvents: true } }), true);
+  } finally {
+    Date.now = originalDateNow;
+
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+
+    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = originalLocalStorage;
+
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+  }
 });
 
