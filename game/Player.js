@@ -55,6 +55,9 @@ export class Player {
     this.burnDps = 0;          // fire DoT: damage per tick
     this.burnSourceId = null;  // fire DoT: who applied it (kill credit)
     this.teleportReadyAt = 0;  // sniper R teleport: host-ms timestamp when ready again
+    this.sniperTeleportTargetUntil = 0;
+    this.altSkillCdLeft = 0;    // generic R skill cooldown (seconds)
+    this.targetSkillCdLeft = 0; // generic LMB skill cooldown (seconds)
     this.pendingWeapon = null; // queued weapon swap, applied on next respawn
     this.arrowStacks = 0;     // bow skill charges earned by landing arrows
     this.greatswordChargeStart = 0;
@@ -214,6 +217,9 @@ export class Player {
     this.burnDps = 0;
     this.burnSourceId = null;
     this.teleportReadyAt = 0;
+    this.sniperTeleportTargetUntil = 0;
+    this.altSkillCdLeft = 0;
+    this.targetSkillCdLeft = 0;
     this.arrowStacks = 0;
     this.greatswordChargeStart = 0;
     this.greatswordChargeAngle = 0;
@@ -293,6 +299,9 @@ export class Player {
       magicCdMs: serializeMagicCooldowns(this.magicCooldowns),
       burnMs: Math.round((this.burnTimeLeft || 0) * 1000),
       teleportCdMs: Math.max(0, Math.round((this.teleportReadyAt || 0) - Date.now())),
+      sniperTeleportTargetMs: Math.max(0, Math.round((this.sniperTeleportTargetUntil || 0) - Date.now())),
+      altSkillCdMs: Math.round((this.altSkillCdLeft || 0) * 1000),
+      targetSkillCdMs: Math.round((this.targetSkillCdLeft || 0) * 1000),
       color: this.color,
       accentColor: this.accentColor,
       costumeDecoration: this.costumeDecoration || null,
@@ -323,6 +332,10 @@ export class Player {
     this.greatswordChargeStart = data.greatswordChargeMs > 0 ? Date.now() - data.greatswordChargeMs : 0;
     this.katanaChargeStart = data.katanaChargeMs > 0 ? Date.now() - data.katanaChargeMs : 0;
     this.magicCooldowns = deserializeMagicCooldowns(data.magicCdMs);
+    this.teleportReadyAt = data.teleportCdMs > 0 ? Date.now() + data.teleportCdMs : 0;
+    this.sniperTeleportTargetUntil = data.sniperTeleportTargetMs > 0 ? Date.now() + data.sniperTeleportTargetMs : 0;
+    this.altSkillCdLeft = Math.max(0, (data.altSkillCdMs || 0) / 1000);
+    this.targetSkillCdLeft = Math.max(0, (data.targetSkillCdMs || 0) / 1000);
     this.daggerQte = deserializeDaggerQte(data.daggerQte);
     this.comboStep = Math.max(0, Math.floor(data.comboStep || 0));
     this.comboDelayUntil = Date.now() + Math.max(0, Math.round(data.comboDelayMs || 0));

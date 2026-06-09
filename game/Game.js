@@ -9,7 +9,7 @@ import { Collision } from './Collision.js';
 import { Camera } from './Camera.js';
 import { Input } from './Input.js';
 import { Renderer } from './Renderer.js';
-import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig, MagicConfig } from './Weapons.js';
+import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig, MagicConfig, AuxSkillConfig } from './Weapons.js';
 import { isMobileDevice } from './Device.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 
@@ -267,13 +267,15 @@ export class Game {
       // Update camera over host coordinates
       const hp = this.players[this.localPlayerId];
       if (hp) {
+        this.input.setLocalWeapon(hp.weapon);
         this.camera.update(hp.x, hp.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
         if (!hp.isDead) {
           this.input.updateAimAngle(hp, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
           hp.angle = this.input.aimAngle;
           // Host applies its own dash/skill directly (it is authoritative).
-          if (this.input.consumeDash()) {
-            const { dx, dy } = this.input.getMoveVector();
+          const dash = this.input.consumeDash();
+          if (dash) {
+            const { dx, dy } = this._resolveInputDashVector(dash);
             this._tryDash(hp, dx, dy);
           }
           if (this.input.consumeSkillDown()) {
@@ -307,6 +309,7 @@ export class Game {
       // Transmit inputs to host
       const localPlayer = this.players[this.localPlayerId];
       if (localPlayer && !localPlayer.isDead) {
+        this.input.setLocalWeapon(localPlayer.weapon);
         // Update camera position to follow local player
         this.camera.update(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
 
@@ -316,8 +319,9 @@ export class Game {
 
         // Dash is applied optimistically for snappy feel, then reconciled by
         // the host. Skills are host-authoritative (they spawn shared entities).
-        if (this.input.consumeDash()) {
-          const { dx, dy } = this.input.getMoveVector();
+        const dash = this.input.consumeDash();
+        if (dash) {
+          const { dx, dy } = this._resolveInputDashVector(dash);
           localPlayer.startDash(dx, dy);
           this.networkManager.sendToHost(Protocol.clientAction('dash', dx, dy));
         }
@@ -391,6 +395,11 @@ export class Game {
         }
       } else if (p.skillCdLeft > 0) {
         p.skillCdLeft = Math.max(0, p.skillCdLeft - deltaTime);
+      }
+      if (p.altSkillCdLeft > 0) p.altSkillCdLeft = Math.max(0, p.altSkillCdLeft - deltaTime);
+      if (p.targetSkillCdLeft > 0) p.targetSkillCdLeft = Math.max(0, p.targetSkillCdLeft - deltaTime);
+      if (p.sniperTeleportTargetUntil > 0 && now > p.sniperTeleportTargetUntil) {
+        p.sniperTeleportTargetUntil = 0;
       }
       this._tickMagicCooldowns(p, deltaTime);
     });
@@ -844,6 +853,164 @@ export class Game {
     }
   }
 
+  _canUseAuxSkill(player, slot) {
+    if (!player || player.isDead || player.stunTimeLeft > 0 || player.spearThrown) return false;
+    if (player.greatswordChargeStart > 0 || player.katanaChargeStart > 0 || player.daggerQte) return false;
+    const cfg = AuxSkillConfig[player.weapon]?.[slot];
+    if (!cfg) return false;
+    if (slot === 'alt') return !(player.altSkillCdLeft > 0);
+    return !(player.targetSkillCdLeft > 0);
+  }
+
+  _castAuxAltSkill(player, now) {
+    if (!this._canUseAuxSkill(player, 'alt')) return;
+    this._executeAuxSkill(player, AuxSkillConfig[player.weapon].alt, now, 'alt');
+  }
+
+  _castAuxTargetSkill(player, now, targetX, targetY) {
+    if (!this._canUseAuxSkill(player, 'target')) return;
+    this._aimPlayerAt(player, targetX, targetY);
+    this._executeAuxSkill(player, AuxSkillConfig[player.weapon].target, now, 'target');
+  }
+
+  _executeAuxSkill(player, cfg, now, slot) {
+    if (!cfg) return;
+    const cooldown = Math.max(0, cfg.cooldownMs || 0) / 1000;
+    if (slot === 'alt') player.altSkillCdLeft = cooldown;
+    else player.targetSkillCdLeft = cooldown;
+
+    if (cfg.type === 'projectile') {
+      this._spawnAuxProjectiles(player, cfg, now);
+      return;
+    }
+
+    if (cfg.type === 'hitscan') {
+      this._fireAuxHitscan(player, cfg, now);
+      return;
+    }
+
+    const base = getEffectiveWeapon(player.weapon, player.buffType);
+    const attackConfig = {
+      ...base,
+      ...cfg,
+      cooldown: base.cooldown
+    };
+
+    if (attackConfig.lungeDistance) {
+      this._lungePlayer(player, attackConfig.lungeDistance);
+    }
+
+    player.swingDirection *= -1;
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: player.weapon,
+      buffType: player.buffType,
+      type: attackConfig.type,
+      range: attackConfig.range,
+      width: attackConfig.width,
+      innerRange: attackConfig.innerRange,
+      angleDeg: attackConfig.angle,
+      comboStep: 0,
+      comboCycle: 0,
+      comboFinisher: true,
+      isSkill: true,
+      swingDirection: player.swingDirection,
+      progress: 0,
+      timestamp: now,
+      lifetime: Math.min(Math.max(480 + (attackConfig.delayDamageMs || 0), 300), 880)
+    });
+
+    const hitCount = this._queueOrApplyMeleeHit(player, attackConfig, now);
+    if (hitCount !== null) this._applyAttackTempoResult(player, attackConfig, hitCount, now);
+  }
+
+  _spawnAuxProjectiles(player, cfg, now) {
+    const count = Math.max(1, Math.floor(cfg.count || 1));
+    const spread = ((cfg.spreadDeg || 0) * Math.PI) / 180;
+    const spawnDist = player.radius + 4;
+    for (let i = 0; i < count; i++) {
+      const offset = count === 1 ? 0 : (i - (count - 1) / 2) * spread;
+      const angle = player.angle + offset;
+      const kind = cfg.projectileKind || 'arrow';
+      const proj = new Projectile(
+        `${player.id}-aux-${kind}-${now}-${i}`,
+        player.id,
+        player.x + Math.cos(angle) * spawnDist,
+        player.y + Math.sin(angle) * spawnDist,
+        angle,
+        cfg.speed || 720,
+        cfg.range,
+        cfg.damage || 1,
+        kind
+      );
+      proj.weapon = cfg.projectileWeapon || player.weapon;
+      if (cfg.radius) proj.radius = cfg.radius;
+      this.projectiles.push(proj);
+    }
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      weapon: player.weapon,
+      type: 'projectile_shot',
+      projectileKind: cfg.projectileKind || 'arrow',
+      progress: 0,
+      timestamp: now,
+      lifetime: 220
+    });
+  }
+
+  _fireAuxHitscan(player, cfg, now) {
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+    const maxDist = Number.isFinite(cfg.range) ? Math.min(cfg.range, wallDist) : wallDist;
+    let hitDist = Number.isFinite(maxDist) ? maxDist : Math.max(this.mapWidth, this.mapHeight);
+    let hitTarget = null;
+
+    Object.keys(this.players).forEach(tid => {
+      const target = this.players[tid];
+      if (target.id === player.id || target.isDead || target.isInvincible()) return;
+      const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, target.x, target.y, target.radius);
+      if (d !== null && d <= hitDist) {
+        hitDist = d;
+        hitTarget = target;
+      }
+    });
+
+    if (hitTarget) {
+      const died = hitTarget.takeDamage(cfg.damage || 1, player.nickname);
+      if (died) this._creditKill(player.id, hitTarget);
+    }
+
+    this.effects.push({
+      id: `${player.id}-auxbeam-${now}`,
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      x2: player.x + dirX * hitDist,
+      y2: player.y + dirY * hitDist,
+      angle: player.angle,
+      weapon: player.weapon,
+      type: 'railbeam',
+      progress: 0,
+      timestamp: now,
+      lifetime: 300
+    });
+  }
+
+  _aimPlayerAt(player, targetX, targetY) {
+    const dx = targetX - player.x;
+    const dy = targetY - player.y;
+    if (Math.hypot(dx, dy) > 0.001) {
+      player.angle = Math.atan2(dy, dx);
+    }
+  }
+
   _lungePlayer(player, distance) {
     const amount = Number.isFinite(distance) ? distance : 0;
     if (!amount) return;
@@ -1039,6 +1206,13 @@ export class Game {
     player.startDash(dirX, dirY);
   }
 
+  _resolveInputDashVector(dash) {
+    if (dash && dash !== true && Number.isFinite(dash.dx) && Number.isFinite(dash.dy)) {
+      return { dx: dash.dx, dy: dash.dy };
+    }
+    return this.input.getMoveVector();
+  }
+
   _consumeTargetCastWorld() {
     const pointer = this.input?.consumeTargetCast?.();
     if (!pointer || !this.camera || typeof this.camera.toWorld !== 'function') return null;
@@ -1081,6 +1255,8 @@ export class Game {
       this._castMagicLifeboundSkill(player, now);
     } else if (player.weapon === 'katana') {
       this._startKatanaIaijutsuCharge(player, now);
+    } else {
+      this._castAuxAltSkill(player, now);
     }
   }
 
@@ -1092,11 +1268,17 @@ export class Game {
   }
 
   _handleTargetCast(player, x, y, now) {
-    if (!player || player.isDead || player.stunTimeLeft > 0 || player.weapon !== 'magicstaff') return;
+    if (!player || player.isDead || player.stunTimeLeft > 0) return;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const targetX = Math.max(0, Math.min(this.mapWidth, x));
     const targetY = Math.max(0, Math.min(this.mapHeight, y));
-    this._castMagicIceSkill(player, now, targetX, targetY);
+    if (player.weapon === 'sniper' && player.sniperTeleportTargetUntil > now) {
+      this._sniperTeleportTo(player, now, targetX, targetY);
+    } else if (player.weapon === 'magicstaff') {
+      this._castMagicIceSkill(player, now, targetX, targetY);
+    } else {
+      this._castAuxTargetSkill(player, now, targetX, targetY);
+    }
   }
 
   _canUseSkill(player) {
@@ -2149,20 +2331,30 @@ export class Game {
     });
   }
 
-  // R key: teleport the sniper to a random in-arena spot (its own 4s cooldown,
-  // separate from the F shot). Host-authoritative.
+  // R key: arm a targeted blink. The next target-cast click/tap chooses a point
+  // inside a 400px-diameter circle around the sniper, then clamps it in-bounds.
   _handleTeleport(player, now) {
     if (!player || player.isDead || player.weapon !== 'sniper') return;
     if (now < (player.teleportReadyAt || 0)) return;
-    this._sniperTeleport(player, now);
+    const windowMs = SkillConfig.sniper?.teleportTargetWindowMs || 3500;
+    player.sniperTeleportTargetUntil = now + windowMs;
   }
 
-  _sniperTeleport(player, now) {
+  _sniperTeleportTo(player, now, targetX, targetY) {
     const sk = SkillConfig.sniper;
     const margin = (player.radius || 14) + 12;
     const fromX = player.x, fromY = player.y;
-    player.x = margin + Math.random() * Math.max(1, this.mapWidth - margin * 2);
-    player.y = margin + Math.random() * Math.max(1, this.mapHeight - margin * 2);
+    const maxRadius = sk?.teleportRadius || 200;
+    let dx = targetX - fromX;
+    let dy = targetY - fromY;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxRadius) {
+      dx = (dx / dist) * maxRadius;
+      dy = (dy / dist) * maxRadius;
+    }
+    player.x = Math.max(margin, Math.min(this.mapWidth - margin, fromX + dx));
+    player.y = Math.max(margin, Math.min(this.mapHeight - margin, fromY + dy));
+    player.sniperTeleportTargetUntil = 0;
     player.teleportReadyAt = now + (sk?.teleportCooldownMs || 4000);
     // Poof at the vacated spot and the arrival spot (world-anchored so they stay put).
     this.effects.push({ attackerId: player.id, x: fromX, y: fromY, weapon: 'sniper', type: 'sniper_teleport', worldAnchored: true, progress: 0, timestamp: now, lifetime: 420 });
@@ -2519,6 +2711,8 @@ export class Game {
       if (p.buffTimeLeft > 0) p.buffTimeLeft = Math.max(0, p.buffTimeLeft - deltaTime);
       if (p.stunTimeLeft > 0) p.stunTimeLeft = Math.max(0, p.stunTimeLeft - deltaTime);
       if (p.burnTimeLeft > 0) p.burnTimeLeft = Math.max(0, p.burnTimeLeft - deltaTime);
+      if (p.altSkillCdLeft > 0) p.altSkillCdLeft = Math.max(0, p.altSkillCdLeft - deltaTime);
+      if (p.targetSkillCdLeft > 0) p.targetSkillCdLeft = Math.max(0, p.targetSkillCdLeft - deltaTime);
       this._tickMagicCooldowns(p, deltaTime);
     });
 
@@ -2649,6 +2843,7 @@ export class Game {
   _updateHUD() {
     const local = this.players[this.localPlayerId];
     if (!local) return;
+    this.input?.setLocalWeapon?.(local.weapon);
 
     // Weapon switch panel: mark the equipped weapon and the queued (pending) one.
     const wsp = document.getElementById('weaponSwitchPanel');
@@ -2673,7 +2868,15 @@ export class Game {
     // skill (e.g. magicstaff has none), so players never see a dead button.
     const skillBtnEl = document.getElementById('skillBtn');
     if (skillBtnEl) {
-      skillBtnEl.classList.toggle('hidden', !SkillConfig[local.weapon]);
+      skillBtnEl.classList.toggle('hidden', !(SkillConfig[local.weapon] || local.weapon === 'magicstaff'));
+    }
+    const altSkillBtnEl = document.getElementById('altSkillBtn');
+    if (altSkillBtnEl) {
+      altSkillBtnEl.classList.toggle('hidden', !this._weaponHasAltSkill(local.weapon));
+    }
+    const lmbBtnEl = document.getElementById('lmbBtn');
+    if (lmbBtnEl) {
+      lmbBtnEl.classList.toggle('hidden', !this._weaponHasTargetSkill(local.weapon));
     }
 
     // HP Bar
@@ -2748,6 +2951,14 @@ export class Game {
         respawnOverlay.classList.add('hidden');
       }
     }
+  }
+
+  _weaponHasAltSkill(weapon) {
+    return weapon === 'sniper' || weapon === 'magicstaff' || weapon === 'katana' || Boolean(AuxSkillConfig[weapon]?.alt);
+  }
+
+  _weaponHasTargetSkill(weapon) {
+    return weapon === 'magicstaff' || Boolean(AuxSkillConfig[weapon]?.target);
   }
 
   /**
@@ -2857,7 +3068,7 @@ export class Game {
     const teleportState = document.getElementById('hudTeleportState');
     const teleportBar = document.getElementById('hudTeleportBar');
     if (teleportRow && teleportState && teleportBar) {
-      const usesRRow = local.weapon === 'sniper' || local.weapon === 'magicstaff' || local.weapon === 'katana';
+      const usesRRow = this._weaponHasAltSkill(local.weapon);
       if (usesRRow) {
         teleportRow.classList.remove('hidden');
         const label = teleportRow.querySelector('span');
@@ -2871,12 +3082,20 @@ export class Game {
           ? SkillConfig.sniper?.teleportCooldownMs || 2000
           : local.weapon === 'katana'
             ? SkillConfig.katana?.iaijutsuCooldownMs || 3000
-            : MagicConfig.lifebound?.cooldownMs || MagicConfig.cooldownMs || 2000;
+            : local.weapon === 'magicstaff'
+              ? MagicConfig.lifebound?.cooldownMs || MagicConfig.cooldownMs || 2000
+              : AuxSkillConfig[local.weapon]?.alt?.cooldownMs || 1000;
         const leftMs = local.weapon === 'magicstaff'
           ? Math.max(0, (local.magicCooldowns?.lifebound || 0) * 1000)
-          : Math.max(0, (local.teleportReadyAt || 0) - Date.now());
+          : local.weapon === 'sniper' || local.weapon === 'katana'
+            ? Math.max(0, (local.teleportReadyAt || 0) - Date.now())
+            : Math.max(0, (local.altSkillCdLeft || 0) * 1000);
 
-        if (local.weapon === 'katana' && local.katanaChargeStart > 0) {
+        if (local.weapon === 'sniper' && local.sniperTeleportTargetUntil > Date.now()) {
+          teleportState.textContent = 'TARGET';
+          teleportBar.style.width = '100%';
+          teleportBar.style.background = '#ffffff';
+        } else if (local.weapon === 'katana' && local.katanaChargeStart > 0) {
           const chargeTotal = SkillConfig.katana?.iaijutsuChargeMs || 1000;
           const chargedMs = Date.now() - local.katanaChargeStart;
           teleportState.textContent = `${(Math.min(chargeTotal, chargedMs) / 1000).toFixed(1)}s`;
@@ -2889,7 +3108,11 @@ export class Game {
         } else {
           teleportState.textContent = local.weapon === 'katana' ? 'HOLD' : 'READY';
           teleportBar.style.width = '100%';
-          teleportBar.style.background = local.weapon === 'magicstaff' ? '#a855f7' : local.weapon === 'katana' ? '#f43f5e' : '#22c55e';
+          teleportBar.style.background = local.weapon === 'magicstaff'
+            ? '#a855f7'
+            : local.weapon === 'katana'
+              ? '#f43f5e'
+              : Weapons[local.weapon]?.color || '#22c55e';
         }
       } else {
         teleportRow.classList.add('hidden');
@@ -2900,18 +3123,28 @@ export class Game {
     const clickSkillState = document.getElementById('hudClickSkillState');
     const clickSkillBar = document.getElementById('hudClickSkillBar');
     if (clickSkillRow && clickSkillState && clickSkillBar) {
-      if (local.weapon === 'magicstaff') {
+      if (this._weaponHasTargetSkill(local.weapon)) {
         clickSkillRow.classList.remove('hidden');
-        const iceCd = local.magicCooldowns?.iceShard || 0;
-        const total = (MagicConfig.iceShard?.cooldownMs || MagicConfig.cooldownMs || 2000) / 1000;
+        const label = clickSkillRow.querySelector('span');
+        if (label) {
+          label.innerHTML = local.weapon === 'magicstaff'
+            ? '<strong class="text-[#93c5fd]">LMB</strong> ICE'
+            : '<strong class="text-[#93c5fd]">LMB</strong> SKILL';
+        }
+        const iceCd = local.weapon === 'magicstaff'
+          ? local.magicCooldowns?.iceShard || 0
+          : local.targetSkillCdLeft || 0;
+        const total = local.weapon === 'magicstaff'
+          ? (MagicConfig.iceShard?.cooldownMs || MagicConfig.cooldownMs || 2000) / 1000
+          : (AuxSkillConfig[local.weapon]?.target?.cooldownMs || 1000) / 1000;
         if (iceCd > 0) {
           clickSkillState.textContent = `${iceCd.toFixed(1)}s`;
           clickSkillBar.style.width = `${clamp01(1 - iceCd / total) * 100}%`;
           clickSkillBar.style.background = '#4b5563';
         } else {
-          clickSkillState.textContent = 'READY';
+          clickSkillState.textContent = local.weapon === 'magicstaff' ? 'TARGET' : 'READY';
           clickSkillBar.style.width = '100%';
-          clickSkillBar.style.background = '#93c5fd';
+          clickSkillBar.style.background = local.weapon === 'magicstaff' ? '#93c5fd' : (Weapons[local.weapon]?.color || '#93c5fd');
         }
       } else {
         clickSkillRow.classList.add('hidden');
