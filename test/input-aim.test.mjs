@@ -123,3 +123,49 @@ test('mobile joystick cursor only flashes after target casts', () => {
   }
 });
 
+test('mobile skill button acts as a release-fire aim joystick', () => {
+  const originalWindow = globalThis.window;
+  const originalLocalStorage = globalThis.localStorage;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  globalThis.window = { innerWidth: 800, innerHeight: 600 };
+  globalThis.localStorage = { getItem: () => 'true' };
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { maxTouchPoints: 1 }
+  });
+
+  try {
+    const input = new Input();
+    const button = {
+      style: {},
+      getBoundingClientRect: () => ({ left: 100, top: 100, width: 60, height: 60 })
+    };
+
+    input._beginSkillAimJoystick(button, { pointerId: 7, clientX: 130, clientY: 130 });
+    assert.equal(input.isSkillAimActive, true);
+    assert.equal(input.skillAimPointerId, 7);
+
+    input._moveSkillAimJoystick(button, { clientX: 190, clientY: 130 });
+    assert.equal(input.aimAngle, 0);
+    assert.match(button.style.transform, /translateY\(-50%\) translate\(/);
+
+    input._moveSkillAimJoystick(button, { clientX: 130, clientY: 190 });
+    assert.ok(Math.abs(input.aimAngle - Math.PI / 2) < 1e-6);
+
+    input._resetSkillAimJoystick(button);
+    assert.equal(input.isSkillAimActive, false);
+    assert.equal(input.skillAimPointerId, null);
+    assert.equal(button.style.transform, '');
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+
+    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = originalLocalStorage;
+
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+  }
+});
+

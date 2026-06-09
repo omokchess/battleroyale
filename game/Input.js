@@ -3,18 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-const RELEASE_CAST_SKILLS = new Set([
-  'sword',
-  'bow',
-  'spear',
-  'greatsword',
-  'scythe',
-  'matchlock',
-  'katana',
-  'magicstaff',
-  'sniper'
-]);
-
 export class Input {
   constructor() {
     this.keys = {
@@ -58,6 +46,9 @@ export class Input {
     this.targetCursorVisibleMs = 350;
     this.lastTouchAt = 0;
     this.lastSkillPointerAt = 0;
+    this.skillAimPointerId = null;
+    this.skillAimCenter = null;
+    this.skillAimBaseTransform = 'translateY(-50%)';
 
     // Detect if device is touch-capable or loaded from stored preference
     const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -110,10 +101,6 @@ export class Input {
       overlay.classList.toggle('sniper-controls', this.localWeapon === 'sniper');
       overlay.classList.toggle('targeting-cast', Boolean(this.pointerTargetMode));
     }
-  }
-
-  _skillCastsOnRelease() {
-    return RELEASE_CAST_SKILLS.has(this.localWeapon);
   }
 
   _requestDash(dx = null, dy = null) {
@@ -175,6 +162,45 @@ export class Input {
       const rect = el.getBoundingClientRect();
       return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
     });
+  }
+
+  _beginSkillAimJoystick(button, event) {
+    if (!button) return;
+    this.skillAimPointerId = Number.isFinite(event?.pointerId) ? event.pointerId : null;
+    const rect = button.getBoundingClientRect();
+    this.skillAimCenter = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+      cap: Math.max(36, Math.max(rect.width, rect.height) * 0.95)
+    };
+    this.isSkillAimActive = true;
+    button.style.transition = 'none';
+    this._moveSkillAimJoystick(button, event);
+  }
+
+  _moveSkillAimJoystick(button, event) {
+    if (!button || !this.skillAimCenter || !event) return;
+    const dx = event.clientX - this.skillAimCenter.x;
+    const dy = event.clientY - this.skillAimCenter.y;
+    const dist = Math.hypot(dx, dy);
+    const cap = this.skillAimCenter.cap;
+    const scale = dist > cap ? cap / dist : 1;
+    const targetX = dx * scale;
+    const targetY = dy * scale;
+    if (dist > 5) {
+      this.aimAngle = Math.atan2(dy, dx);
+    }
+    button.style.transform = `${this.skillAimBaseTransform} translate(${targetX}px, ${targetY}px)`;
+  }
+
+  _resetSkillAimJoystick(button) {
+    this.isSkillAimActive = false;
+    this.skillAimPointerId = null;
+    this.skillAimCenter = null;
+    if (button) {
+      button.style.transition = '';
+      button.style.transform = '';
+    }
   }
 
   _renderJoystickToggleLabel() {
@@ -389,48 +415,59 @@ export class Input {
 
     const skillBtn = document.getElementById('skillBtn');
     if (skillBtn) {
-      // Mobile skill buttons do not own aiming. They fire using the current
-      // attack joystick direction so a thumb sliding across the button cannot
-      // unexpectedly redirect the shot.
+      // Mobile F acts like a temporary aim joystick: drag to choose direction,
+      // release to fire, then snap the button back into place.
       this._skillBtnDownHandler = (e) => {
-        if (e.pointerType === 'touch') this._markTouchInput();
+        this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         this.lastSkillPointerAt = Date.now();
-        // Keep receiving move/up even when the finger slides off the small button.
         try { skillBtn.setPointerCapture(e.pointerId); } catch (_) {}
-        if (!this._skillCastsOnRelease()) {
+        this._beginSkillAimJoystick(skillBtn, e);
+        if (this.localWeapon === 'greatsword') {
           this._requestSkillDown();
         }
       };
+      this._skillBtnMoveHandler = (e) => {
+        if (this.skillAimPointerId !== null && e.pointerId !== this.skillAimPointerId) return;
+        this._markTouchLikeInput(e);
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        this._moveSkillAimJoystick(skillBtn, e);
+      };
       this._skillBtnUpHandler = (e) => {
-        if (e.pointerType === 'touch') this._markTouchInput();
+        if (this.skillAimPointerId !== null && e.pointerId !== this.skillAimPointerId) return;
+        this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         this.lastSkillPointerAt = Date.now();
-        if (this._skillCastsOnRelease()) {
-          this._requestSkillTap();
-        } else {
+        this._moveSkillAimJoystick(skillBtn, e);
+        if (this.localWeapon === 'greatsword') {
           this._requestSkillUp();
+        } else {
+          this._requestSkillTap();
         }
+        this._resetSkillAimJoystick(skillBtn);
       };
       this._skillBtnCancelHandler = (e) => {
-        if (e.pointerType === 'touch') this._markTouchInput();
+        if (this.skillAimPointerId !== null && e.pointerId !== this.skillAimPointerId) return;
+        this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         this.lastSkillPointerAt = Date.now();
-        if (!this._skillCastsOnRelease()) {
+        if (this.localWeapon === 'greatsword') {
           this._requestSkillUp();
         }
+        this._resetSkillAimJoystick(skillBtn);
       };
       this._skillBtnClickHandler = (e) => {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         if (Date.now() - this.lastSkillPointerAt < 450) return;
-        if (this._skillCastsOnRelease()) return;
-        if (!this.skillHeld) this._requestSkillDown();
+        this._requestSkillTap();
       };
       skillBtn.addEventListener('pointerdown', this._skillBtnDownHandler);
+      skillBtn.addEventListener('pointermove', this._skillBtnMoveHandler);
       skillBtn.addEventListener('pointerup', this._skillBtnUpHandler);
       skillBtn.addEventListener('pointercancel', this._skillBtnCancelHandler);
       skillBtn.addEventListener('click', this._skillBtnClickHandler);
@@ -800,10 +837,10 @@ export class Input {
    * Dynamically calibrate aim angle taking clamping boundaries & active camera offsets into consideration
    */
   updateAimAngle(player, camera, canvasWidth, canvasHeight, mapWidth = 0, mapHeight = 0) {
+    // While the skill button is being used as an aim stick, it owns the aim.
+    if (this.isSkillAimActive) return;
     // While actively dragging the right joystick, it owns the aim.
     if (this.isRightJoystickActive) return;
-    // Likewise while the skill button is being used as an aim stick.
-    if (this.isSkillAimActive) return;
     // Pure touch mode (joystick enabled AND no mouse ever used): hold the last
     // angle so releasing the joystick doesn't snap aim to a stale mouse pos.
     // As soon as a real mouse move is seen we always aim at the cursor, even on
@@ -876,7 +913,7 @@ export class Input {
     this.skillDownRequested = false;
     this.skillUpRequested = false;
     this.skillHeld = false;
-    this.isSkillAimActive = false;
+    this._resetSkillAimJoystick(skillBtn);
     this.targetCastRequested = false;
     this.targetCastPointer = null;
     this.targetCursorVisibleUntil = 0;
