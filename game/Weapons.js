@@ -389,9 +389,9 @@ export const SkillConfig = {
     iaijutsuWidth: 40
   },
   sniper: {
-    cooldownMs: 2000,         // F: instakill shot cooldown
-    teleportCooldownMs: 2000, // R: targeted teleport cooldown
-    teleportRadius: 200,      // 400px diameter target circle
+    cooldownMs: 155,         // F: instakill shot cooldown
+    teleportCooldownMs: 1500, // R: targeted teleport cooldown
+    teleportRadius: 1000,      // 400px diameter target circle
     teleportTargetWindowMs: 3500
   }
 };
