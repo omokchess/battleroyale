@@ -573,33 +573,27 @@
           <div id="leftJoystickKnob" class="bg-gradient-to-r from-[#45f3ff] to-[#66fcf1] border-2 border-white rounded-full w-10 h-10 md:w-14 md:h-14 shadow-lg transform transition-transform duration-75 active:scale-95 cursor-grab"></div>
         </div>
         
-        <!-- Right side: action buttons + Aiming joystick -->
-        <div class="flex flex-col items-end gap-3 pointer-events-none select-none">
-          <div class="flex gap-3 pointer-events-auto touch-none">
-            <button id="lmbBtn" class="bg-[#1f2833] bg-opacity-80 border-2 border-[#c9a227] text-[#e6c75a] rounded-full w-14 h-14 md:w-16 md:h-16 font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(201,162,39,0.35)] flex flex-col items-center justify-center">
-              <span class="text-base">✦</span><span class="text-[8px]">캐스팅</span>
-            </button>
-            <button id="altSkillBtn" class="bg-[#1f2833] bg-opacity-80 border-2 border-[#c9a227] text-[#e6c75a] rounded-full w-14 h-14 md:w-16 md:h-16 font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(201,162,39,0.35)] flex flex-col items-center justify-center">
-              <span class="text-base">R</span><span class="text-[8px]">능력</span>
-            </button>
+        <!-- Right side: centered attack joystick with skill buttons around it -->
+        <div id="mobileActionCluster" class="pointer-events-none select-none touch-none">
+          <div id="rightJoystickContainer" class="pointer-events-auto select-none bg-black bg-opacity-40 border-2 border-[#45f3ff] rounded-full flex items-center justify-center relative touch-none shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+            <div id="rightJoystickKnob" class="bg-gradient-to-r from-[#45f3ff] to-[#66fcf1] border-2 border-white rounded-full shadow-lg transform transition-transform duration-75 active:scale-95 cursor-grab"></div>
           </div>
-          <div class="flex gap-3 pointer-events-auto touch-none">
-            <button id="skillBtn" class="bg-[#1f2833] bg-opacity-80 border-2 border-[#45f3ff] text-[#45f3ff] rounded-full w-16 h-16 md:w-20 md:h-20 font-mono text-xs font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(69,243,255,0.35)] flex flex-col items-center justify-center">
-              <span class="text-lg">F</span><span class="text-[9px]">스킬</span>
-            </button>
-            <button id="dashBtn" class="bg-[#1f2833] bg-opacity-80 border-2 border-[#22d3ee] text-[#22d3ee] rounded-full w-16 h-16 md:w-20 md:h-20 font-mono text-xs font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(34,211,238,0.35)] flex flex-col items-center justify-center">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 12h14" />
-                <path d="M13 6l6 6-6 6" />
-              </svg>
-              <span class="text-[9px]">대시</span>
-            </button>
-          </div>
-
-          <!-- Right Joystick (Aiming) -->
-          <div id="rightJoystickContainer" class="pointer-events-auto select-none bg-black bg-opacity-40 border-2 border-[#ff5555] rounded-full w-24 h-24 md:w-32 md:h-32 flex items-center justify-center relative touch-none shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-            <div id="rightJoystickKnob" class="bg-gradient-to-r from-red-500 to-amber-500 border-2 border-white rounded-full w-10 h-10 md:w-14 md:h-14 shadow-lg transform transition-transform duration-75 active:scale-95 cursor-grab"></div>
-          </div>
+          <button id="lmbBtn" class="mobile-action-btn mobile-action-top bg-[#1f2833] bg-opacity-80 border-2 border-[#c9a227] text-[#e6c75a] rounded-full font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(201,162,39,0.35)] flex flex-col items-center justify-center">
+            <span class="text-sm">LMB</span><span class="text-[8px]">TARGET</span>
+          </button>
+          <button id="altSkillBtn" class="mobile-action-btn mobile-action-right bg-[#1f2833] bg-opacity-80 border-2 border-[#c9a227] text-[#e6c75a] rounded-full font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(201,162,39,0.35)] flex flex-col items-center justify-center">
+            <span class="text-base">R</span><span class="text-[8px]">ALT</span>
+          </button>
+          <button id="skillBtn" class="mobile-action-btn mobile-action-left bg-[#1f2833] bg-opacity-80 border-2 border-[#45f3ff] text-[#45f3ff] rounded-full font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(69,243,255,0.35)] flex flex-col items-center justify-center">
+            <span class="text-base">F</span><span class="text-[8px]">SKILL</span>
+          </button>
+          <button id="dashBtn" class="mobile-action-btn mobile-action-bottom bg-[#1f2833] bg-opacity-80 border-2 border-[#22d3ee] text-[#22d3ee] rounded-full font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(34,211,238,0.35)] flex flex-col items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14" />
+              <path d="M13 6l6 6-6 6" />
+            </svg>
+            <span class="text-[8px]">DASH</span>
+          </button>
         </div>
       </div>
     </div>

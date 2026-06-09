@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Player } from '../game/Player.js';
 import { Collision } from '../game/Collision.js';
-import { getEffectiveWeapon, SkillConfig, DashConfig, Weapons, ComboConfig, MagicConfig } from '../game/Weapons.js';
+import { getEffectiveWeapon, SkillConfig, DashConfig, Weapons, ComboConfig, MagicConfig, AuxSkillConfig } from '../game/Weapons.js';
 import { Game, rebaseEffectSnapshot } from '../game/Game.js';
 
 test('dash grants i-frames and bursts the player along the held direction', () => {
@@ -823,7 +823,7 @@ test('magic staff lifebound heals the caster, capped at max hp', () => {
   assert.equal(mage.hp, mage.maxHp);
 });
 
-test('sniper: F instakills on the aim line (own cooldown); R teleports in-bounds; dash allowed', () => {
+test('sniper: F instakills; R arms a bounded targeted blink; dash allowed', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -843,14 +843,51 @@ test('sniper: F instakills on the aim line (own cooldown); R teleports in-bounds
   assert.ok(sniper.skillCdLeft > 1.9);                        // F shot's own ~2s cooldown
   assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'sniper'), true);
 
-  game._handleTeleport(sniper, 2000);                         // R = teleport
-  assert.equal(sniper.teleportReadyAt, 2000 + SkillConfig.sniper.teleportCooldownMs);
-  assert.ok(sniper.x >= 0 && sniper.x <= 700 && sniper.y >= 0 && sniper.y <= 700); // in-bounds
+  game._handleTeleport(sniper, 2000);                         // R = target mode
+  assert.equal(sniper.teleportReadyAt, 0);
+  assert.ok(sniper.sniperTeleportTargetUntil > 2000);
+  assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 0);
+
+  game._handleTargetCast(sniper, 500, 100, 2100);              // click farther than 200px
+  assert.equal(sniper.teleportReadyAt, 2100 + SkillConfig.sniper.teleportCooldownMs);
+  assert.equal(sniper.sniperTeleportTargetUntil, 0);
+  assert.ok(Math.abs(sniper.x - 300) < 1e-6);                  // clamped to radius 200
+  assert.equal(sniper.y, 100);
   assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 2);
-  game._handleTeleport(sniper, 2500);                         // still on cooldown → no-op
+
+  game._handleTeleport(sniper, 2500);                         // still on cooldown
+  assert.equal(sniper.sniperTeleportTargetUntil, 0);
   assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 2);
 
   assert.equal(sniper.startDash(1, 0), true);                 // dash is now allowed
+});
+
+test('generic R and LMB auxiliary skills apply their own cooldowns', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.projectiles = [];
+  game.pendingMeleeHits = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const sword = new Player('sword-aux', 'Blade', 'sword', 100, 100);
+  sword.angle = 0;
+  const close = new Player('close-target', 'Close', 'sword', 150, 100);
+  const line = new Player('line-target', 'Line', 'sword', 210, 100);
+  game.players[sword.id] = sword;
+  game.players[close.id] = close;
+  game.players[line.id] = line;
+
+  game._castAuxAltSkill(sword, 1000);
+  assert.equal(sword.altSkillCdLeft, AuxSkillConfig.sword.alt.cooldownMs / 1000);
+  assert.equal(close.hp, close.maxHp - AuxSkillConfig.sword.alt.damage);
+
+  game._castAuxTargetSkill(sword, 2000, 260, 100);
+  assert.equal(sword.targetSkillCdLeft, AuxSkillConfig.sword.target.cooldownMs / 1000);
+  assert.equal(sword.angle, 0);
+  assert.ok(line.hp < line.maxHp);
 });
 
 test('bow railgun vibration only fires for the local caster once', () => {
