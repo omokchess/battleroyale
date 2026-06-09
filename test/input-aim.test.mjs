@@ -58,11 +58,21 @@ test('mouse aim keeps the previous angle at exact arena center', () => {
 
 test('mobile joystick cursor only flashes after target casts', () => {
   const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
   const originalLocalStorage = globalThis.localStorage;
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   const originalDateNow = Date.now;
 
   globalThis.window = { innerWidth: 800, innerHeight: 600 };
+  globalThis.document = {
+    getElementById(id) {
+      if (id !== 'rightJoystickContainer') return null;
+      return {
+        offsetParent: {},
+        getBoundingClientRect: () => ({ left: 100, right: 200, top: 300, bottom: 400 })
+      };
+    }
+  };
   globalThis.localStorage = { getItem: () => 'true' };
   Object.defineProperty(globalThis, 'navigator', {
     configurable: true,
@@ -91,11 +101,19 @@ test('mobile joystick cursor only flashes after target casts', () => {
     Date.now = () => 2701;
     assert.equal(input._isSyntheticTouchMouseEvent(), false);
     assert.equal(input._isSyntheticTouchMouseEvent({ sourceCapabilities: { firesTouchEvents: true } }), true);
+
+    assert.equal(input._isMobileControlTarget({ closest: () => ({}) }), true);
+    assert.equal(input._isMobileControlTarget({ closest: () => null }), false);
+    assert.equal(input._isMobileControlPoint(150, 350), true);
+    assert.equal(input._isMobileControlPoint(250, 350), false);
   } finally {
     Date.now = originalDateNow;
 
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
+
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
 
     if (originalLocalStorage === undefined) delete globalThis.localStorage;
     else globalThis.localStorage = originalLocalStorage;
