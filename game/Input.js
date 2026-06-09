@@ -213,6 +213,10 @@ export class Input {
     return this.skillAimPointerId === null || event?.pointerId === this.skillAimPointerId;
   }
 
+  _altSkillUsesAimJoystick() {
+    return this.localWeapon !== 'sniper';
+  }
+
   _moveSkillAimJoystick(button, event) {
     if (!button || !this.skillAimCenter || !event) return;
     const dx = event.clientX - this.skillAimCenter.x;
@@ -519,35 +523,41 @@ export class Input {
         e.stopPropagation();
         this.lastSkillPointerAt = Date.now();
         try { altSkillBtn.setPointerCapture(e.pointerId); } catch (_) {}
-        this._beginSkillAimJoystick(altSkillBtn, e);
+        if (this._altSkillUsesAimJoystick()) {
+          this._beginSkillAimJoystick(altSkillBtn, e);
+        }
         if (this.localWeapon === 'katana') {
           this.teleportRequested = true;
         }
       };
       this._altSkillMoveHandler = (e) => {
-        if (!this._isActiveSkillAimPointer(altSkillBtn, e)) return;
+        if (this._altSkillUsesAimJoystick() && !this._isActiveSkillAimPointer(altSkillBtn, e)) return;
         this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
-        this._moveSkillAimJoystick(altSkillBtn, e);
+        if (this._altSkillUsesAimJoystick()) {
+          this._moveSkillAimJoystick(altSkillBtn, e);
+        }
       };
       this._altSkillUpHandler = (e) => {
-        if (!this._isActiveSkillAimPointer(altSkillBtn, e)) return;
+        if (this._altSkillUsesAimJoystick() && !this._isActiveSkillAimPointer(altSkillBtn, e)) return;
         this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         this.lastSkillPointerAt = Date.now();
-        this._moveSkillAimJoystick(altSkillBtn, e);
+        if (this._altSkillUsesAimJoystick()) {
+          this._moveSkillAimJoystick(altSkillBtn, e);
+        }
         if (this.localWeapon === 'katana') {
           this.teleportUpRequested = true;
         } else {
           this.teleportRequested = true;
-          if (this.localWeapon === 'sniper') this._requestTargetCastDirection();
+          if (this.localWeapon === 'sniper') this._beginPointerTarget('sniperTeleport');
         }
         this._resetSkillAimJoystick(altSkillBtn);
       };
       this._altSkillCancelHandler = (e) => {
-        if (!this._isActiveSkillAimPointer(altSkillBtn, e)) return;
+        if (this._altSkillUsesAimJoystick() && !this._isActiveSkillAimPointer(altSkillBtn, e)) return;
         this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
@@ -564,7 +574,7 @@ export class Input {
           this.teleportUpRequested = true;
         } else {
           this.teleportRequested = true;
-          if (this.localWeapon === 'sniper') this._requestTargetCastDirection();
+          if (this.localWeapon === 'sniper') this._beginPointerTarget('sniperTeleport');
         }
       };
       altSkillBtn.addEventListener('pointerdown', this._altSkillDownHandler);

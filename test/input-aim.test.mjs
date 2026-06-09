@@ -187,3 +187,74 @@ test('mobile action buttons act as release-fire aim joysticks', () => {
   }
 });
 
+test('mobile sniper R arms target mode without acting as an aim joystick', () => {
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  const originalLocalStorage = globalThis.localStorage;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const listeners = {};
+  const altSkillBtn = {
+    style: {},
+    addEventListener: (type, handler) => { listeners[type] = handler; },
+    setPointerCapture: () => {}
+  };
+  const canvas = {
+    width: 800,
+    height: 600,
+    style: {},
+    addEventListener: () => {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 })
+  };
+
+  globalThis.window = { innerWidth: 800, innerHeight: 600 };
+  globalThis.document = {
+    addEventListener: () => {},
+    getElementById: id => id === 'altSkillBtn' ? altSkillBtn : null
+  };
+  globalThis.localStorage = { getItem: () => 'true' };
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { maxTouchPoints: 1 }
+  });
+
+  try {
+    const input = new Input();
+    input.setLocalWeapon('sniper');
+    input.aimAngle = 0.25;
+    input.setupListeners(canvas);
+
+    const event = {
+      pointerId: 11,
+      pointerType: 'touch',
+      clientX: 130,
+      clientY: 130,
+      cancelable: true,
+      preventDefault: () => {},
+      stopPropagation: () => {}
+    };
+
+    listeners.pointerdown(event);
+    assert.equal(input.isSkillAimActive, false);
+    assert.equal(input.skillAimButton, null);
+
+    listeners.pointermove({ ...event, clientX: 230, clientY: 130 });
+    assert.equal(input.aimAngle, 0.25);
+
+    listeners.pointerup({ ...event, clientX: 230, clientY: 130 });
+    assert.equal(input.teleportRequested, true);
+    assert.equal(input.pointerTargetMode, 'sniperTeleport');
+    assert.equal(input.targetCastDirectionRequested, false);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+
+    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = originalLocalStorage;
+
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+  }
+});
