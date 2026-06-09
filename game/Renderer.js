@@ -21,7 +21,7 @@ const WEAPON_SPRITE_META = {
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
-const WEAPON_ASSET_VERSION = '20260608h';
+const WEAPON_ASSET_VERSION = '20260609a';
 
 // Only greatsword uses an idle angle offset; other idle weapons point at aim.
 const WEAPON_IDLE_POSE = {

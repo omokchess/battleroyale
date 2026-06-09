@@ -890,6 +890,15 @@ test('generic R and LMB auxiliary skills apply their own cooldowns', () => {
   assert.ok(line.hp < line.maxHp);
 });
 
+test('generic R auxiliary skills expose non-blink HUD labels', () => {
+  Object.entries(AuxSkillConfig).forEach(([weapon, config]) => {
+    if (!config.alt || weapon === 'sniper') return;
+    assert.equal(typeof config.alt.label, 'string');
+    assert.notEqual(config.alt.label, '');
+    assert.notEqual(config.alt.label, 'BLINK');
+  });
+});
+
 test('bow railgun vibration only fires for the local caster once', () => {
   const game = Object.create(Game.prototype);
   const calls = [];
