@@ -391,7 +391,7 @@ export const SkillConfig = {
   sniper: {
     cooldownMs: 2000,         // F: instakill shot cooldown
     teleportCooldownMs: 1500, // R: targeted teleport cooldown
-    teleportRadius: 200,      // 400px diameter target circle
+    teleportRadius: 1000,
     teleportTargetWindowMs: 3500
   }
 };

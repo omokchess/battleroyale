@@ -848,10 +848,15 @@ test('sniper: F instakills; R arms a bounded targeted blink; dash allowed', () =
   assert.ok(sniper.sniperTeleportTargetUntil > 2000);
   assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 0);
 
-  game._handleTargetCast(sniper, 500, 100, 2100);              // click farther than 200px
+  const castX = 500;
+  const expectedX = Math.max(
+    sniper.radius + 12,
+    Math.min(game.mapWidth - sniper.radius - 12, 100 + Math.min(castX - 100, SkillConfig.sniper.teleportRadius))
+  );
+  game._handleTargetCast(sniper, castX, 100, 2100);
   assert.equal(sniper.teleportReadyAt, 2100 + SkillConfig.sniper.teleportCooldownMs);
   assert.equal(sniper.sniperTeleportTargetUntil, 0);
-  assert.ok(Math.abs(sniper.x - 300) < 1e-6);                  // clamped to radius 200
+  assert.ok(Math.abs(sniper.x - expectedX) < 1e-6);
   assert.equal(sniper.y, 100);
   assert.equal(game.effects.filter(e => e.type === 'sniper_teleport').length, 2);
 
