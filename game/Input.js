@@ -42,11 +42,14 @@ export class Input {
     this.skillHeld = false;
     this.targetCastRequested = false;
     this.targetCastPointer = null;
+    this.targetCastDirectionRequested = false;
+    this.targetCastDirectionAngle = null;
     this.targetCursorVisibleUntil = 0;
     this.targetCursorVisibleMs = 350;
     this.lastTouchAt = 0;
     this.lastSkillPointerAt = 0;
     this.skillAimPointerId = null;
+    this.skillAimButton = null;
     this.skillAimCenter = null;
     this.skillAimBaseTransform = 'translateY(-50%)';
 
@@ -77,9 +80,15 @@ export class Input {
     this._skillBtnClickHandler = null;
     this._skillBtnMoveHandler = null;
     this._altSkillDownHandler = null;
+    this._altSkillMoveHandler = null;
     this._altSkillUpHandler = null;
     this._altSkillCancelHandler = null;
-    this._lmbHandler = null;
+    this._altSkillClickHandler = null;
+    this._lmbDownHandler = null;
+    this._lmbMoveHandler = null;
+    this._lmbUpHandler = null;
+    this._lmbCancelHandler = null;
+    this._lmbClickHandler = null;
 
     // Mobile Virtual Joystick bound entries
     this._leftTouchStart = null;
@@ -132,6 +141,13 @@ export class Input {
     this._clearPointerTarget();
   }
 
+  _requestTargetCastDirection(angle = this.aimAngle) {
+    this.targetCastDirectionAngle = Number.isFinite(angle) ? angle : 0;
+    this.targetCastDirectionRequested = true;
+    this.targetCursorVisibleUntil = Date.now() + this.targetCursorVisibleMs;
+    this._clearPointerTarget();
+  }
+
   _markTouchInput() {
     this.lastTouchAt = Date.now();
   }
@@ -167,6 +183,8 @@ export class Input {
   _beginSkillAimJoystick(button, event) {
     if (!button) return;
     this.skillAimPointerId = Number.isFinite(event?.pointerId) ? event.pointerId : null;
+    this.skillAimButton = button;
+    this.skillAimBaseTransform = this._getSkillAimBaseTransform(button);
     const rect = button.getBoundingClientRect();
     this.skillAimCenter = {
       x: rect.left + rect.width / 2,
@@ -176,6 +194,23 @@ export class Input {
     this.isSkillAimActive = true;
     button.style.transition = 'none';
     this._moveSkillAimJoystick(button, event);
+  }
+
+  _getSkillAimBaseTransform(button) {
+    if (button?.classList?.contains?.('mobile-action-top') ||
+        button?.classList?.contains?.('mobile-action-bottom')) {
+      return 'translateX(-50%)';
+    }
+    if (button?.classList?.contains?.('mobile-action-left') ||
+        button?.classList?.contains?.('mobile-action-right')) {
+      return 'translateY(-50%)';
+    }
+    return this.skillAimBaseTransform || '';
+  }
+
+  _isActiveSkillAimPointer(button, event) {
+    if (this.skillAimButton && button && this.skillAimButton !== button) return false;
+    return this.skillAimPointerId === null || event?.pointerId === this.skillAimPointerId;
   }
 
   _moveSkillAimJoystick(button, event) {
@@ -193,9 +228,10 @@ export class Input {
     button.style.transform = `${this.skillAimBaseTransform} translate(${targetX}px, ${targetY}px)`;
   }
 
-  _resetSkillAimJoystick(button) {
+  _resetSkillAimJoystick(button = this.skillAimButton) {
     this.isSkillAimActive = false;
     this.skillAimPointerId = null;
+    this.skillAimButton = null;
     this.skillAimCenter = null;
     if (button) {
       button.style.transition = '';
@@ -429,14 +465,14 @@ export class Input {
         }
       };
       this._skillBtnMoveHandler = (e) => {
-        if (this.skillAimPointerId !== null && e.pointerId !== this.skillAimPointerId) return;
+        if (!this._isActiveSkillAimPointer(skillBtn, e)) return;
         this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         this._moveSkillAimJoystick(skillBtn, e);
       };
       this._skillBtnUpHandler = (e) => {
-        if (this.skillAimPointerId !== null && e.pointerId !== this.skillAimPointerId) return;
+        if (!this._isActiveSkillAimPointer(skillBtn, e)) return;
         this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
@@ -450,7 +486,7 @@ export class Input {
         this._resetSkillAimJoystick(skillBtn);
       };
       this._skillBtnCancelHandler = (e) => {
-        if (this.skillAimPointerId !== null && e.pointerId !== this.skillAimPointerId) return;
+        if (!this._isActiveSkillAimPointer(skillBtn, e)) return;
         this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
@@ -473,50 +509,118 @@ export class Input {
       skillBtn.addEventListener('click', this._skillBtnClickHandler);
     }
 
-    // Mobile alt-skill (R) button: down/up for charge-and-release abilities.
+    // Mobile alt-skill (R) button: drag to aim, release to fire. Katana still
+    // starts charging on down and releases on up.
     const altSkillBtn = document.getElementById('altSkillBtn');
     if (altSkillBtn) {
       this._altSkillDownHandler = (e) => {
-        if (e.pointerType === 'touch') this._markTouchInput();
+        this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
+        this.lastSkillPointerAt = Date.now();
+        try { altSkillBtn.setPointerCapture(e.pointerId); } catch (_) {}
+        this._beginSkillAimJoystick(altSkillBtn, e);
         if (this.localWeapon === 'katana') {
           this.teleportRequested = true;
         }
       };
-      this._altSkillUpHandler = (e) => {
-        if (e.pointerType === 'touch') this._markTouchInput();
+      this._altSkillMoveHandler = (e) => {
+        if (!this._isActiveSkillAimPointer(altSkillBtn, e)) return;
+        this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
+        this._moveSkillAimJoystick(altSkillBtn, e);
+      };
+      this._altSkillUpHandler = (e) => {
+        if (!this._isActiveSkillAimPointer(altSkillBtn, e)) return;
+        this._markTouchLikeInput(e);
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        this.lastSkillPointerAt = Date.now();
+        this._moveSkillAimJoystick(altSkillBtn, e);
         if (this.localWeapon === 'katana') {
           this.teleportUpRequested = true;
         } else {
           this.teleportRequested = true;
-          if (this.localWeapon === 'sniper') this._beginPointerTarget('sniperTeleport');
+          if (this.localWeapon === 'sniper') this._requestTargetCastDirection();
         }
+        this._resetSkillAimJoystick(altSkillBtn);
       };
       this._altSkillCancelHandler = (e) => {
-        if (e.pointerType === 'touch') this._markTouchInput();
+        if (!this._isActiveSkillAimPointer(altSkillBtn, e)) return;
+        this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
+        this.lastSkillPointerAt = Date.now();
         if (this.localWeapon === 'katana') this.teleportUpRequested = true;
+        this._resetSkillAimJoystick(altSkillBtn);
+      };
+      this._altSkillClickHandler = (e) => {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() - this.lastSkillPointerAt < 450) return;
+        if (this.localWeapon === 'katana') {
+          this.teleportRequested = true;
+          this.teleportUpRequested = true;
+        } else {
+          this.teleportRequested = true;
+          if (this.localWeapon === 'sniper') this._requestTargetCastDirection();
+        }
       };
       altSkillBtn.addEventListener('pointerdown', this._altSkillDownHandler);
+      altSkillBtn.addEventListener('pointermove', this._altSkillMoveHandler);
       altSkillBtn.addEventListener('pointerup', this._altSkillUpHandler);
       altSkillBtn.addEventListener('pointercancel', this._altSkillCancelHandler);
+      altSkillBtn.addEventListener('click', this._altSkillClickHandler);
     }
 
-    // Mobile cast (LMB) button: arm a target-cast, then let the next arena tap
-    // choose the exact world-space point.
+    // Mobile cast (LMB) button: drag to aim, release to cast in that direction.
     const lmbBtn = document.getElementById('lmbBtn');
     if (lmbBtn) {
-      this._lmbHandler = (e) => {
-        if (e.pointerType === 'touch') this._markTouchInput();
+      this._lmbDownHandler = (e) => {
+        this._markTouchLikeInput(e);
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
-        this._beginPointerTarget('targetCast');
+        this.lastSkillPointerAt = Date.now();
+        try { lmbBtn.setPointerCapture(e.pointerId); } catch (_) {}
+        this._beginSkillAimJoystick(lmbBtn, e);
       };
-      lmbBtn.addEventListener('pointerdown', this._lmbHandler);
+      this._lmbMoveHandler = (e) => {
+        if (!this._isActiveSkillAimPointer(lmbBtn, e)) return;
+        this._markTouchLikeInput(e);
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        this._moveSkillAimJoystick(lmbBtn, e);
+      };
+      this._lmbUpHandler = (e) => {
+        if (!this._isActiveSkillAimPointer(lmbBtn, e)) return;
+        this._markTouchLikeInput(e);
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        this.lastSkillPointerAt = Date.now();
+        this._moveSkillAimJoystick(lmbBtn, e);
+        this._requestTargetCastDirection();
+        this._resetSkillAimJoystick(lmbBtn);
+      };
+      this._lmbCancelHandler = (e) => {
+        if (!this._isActiveSkillAimPointer(lmbBtn, e)) return;
+        this._markTouchLikeInput(e);
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        this.lastSkillPointerAt = Date.now();
+        this._resetSkillAimJoystick(lmbBtn);
+      };
+      this._lmbClickHandler = (e) => {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() - this.lastSkillPointerAt < 450) return;
+        this._requestTargetCastDirection();
+      };
+      lmbBtn.addEventListener('pointerdown', this._lmbDownHandler);
+      lmbBtn.addEventListener('pointermove', this._lmbMoveHandler);
+      lmbBtn.addEventListener('pointerup', this._lmbUpHandler);
+      lmbBtn.addEventListener('pointercancel', this._lmbCancelHandler);
+      lmbBtn.addEventListener('click', this._lmbClickHandler);
     }
 
     if (leftContainer && leftKnob && rightContainer && rightKnob) {
@@ -774,6 +878,12 @@ export class Input {
     return this.targetCastPointer ? { ...this.targetCastPointer } : null;
   }
 
+  consumeTargetCastDirection() {
+    if (!this.targetCastDirectionRequested) return null;
+    this.targetCastDirectionRequested = false;
+    return Number.isFinite(this.targetCastDirectionAngle) ? this.targetCastDirectionAngle : 0;
+  }
+
   getCursorPos(now = Date.now()) {
     if (this.joystickEnabled && !this.hasMouseInput) {
       if (now > this.targetCursorVisibleUntil) return null;
@@ -837,7 +947,7 @@ export class Input {
    * Dynamically calibrate aim angle taking clamping boundaries & active camera offsets into consideration
    */
   updateAimAngle(player, camera, canvasWidth, canvasHeight, mapWidth = 0, mapHeight = 0) {
-    // While the skill button is being used as an aim stick, it owns the aim.
+    // While a mobile action button is being used as an aim stick, it owns aim.
     if (this.isSkillAimActive) return;
     // While actively dragging the right joystick, it owns the aim.
     if (this.isRightJoystickActive) return;
@@ -897,13 +1007,21 @@ export class Input {
     const altSkillBtn = document.getElementById('altSkillBtn');
     if (altSkillBtn) {
       if (this._altSkillDownHandler) altSkillBtn.removeEventListener('pointerdown', this._altSkillDownHandler);
+      if (this._altSkillMoveHandler) altSkillBtn.removeEventListener('pointermove', this._altSkillMoveHandler);
       if (this._altSkillUpHandler) {
         altSkillBtn.removeEventListener('pointerup', this._altSkillUpHandler);
       }
       if (this._altSkillCancelHandler) altSkillBtn.removeEventListener('pointercancel', this._altSkillCancelHandler);
+      if (this._altSkillClickHandler) altSkillBtn.removeEventListener('click', this._altSkillClickHandler);
     }
     const lmbBtn = document.getElementById('lmbBtn');
-    if (lmbBtn && this._lmbHandler) lmbBtn.removeEventListener('pointerdown', this._lmbHandler);
+    if (lmbBtn) {
+      if (this._lmbDownHandler) lmbBtn.removeEventListener('pointerdown', this._lmbDownHandler);
+      if (this._lmbMoveHandler) lmbBtn.removeEventListener('pointermove', this._lmbMoveHandler);
+      if (this._lmbUpHandler) lmbBtn.removeEventListener('pointerup', this._lmbUpHandler);
+      if (this._lmbCancelHandler) lmbBtn.removeEventListener('pointercancel', this._lmbCancelHandler);
+      if (this._lmbClickHandler) lmbBtn.removeEventListener('click', this._lmbClickHandler);
+    }
 
     this.dashRequested = false;
     this.dashVector = null;
@@ -913,9 +1031,11 @@ export class Input {
     this.skillDownRequested = false;
     this.skillUpRequested = false;
     this.skillHeld = false;
-    this._resetSkillAimJoystick(skillBtn);
+    this._resetSkillAimJoystick();
     this.targetCastRequested = false;
     this.targetCastPointer = null;
+    this.targetCastDirectionRequested = false;
+    this.targetCastDirectionAngle = null;
     this.targetCursorVisibleUntil = 0;
     this.lastTouchAt = 0;
     this.pointerTargetMode = null;

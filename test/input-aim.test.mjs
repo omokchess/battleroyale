@@ -123,12 +123,14 @@ test('mobile joystick cursor only flashes after target casts', () => {
   }
 });
 
-test('mobile skill button acts as a release-fire aim joystick', () => {
+test('mobile action buttons act as release-fire aim joysticks', () => {
   const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
   const originalLocalStorage = globalThis.localStorage;
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
 
   globalThis.window = { innerWidth: 800, innerHeight: 600 };
+  globalThis.document = { getElementById: () => null };
   globalThis.localStorage = { getItem: () => 'true' };
   Object.defineProperty(globalThis, 'navigator', {
     configurable: true,
@@ -139,6 +141,11 @@ test('mobile skill button acts as a release-fire aim joystick', () => {
     const input = new Input();
     const button = {
       style: {},
+      getBoundingClientRect: () => ({ left: 100, top: 100, width: 60, height: 60 })
+    };
+    const topButton = {
+      style: {},
+      classList: { contains: name => name === 'mobile-action-top' },
       getBoundingClientRect: () => ({ left: 100, top: 100, width: 60, height: 60 })
     };
 
@@ -157,9 +164,20 @@ test('mobile skill button acts as a release-fire aim joystick', () => {
     assert.equal(input.isSkillAimActive, false);
     assert.equal(input.skillAimPointerId, null);
     assert.equal(button.style.transform, '');
+
+    input._beginSkillAimJoystick(topButton, { pointerId: 8, clientX: 130, clientY: 130 });
+    input._moveSkillAimJoystick(topButton, { clientX: 130, clientY: 70 });
+    assert.match(topButton.style.transform, /translateX\(-50%\) translate\(/);
+
+    input._requestTargetCastDirection(Math.PI / 4);
+    assert.equal(input.consumeTargetCastDirection(), Math.PI / 4);
+    assert.equal(input.consumeTargetCastDirection(), null);
   } finally {
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
+
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
 
     if (originalLocalStorage === undefined) delete globalThis.localStorage;
     else globalThis.localStorage = originalLocalStorage;

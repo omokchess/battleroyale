@@ -904,6 +904,20 @@ test('generic R auxiliary skills expose non-blink HUD labels', () => {
   });
 });
 
+test('mobile directional target casts resolve to a world point on the aim ray', () => {
+  const game = Object.create(Game.prototype);
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game.input = {
+    consumeTargetCast: () => null,
+    consumeTargetCastDirection: () => 0
+  };
+
+  const target = game._consumeTargetCastWorld({ x: 100, y: 200 });
+
+  assert.deepEqual(target, { x: 700, y: 200 });
+});
+
 test('bow railgun vibration only fires for the local caster once', () => {
   const game = Object.create(Game.prototype);
   const calls = [];
