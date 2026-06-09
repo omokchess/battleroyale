@@ -74,6 +74,7 @@ export class Input {
     this._keyUpHandler = null;
     this._mouseMoveHandler = null;
     this._mouseDownHandler = null;
+    this._pointerDownHandler = null;
     this._touchStartHandler = null;
     this._touchMoveHandler = null;
     this._touchEndHandler = null;
@@ -95,6 +96,11 @@ export class Input {
     this._windowTouchMove = null;
     this._windowTouchEnd = null;
     this._windowTouchCancel = null;
+    this._leftPointerStart = null;
+    this._rightPointerStart = null;
+    this._windowPointerMove = null;
+    this._windowPointerUp = null;
+    this._windowPointerCancel = null;
   }
 
   setLocalWeapon(weapon) {
@@ -141,6 +147,10 @@ export class Input {
 
   _markTouchInput() {
     this.lastTouchAt = Date.now();
+  }
+
+  _markTouchLikeInput(event = null) {
+    if (!event || event.pointerType !== 'mouse') this._markTouchInput();
   }
 
   _isSyntheticTouchMouseEvent(event = null) {
@@ -243,6 +253,14 @@ export class Input {
       this.hasMouseInput = true;
     };
 
+    this._pointerDownHandler = (e) => {
+      if (e.pointerType === 'mouse' || !this.pointerTargetMode) return;
+      this._markTouchLikeInput(e);
+      if (this._isMobileControlTarget(e.target) || this._isMobileControlPoint(e.clientX, e.clientY)) return;
+      if (e.cancelable) e.preventDefault();
+      this._queueTargetCastFromClientPoint(canvas, e.clientX, e.clientY);
+    };
+
     // Mobile / Tablet General Screen Touch Event Fallbacks
     const handleTargetTouch = (e) => {
       if (!this.pointerTargetMode || !e.touches || e.touches.length === 0) return false;
@@ -309,6 +327,7 @@ export class Input {
     document.addEventListener('keyup', this._keyUpHandler);
     canvas.addEventListener('mousemove', this._mouseMoveHandler);
     canvas.addEventListener('mousedown', this._mouseDownHandler);
+    canvas.addEventListener('pointerdown', this._pointerDownHandler);
 
     // Passive parameters set for better scroll safety
     canvas.addEventListener('touchstart', this._touchStartHandler, { passive: false });
@@ -361,6 +380,7 @@ export class Input {
       this._dashBtnHandler = (e) => {
         if (e.type === 'touchstart') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation?.();
         this._requestDash();
       };
       dashBtn.addEventListener('touchstart', this._dashBtnHandler, { passive: false });
@@ -375,6 +395,7 @@ export class Input {
       this._skillBtnDownHandler = (e) => {
         if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         this.lastSkillPointerAt = Date.now();
         // Keep receiving move/up even when the finger slides off the small button.
         try { skillBtn.setPointerCapture(e.pointerId); } catch (_) {}
@@ -385,6 +406,7 @@ export class Input {
       this._skillBtnUpHandler = (e) => {
         if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         this.lastSkillPointerAt = Date.now();
         if (this._skillCastsOnRelease()) {
           this._requestSkillTap();
@@ -395,6 +417,7 @@ export class Input {
       this._skillBtnCancelHandler = (e) => {
         if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         this.lastSkillPointerAt = Date.now();
         if (!this._skillCastsOnRelease()) {
           this._requestSkillUp();
@@ -402,6 +425,7 @@ export class Input {
       };
       this._skillBtnClickHandler = (e) => {
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         if (Date.now() - this.lastSkillPointerAt < 450) return;
         if (this._skillCastsOnRelease()) return;
         if (!this.skillHeld) this._requestSkillDown();
@@ -418,6 +442,7 @@ export class Input {
       this._altSkillDownHandler = (e) => {
         if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         if (this.localWeapon === 'katana') {
           this.teleportRequested = true;
         }
@@ -425,6 +450,7 @@ export class Input {
       this._altSkillUpHandler = (e) => {
         if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         if (this.localWeapon === 'katana') {
           this.teleportUpRequested = true;
         } else {
@@ -435,6 +461,7 @@ export class Input {
       this._altSkillCancelHandler = (e) => {
         if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         if (this.localWeapon === 'katana') this.teleportUpRequested = true;
       };
       altSkillBtn.addEventListener('pointerdown', this._altSkillDownHandler);
@@ -449,6 +476,7 @@ export class Input {
       this._lmbHandler = (e) => {
         if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         this._beginPointerTarget('targetCast');
       };
       lmbBtn.addEventListener('pointerdown', this._lmbHandler);
@@ -461,23 +489,47 @@ export class Input {
       let rightTouchId = null;
       let rightCenter = null;
 
-      // Left joystick start
-      this._leftTouchStart = (e) => {
-        if (!this.joystickEnabled) return;
-        this._markTouchInput();
-        e.preventDefault();
-        
-        const touch = e.changedTouches[0];
-        leftTouchId = touch.identifier;
-        
+      const beginLeftJoystick = (point, id) => {
+        leftTouchId = id;
         const rect = leftContainer.getBoundingClientRect();
         leftCenter = {
           x: rect.left + rect.width / 2,
           y: rect.top + rect.height / 2,
           radius: rect.width / 2
         };
+        handleLeftMove(point);
+      };
 
-        handleLeftMove(touch);
+      const beginRightJoystick = (point, id) => {
+        rightTouchId = id;
+        const rect = rightContainer.getBoundingClientRect();
+        rightCenter = {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          radius: rect.width / 2
+        };
+        this.isRightJoystickActive = true;
+        handleRightMove(point);
+      };
+
+      // Left joystick start
+      this._leftTouchStart = (e) => {
+        if (!this.joystickEnabled) return;
+        this._markTouchInput();
+        e.preventDefault();
+        e.stopPropagation();
+
+        const touch = e.changedTouches[0];
+        beginLeftJoystick(touch, touch.identifier);
+      };
+
+      this._leftPointerStart = (e) => {
+        if (!this.joystickEnabled) return;
+        this._markTouchLikeInput(e);
+        e.preventDefault();
+        e.stopPropagation();
+        try { leftContainer.setPointerCapture(e.pointerId); } catch (_) {}
+        beginLeftJoystick(e, e.pointerId);
       };
 
       const handleLeftMove = (touch) => {
@@ -513,19 +565,19 @@ export class Input {
         if (!this.joystickEnabled) return;
         this._markTouchInput();
         e.preventDefault();
-        
-        const touch = e.changedTouches[0];
-        rightTouchId = touch.identifier;
-        
-        const rect = rightContainer.getBoundingClientRect();
-        rightCenter = {
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-          radius: rect.width / 2
-        };
-        this.isRightJoystickActive = true;
+        e.stopPropagation();
 
-        handleRightMove(touch);
+        const touch = e.changedTouches[0];
+        beginRightJoystick(touch, touch.identifier);
+      };
+
+      this._rightPointerStart = (e) => {
+        if (!this.joystickEnabled) return;
+        this._markTouchLikeInput(e);
+        e.preventDefault();
+        e.stopPropagation();
+        try { rightContainer.setPointerCapture(e.pointerId); } catch (_) {}
+        beginRightJoystick(e, e.pointerId);
       };
 
       const handleRightMove = (touch) => {
@@ -565,6 +617,16 @@ export class Input {
         }
       };
 
+      this._windowPointerMove = (e) => {
+        this._markTouchLikeInput(e);
+        if (!this.joystickEnabled) return;
+        if (e.pointerId === leftTouchId) {
+          handleLeftMove(e);
+        } else if (e.pointerId === rightTouchId) {
+          handleRightMove(e);
+        }
+      };
+
       // Ends and cancellations
       const handleLeftEnd = (releaseDash = true) => {
         if (releaseDash && this.localWeapon === 'sniper' && leftDashVector) {
@@ -597,6 +659,15 @@ export class Input {
         }
       };
 
+      this._windowPointerUp = (e) => {
+        this._markTouchLikeInput(e);
+        if (e.pointerId === leftTouchId) {
+          handleLeftEnd(true);
+        } else if (e.pointerId === rightTouchId) {
+          handleRightEnd();
+        }
+      };
+
       this._windowTouchCancel = (e) => {
         this._markTouchInput();
         for (let i = 0; i < e.changedTouches.length; i++) {
@@ -609,11 +680,28 @@ export class Input {
         }
       };
 
-      leftContainer.addEventListener('touchstart', this._leftTouchStart, { passive: false });
-      rightContainer.addEventListener('touchstart', this._rightTouchStart, { passive: false });
-      window.addEventListener('touchmove', this._windowTouchMove, { passive: true });
-      window.addEventListener('touchend', this._windowTouchEnd, { passive: true });
-      window.addEventListener('touchcancel', this._windowTouchCancel, { passive: true });
+      this._windowPointerCancel = (e) => {
+        this._markTouchLikeInput(e);
+        if (e.pointerId === leftTouchId) {
+          handleLeftEnd(false);
+        } else if (e.pointerId === rightTouchId) {
+          handleRightEnd();
+        }
+      };
+
+      if (window.PointerEvent) {
+        leftContainer.addEventListener('pointerdown', this._leftPointerStart);
+        rightContainer.addEventListener('pointerdown', this._rightPointerStart);
+        window.addEventListener('pointermove', this._windowPointerMove);
+        window.addEventListener('pointerup', this._windowPointerUp);
+        window.addEventListener('pointercancel', this._windowPointerCancel);
+      } else {
+        leftContainer.addEventListener('touchstart', this._leftTouchStart, { passive: false });
+        rightContainer.addEventListener('touchstart', this._rightTouchStart, { passive: false });
+        window.addEventListener('touchmove', this._windowTouchMove, { passive: true });
+        window.addEventListener('touchend', this._windowTouchEnd, { passive: true });
+        window.addEventListener('touchcancel', this._windowTouchCancel, { passive: true });
+      }
     }
   }
 
@@ -741,6 +829,7 @@ export class Input {
     if (this._keyUpHandler) document.removeEventListener('keyup', this._keyUpHandler);
     if (canvas && this._mouseMoveHandler) canvas.removeEventListener('mousemove', this._mouseMoveHandler);
     if (canvas && this._mouseDownHandler) canvas.removeEventListener('mousedown', this._mouseDownHandler);
+    if (canvas && this._pointerDownHandler) canvas.removeEventListener('pointerdown', this._pointerDownHandler);
     
     if (canvas && this._touchStartHandler) canvas.removeEventListener('touchstart', this._touchStartHandler);
     if (canvas && this._touchMoveHandler) canvas.removeEventListener('touchmove', this._touchMoveHandler);
@@ -803,6 +892,12 @@ export class Input {
     if (rightContainer && this._rightTouchStart) {
       rightContainer.removeEventListener('touchstart', this._rightTouchStart);
     }
+    if (leftContainer && this._leftPointerStart) {
+      leftContainer.removeEventListener('pointerdown', this._leftPointerStart);
+    }
+    if (rightContainer && this._rightPointerStart) {
+      rightContainer.removeEventListener('pointerdown', this._rightPointerStart);
+    }
     if (this._windowTouchMove) {
       window.removeEventListener('touchmove', this._windowTouchMove);
     }
@@ -811,6 +906,15 @@ export class Input {
     }
     if (this._windowTouchCancel) {
       window.removeEventListener('touchcancel', this._windowTouchCancel);
+    }
+    if (this._windowPointerMove) {
+      window.removeEventListener('pointermove', this._windowPointerMove);
+    }
+    if (this._windowPointerUp) {
+      window.removeEventListener('pointerup', this._windowPointerUp);
+    }
+    if (this._windowPointerCancel) {
+      window.removeEventListener('pointercancel', this._windowPointerCancel);
     }
 
     const joystickOverlay = document.getElementById('mobileJoystickOverlay');

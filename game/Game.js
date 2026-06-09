@@ -3075,7 +3075,12 @@ export class Game {
         if (label) {
           if (local.weapon === 'magicstaff') label.innerHTML = '<strong class="text-[#a855f7]">R</strong> HEAL';
           else if (local.weapon === 'katana') label.innerHTML = '<strong class="text-[#f43f5e]">R</strong> IAI';
-          else label.innerHTML = '<strong class="text-[#22c55e]">R</strong> BLINK';
+          else {
+            const altLabel = local.weapon === 'sniper'
+              ? 'BLINK'
+              : AuxSkillConfig[local.weapon]?.alt?.label || 'SKILL';
+            label.innerHTML = `<strong class="text-[#22c55e]">R</strong> ${altLabel}`;
+          }
         }
 
         const total = local.weapon === 'sniper'

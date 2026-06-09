@@ -521,47 +521,47 @@ export const MagicConfig = {
 // Everything listed here uses the generic auxiliary skill executor in Game.js.
 export const AuxSkillConfig = {
   sword: {
-    alt: { cooldownMs: 4500, type: 'melee_circle', damage: 22, range: 74, angle: 360, knockback: 22 },
+    alt: { label: 'SPIN', cooldownMs: 4500, type: 'melee_circle', damage: 22, range: 74, angle: 360, knockback: 22 },
     target: { cooldownMs: 4000, type: 'melee_line', damage: 30, range: 115, width: 28, lungeDistance: 28, knockback: 28 }
   },
   axe: {
-    alt: { cooldownMs: 6500, type: 'melee_slam', damage: 44, shockwaveDamage: 36, range: 92, innerRange: 44, knockback: 78, stunMs: 500 },
+    alt: { label: 'QUAKE', cooldownMs: 6500, type: 'melee_slam', damage: 44, shockwaveDamage: 36, range: 92, innerRange: 44, knockback: 78, stunMs: 500 },
     target: { cooldownMs: 5000, type: 'melee_arc', damage: 38, range: 88, angle: 90, lungeDistance: 36, knockback: 40 }
   },
   bow: {
-    alt: { cooldownMs: 5000, type: 'projectile', projectileKind: 'arrow', projectileWeapon: 'bow', damage: 26, speed: 860, range: 320, radius: 6, count: 3, spreadDeg: 10 },
+    alt: { label: 'VOLLEY', cooldownMs: 5000, type: 'projectile', projectileKind: 'arrow', projectileWeapon: 'bow', damage: 26, speed: 860, range: 320, radius: 6, count: 3, spreadDeg: 10 },
     target: { cooldownMs: 4500, type: 'projectile', projectileKind: 'arrow', projectileWeapon: 'bow', damage: 45, speed: 780, range: Infinity, radius: 7 }
   },
   spear: {
-    alt: { cooldownMs: 4500, type: 'melee_line', damage: 28, range: 170, width: 20, knockback: 52 },
+    alt: { label: 'IMPALE', cooldownMs: 4500, type: 'melee_line', damage: 28, range: 170, width: 20, knockback: 52 },
     target: { cooldownMs: 4500, type: 'melee_line', damage: 32, range: 150, width: 26, lungeDistance: 30, knockback: 40 }
   },
   gauntlet: {
-    alt: { cooldownMs: 4200, type: 'melee_circle', damage: 24, range: 68, angle: 360, knockback: 72, stunMs: 260 },
+    alt: { label: 'SHOCK', cooldownMs: 4200, type: 'melee_circle', damage: 24, range: 68, angle: 360, knockback: 72, stunMs: 260 },
     target: { cooldownMs: 3600, type: 'melee_line', damage: 30, range: 94, width: 36, lungeDistance: 50, knockback: 36 }
   },
   greatsword: {
-    alt: { cooldownMs: 5000, type: 'melee_slam', damage: 42, shockwaveDamage: 34, range: 96, innerRange: 50, knockback: 92, stunMs: 450 },
+    alt: { label: 'SLAM', cooldownMs: 5000, type: 'melee_slam', damage: 42, shockwaveDamage: 34, range: 96, innerRange: 50, knockback: 92, stunMs: 450 },
     target: { cooldownMs: 6000, type: 'melee_heavy_line', damage: 58, range: 165, width: 34, delayDamageMs: 120, knockback: 70 }
   },
   scythe: {
-    alt: { cooldownMs: 5200, type: 'melee_sweet_arc', damage: 20, sweetDamage: 42, range: 112, innerRange: 48, angle: 260, pull: 64 },
+    alt: { label: 'REAP', cooldownMs: 5200, type: 'melee_sweet_arc', damage: 20, sweetDamage: 42, range: 112, innerRange: 48, angle: 260, pull: 64 },
     target: { cooldownMs: 4400, type: 'melee_sweet_arc', damage: 22, sweetDamage: 40, range: 122, innerRange: 58, angle: 170, pull: 56, lungeDistance: 24 }
   },
   dagger: {
-    alt: { cooldownMs: 3600, type: 'melee_precise_line', damage: 18, critDamage: 44, range: 86, width: 8, lungeDistance: 80 },
+    alt: { label: 'EXECUTE', cooldownMs: 3600, type: 'melee_precise_line', damage: 18, critDamage: 44, range: 86, width: 8, lungeDistance: 80 },
     target: { cooldownMs: 3200, type: 'melee_precise_line', damage: 16, critDamage: 38, range: 90, width: 8, lungeDistance: 60 }
   },
   rapier: {
-    alt: { cooldownMs: 3800, type: 'melee_precise_line', damage: 22, critDamage: 48, range: 140, width: 7, lungeDistance: 52, hitCooldownRefundMs: 120 },
+    alt: { label: 'RIPOSTE', cooldownMs: 3800, type: 'melee_precise_line', damage: 22, critDamage: 48, range: 140, width: 7, lungeDistance: 52, hitCooldownRefundMs: 120 },
     target: { cooldownMs: 3600, type: 'melee_precise_line', damage: 20, critDamage: 42, range: 132, width: 9, lungeDistance: 42 }
   },
   hammer: {
-    alt: { cooldownMs: 6200, type: 'melee_slam', damage: 38, shockwaveDamage: 30, range: 118, innerRange: 52, knockback: 105, stunMs: 650 },
+    alt: { label: 'CRUSH', cooldownMs: 6200, type: 'melee_slam', damage: 38, shockwaveDamage: 30, range: 118, innerRange: 52, knockback: 105, stunMs: 650 },
     target: { cooldownMs: 5200, type: 'melee_slam', damage: 32, shockwaveDamage: 24, range: 92, innerRange: 40, knockback: 70, stunMs: 420 }
   },
   matchlock: {
-    alt: { cooldownMs: 8000, type: 'melee_line', damage: 36, range: 105, width: 24, knockback: 58 },
+    alt: { label: 'BAYONET', cooldownMs: 8000, type: 'melee_line', damage: 36, range: 105, width: 24, knockback: 58 },
     target: { cooldownMs: 6500, type: 'hitscan', damage: 48, range: Infinity }
   },
   katana: {
