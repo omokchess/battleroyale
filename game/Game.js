@@ -2762,8 +2762,8 @@ export class Game {
       projectiles: this.projectiles,
       effects: this.effects,
       damagePopups: this._dmgPopups,
-      // Pass mouse in canvas-buffer-space so the renderer can draw the cursor crosshair.
-      cursorPos: this.input ? { x: this.input.mouse.x, y: this.input.mouse.y } : null
+      // In mobile joystick mode, the cursor is only flashed for actual target casts.
+      cursorPos: this.input ? this.input.getCursorPos() : null
     };
 
     this.renderer.render(

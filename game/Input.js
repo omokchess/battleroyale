@@ -54,6 +54,9 @@ export class Input {
     this.skillHeld = false;
     this.targetCastRequested = false;
     this.targetCastPointer = null;
+    this.targetCursorVisibleUntil = 0;
+    this.targetCursorVisibleMs = 350;
+    this.lastTouchAt = 0;
     this.lastSkillPointerAt = 0;
 
     // Detect if device is touch-capable or loaded from stored preference
@@ -132,7 +135,19 @@ export class Input {
     this.mouse.y = y;
     this.targetCastPointer = { x, y };
     this.targetCastRequested = true;
+    this.targetCursorVisibleUntil = Date.now() + this.targetCursorVisibleMs;
     this._clearPointerTarget();
+  }
+
+  _markTouchInput() {
+    this.lastTouchAt = Date.now();
+  }
+
+  _isSyntheticTouchMouseEvent(event = null) {
+    return this.joystickEnabled && (
+      Boolean(event?.sourceCapabilities?.firesTouchEvents) ||
+      Date.now() - this.lastTouchAt < 700
+    );
   }
 
   _renderJoystickToggleLabel() {
@@ -189,6 +204,7 @@ export class Input {
     };
 
     this._mouseMoveHandler = (e) => {
+      if (this._isSyntheticTouchMouseEvent(e)) return;
       const rect = canvas.getBoundingClientRect();
       // Map CSS pixels onto the canvas drawing buffer. When the buffer and the
       // displayed size differ (high-DPI phones, scaled canvases) this scaling is
@@ -205,6 +221,7 @@ export class Input {
 
     this._mouseDownHandler = (e) => {
       if (e.button !== 0) return;
+      if (this._isSyntheticTouchMouseEvent(e)) return;
       this._queueTargetCastFromClientPoint(canvas, e.clientX, e.clientY);
       this.hasMouseInput = true;
     };
@@ -212,6 +229,7 @@ export class Input {
     // Mobile / Tablet General Screen Touch Event Fallbacks
     const handleTargetTouch = (e) => {
       if (!this.pointerTargetMode || !e.touches || e.touches.length === 0) return false;
+      this._markTouchInput();
       if (e.cancelable) e.preventDefault();
       const touch = e.touches[0];
       this._queueTargetCastFromClientPoint(canvas, touch.clientX, touch.clientY);
@@ -219,6 +237,7 @@ export class Input {
     };
 
     const handleTouch = (e) => {
+      this._markTouchInput();
       if (this.joystickEnabled) return; // If dedicated joysticks overlay is armed, bypass general touchscreen drag movement
       if (!e.touches || e.touches.length === 0) return;
       
@@ -260,6 +279,7 @@ export class Input {
     };
     this._touchMoveHandler = (e) => handleTouch(e);
     this._touchEndHandler = (e) => {
+      this._markTouchInput();
       if (this.joystickEnabled) return;
       this.keys.w = false;
       this.keys.s = false;
@@ -330,38 +350,21 @@ export class Input {
 
     const skillBtn = document.getElementById('skillBtn');
     if (skillBtn) {
-      // The skill button doubles as a directional aim stick: press to begin the
-      // skill (or start a charge), drag away from the press point to steer the
-      // attack direction, then release to fire in the aimed direction. This lets
-      // mobile players aim a skill with the same thumb that triggers it.
-      let skillAimOrigin = null;
-
+      // Mobile skill buttons do not own aiming. They fire using the current
+      // attack joystick direction so a thumb sliding across the button cannot
+      // unexpectedly redirect the shot.
       this._skillBtnDownHandler = (e) => {
         if (e.cancelable) e.preventDefault();
         this.lastSkillPointerAt = Date.now();
-        skillAimOrigin = { x: e.clientX, y: e.clientY };
-        this.isSkillAimActive = true;
         // Keep receiving move/up even when the finger slides off the small button.
         try { skillBtn.setPointerCapture(e.pointerId); } catch (_) {}
         if (!this._skillCastsOnRelease()) {
           this._requestSkillDown();
         }
       };
-      this._skillBtnMoveHandler = (e) => {
-        if (!this.isSkillAimActive || !skillAimOrigin) return;
-        if (e.cancelable) e.preventDefault();
-        const dx = e.clientX - skillAimOrigin.x;
-        const dy = e.clientY - skillAimOrigin.y;
-        // ~10px deadzone so a tap (no drag) keeps the existing aim.
-        if (dx * dx + dy * dy > 100) {
-          this.aimAngle = Math.atan2(dy, dx);
-        }
-      };
       this._skillBtnUpHandler = (e) => {
         if (e.cancelable) e.preventDefault();
         this.lastSkillPointerAt = Date.now();
-        this.isSkillAimActive = false;
-        skillAimOrigin = null;
         if (this._skillCastsOnRelease()) {
           this._requestSkillTap();
         } else {
@@ -371,8 +374,6 @@ export class Input {
       this._skillBtnCancelHandler = (e) => {
         if (e.cancelable) e.preventDefault();
         this.lastSkillPointerAt = Date.now();
-        this.isSkillAimActive = false;
-        skillAimOrigin = null;
         if (!this._skillCastsOnRelease()) {
           this._requestSkillUp();
         }
@@ -384,7 +385,6 @@ export class Input {
         if (!this.skillHeld) this._requestSkillDown();
       };
       skillBtn.addEventListener('pointerdown', this._skillBtnDownHandler);
-      skillBtn.addEventListener('pointermove', this._skillBtnMoveHandler);
       skillBtn.addEventListener('pointerup', this._skillBtnUpHandler);
       skillBtn.addEventListener('pointercancel', this._skillBtnCancelHandler);
       skillBtn.addEventListener('click', this._skillBtnClickHandler);
@@ -438,6 +438,7 @@ export class Input {
       // Left joystick start
       this._leftTouchStart = (e) => {
         if (!this.joystickEnabled) return;
+        this._markTouchInput();
         e.preventDefault();
         
         const touch = e.changedTouches[0];
@@ -484,6 +485,7 @@ export class Input {
       // Right joystick start
       this._rightTouchStart = (e) => {
         if (!this.joystickEnabled) return;
+        this._markTouchInput();
         e.preventDefault();
         
         const touch = e.changedTouches[0];
@@ -524,6 +526,7 @@ export class Input {
 
       // Window move tracking across all active points to prevent drift drops
       this._windowTouchMove = (e) => {
+        this._markTouchInput();
         if (!this.joystickEnabled) return;
 
         for (let i = 0; i < e.changedTouches.length; i++) {
@@ -557,6 +560,7 @@ export class Input {
       };
 
       this._windowTouchEnd = (e) => {
+        this._markTouchInput();
         for (let i = 0; i < e.changedTouches.length; i++) {
           const touch = e.changedTouches[i];
           if (touch.identifier === leftTouchId) {
@@ -568,6 +572,7 @@ export class Input {
       };
 
       this._windowTouchCancel = (e) => {
+        this._markTouchInput();
         for (let i = 0; i < e.changedTouches.length; i++) {
           const touch = e.changedTouches[i];
           if (touch.identifier === leftTouchId) {
@@ -616,6 +621,13 @@ export class Input {
     if (!this.targetCastRequested) return null;
     this.targetCastRequested = false;
     return this.targetCastPointer ? { ...this.targetCastPointer } : null;
+  }
+
+  getCursorPos(now = Date.now()) {
+    if (this.joystickEnabled && !this.hasMouseInput) {
+      if (now > this.targetCursorVisibleUntil) return null;
+    }
+    return { x: this.mouse.x, y: this.mouse.y };
   }
 
   /**
@@ -752,6 +764,8 @@ export class Input {
     this.isSkillAimActive = false;
     this.targetCastRequested = false;
     this.targetCastPointer = null;
+    this.targetCursorVisibleUntil = 0;
+    this.lastTouchAt = 0;
     this.pointerTargetMode = null;
 
     const leftContainer = document.getElementById('leftJoystickContainer');
