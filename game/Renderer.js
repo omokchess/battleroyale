@@ -12,7 +12,7 @@ const WEAPON_SPRITE_META = {
   spear: { src: '/assets/weapons/spear.png', scale: 0.68, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   gauntlet: { src: '/assets/weapons/gauntlet.png', scale: 0.42, anchorX: 0.36, anchorY: 0.52, angleOffset: 0 },
   greatsword: { src: '/assets/weapons/greatsword.png', scale: 0.76, anchorX: 0.84, anchorY: 0.52, angleOffset: Math.PI, noAimFlip: true },
-  scythe: { src: '/assets/weapons/scythe.png', scale: 0.82, anchorX: 0.18, anchorY: 0.72, angleOffset: -0.2, noAimFlip: true },
+  scythe: { src: '/assets/weapons/scythe.png', scale: 0.82, anchorX: 0.18, anchorY: 0.72, angleOffset: 0, noAimFlip: true },
   dagger: { src: '/assets/weapons/dagger.png', scale: 0.44, anchorX: 0.26, anchorY: 0.5, angleOffset: 0 },
   rapier: { src: '/assets/weapons/rapier.png', scale: 0.56, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 },
   hammer: { src: '/assets/weapons/hammer.png', scale: 0.68, anchorX: 0.22, anchorY: 0.56, angleOffset: 0 },
@@ -23,25 +23,22 @@ const WEAPON_SPRITE_META = {
 };
 const WEAPON_ASSET_VERSION = '20260608h';
 
-// Idle resting pose: angle (radians) the weapon is held at relative to the aim
-// direction when NOT attacking, so each weapon looks naturally carried instead
-// of pointing dead-straight down the aim line. Negative = rotated up/back toward
-// the wielder. (axe / bow / scythe keep their own bespoke idle handling below.)
-// These are art-tuned offsets — easy to nudge per weapon to taste.
+// Only greatsword uses an idle angle offset; other idle weapons point at aim.
 const WEAPON_IDLE_POSE = {
-  sword:      -0.6,
-  spear:      -0.85,
-  gauntlet:   -0.4,
-  greatsword: -0.7,
-  dagger:     -0.75,
-  rapier:     -0.55,
-  hammer:     -0.8,
-  matchlock:  -0.5,
-  katana:     -0.5,
-  magicstaff: -0.85,
-  sniper:     -0.45,
-  bow:         0.45
+  greatsword: -0.7
 };
+
+export function resolveWeaponSpriteDrawAngle(weaponType, playerAngle, weaponAngle, active) {
+  const aimAngle = Number.isFinite(playerAngle) ? playerAngle : 0;
+  const motionAngle = Number.isFinite(weaponAngle) ? weaponAngle : aimAngle;
+  if (active) {
+    if (weaponType === 'bow') return aimAngle;
+    if (weaponType === 'scythe') return motionAngle + 0.35;
+    return motionAngle;
+  }
+  if (weaponType === 'greatsword') return aimAngle + WEAPON_IDLE_POSE.greatsword;
+  return aimAngle;
+}
 
 export class Renderer {
   constructor(canvas) {
@@ -3500,30 +3497,16 @@ export class Renderer {
     if (!sprite?.ready || !sprite.image?.naturalWidth) return false;
 
     const meta = sprite.meta;
-    const rageActive = weaponType === 'axe' && player.buffType === 'axe_rage';
-    let drawAngle = weaponAngle;
-    if (weaponType === 'axe') {
-      if (!active) drawAngle = rageActive ? player.angle : -Math.PI / 4;
-    } else if (weaponType === 'bow') {
-      drawAngle = player.angle;
-      if (!active) drawAngle += (WEAPON_IDLE_POSE.bow || 0);
-    } else if (weaponType === 'scythe') {
-      drawAngle = active ? weaponAngle + 0.35 : player.angle + Math.PI / 2;
-    } else if (!active) {
-      // Natural resting pose: hold the weapon angled to the side instead of
-      // pointing straight along the aim. Active swings keep their animation.
-      const idle = WEAPON_IDLE_POSE[weaponType];
-      if (Number.isFinite(idle)) drawAngle = player.angle + idle;
-    }
+    const drawAngle = resolveWeaponSpriteDrawAngle(weaponType, player.angle, weaponAngle, active);
 
     const spriteScale = meta.scale * (active ? 1.06 : 1);
     const size = Math.max(38, 147 * spriteScale + Math.max(0, reach) * 0.08); // base 92 → 147 (~1.6x bigger weapons)
     const handDist = Math.max(radius - 3, radius + 6 + reach * 0.2);
-    const idleForward = weaponType === 'scythe' && !active ? radius * 3.5 : 0;
+    const idleForward = 0;
     const handX = scr.x + Math.cos(drawAngle) * handDist + Math.cos(player.angle) * idleForward;
     const handY = scr.y + Math.sin(drawAngle) * handDist + Math.sin(player.angle) * idleForward;
 
-    const idleScytheFlip = weaponType === 'scythe' && !active ? Math.PI : 0;
+    const idleScytheFlip = 0;
     const drawSingle = (offsetAngle = 0, offsetDist = 0, flipY = 1, options = {}) => {
       const a = drawAngle + offsetAngle;
       const forward = Number.isFinite(options.forward) ? options.forward : 0;

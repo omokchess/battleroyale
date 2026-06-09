@@ -150,6 +150,23 @@ export class Input {
     );
   }
 
+  _isMobileControlTarget(target) {
+    return Boolean(target?.closest?.(
+      '#mobileJoystickOverlay, #leftJoystickContainer, #rightJoystickContainer, #mobileActionCluster, .mobile-action-btn'
+    ));
+  }
+
+  _isMobileControlPoint(clientX, clientY) {
+    if (!this.joystickEnabled || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
+    const ids = ['leftJoystickContainer', 'rightJoystickContainer', 'skillBtn', 'altSkillBtn', 'lmbBtn', 'dashBtn'];
+    return ids.some(id => {
+      const el = document.getElementById(id);
+      if (!el || el.offsetParent === null) return false;
+      const rect = el.getBoundingClientRect();
+      return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+    });
+  }
+
   _renderJoystickToggleLabel() {
     return `
       <span class="inline-flex items-center gap-1">
@@ -230,8 +247,9 @@ export class Input {
     const handleTargetTouch = (e) => {
       if (!this.pointerTargetMode || !e.touches || e.touches.length === 0) return false;
       this._markTouchInput();
-      if (e.cancelable) e.preventDefault();
       const touch = e.touches[0];
+      if (this._isMobileControlTarget(e.target) || this._isMobileControlPoint(touch.clientX, touch.clientY)) return false;
+      if (e.cancelable) e.preventDefault();
       this._queueTargetCastFromClientPoint(canvas, touch.clientX, touch.clientY);
       return true;
     };
@@ -341,6 +359,7 @@ export class Input {
     const dashBtn = document.getElementById('dashBtn');
     if (dashBtn) {
       this._dashBtnHandler = (e) => {
+        if (e.type === 'touchstart') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
         this._requestDash();
       };
@@ -354,6 +373,7 @@ export class Input {
       // attack joystick direction so a thumb sliding across the button cannot
       // unexpectedly redirect the shot.
       this._skillBtnDownHandler = (e) => {
+        if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
         this.lastSkillPointerAt = Date.now();
         // Keep receiving move/up even when the finger slides off the small button.
@@ -363,6 +383,7 @@ export class Input {
         }
       };
       this._skillBtnUpHandler = (e) => {
+        if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
         this.lastSkillPointerAt = Date.now();
         if (this._skillCastsOnRelease()) {
@@ -372,6 +393,7 @@ export class Input {
         }
       };
       this._skillBtnCancelHandler = (e) => {
+        if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
         this.lastSkillPointerAt = Date.now();
         if (!this._skillCastsOnRelease()) {
@@ -394,12 +416,14 @@ export class Input {
     const altSkillBtn = document.getElementById('altSkillBtn');
     if (altSkillBtn) {
       this._altSkillDownHandler = (e) => {
+        if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
         if (this.localWeapon === 'katana') {
           this.teleportRequested = true;
         }
       };
       this._altSkillUpHandler = (e) => {
+        if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
         if (this.localWeapon === 'katana') {
           this.teleportUpRequested = true;
@@ -409,6 +433,7 @@ export class Input {
         }
       };
       this._altSkillCancelHandler = (e) => {
+        if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
         if (this.localWeapon === 'katana') this.teleportUpRequested = true;
       };
@@ -422,6 +447,7 @@ export class Input {
     const lmbBtn = document.getElementById('lmbBtn');
     if (lmbBtn) {
       this._lmbHandler = (e) => {
+        if (e.pointerType === 'touch') this._markTouchInput();
         if (e.cancelable) e.preventDefault();
         this._beginPointerTarget('targetCast');
       };
