@@ -611,6 +611,8 @@ canvas {
   #leftJoystickContainer {
     width: clamp(8.6rem, 39vw, 10.2rem);
     height: clamp(8.6rem, 39vw, 10.2rem);
+    margin-left: clamp(0.8rem, 4vw, 1.4rem);
+    margin-bottom: clamp(0.55rem, 2.8vw, 1rem);
     border-width: 2px;
     aspect-ratio: 1 / 1;
   }
@@ -725,6 +727,8 @@ canvas {
   #leftJoystickContainer {
     width: clamp(7.4rem, 32dvh, 9rem);
     height: clamp(7.4rem, 32dvh, 9rem);
+    margin-left: clamp(0.75rem, 4.5dvh, 1.25rem);
+    margin-bottom: clamp(0.35rem, 2.5dvh, 0.75rem);
   }
 
   #leftJoystickKnob {
