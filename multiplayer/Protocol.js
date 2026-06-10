@@ -30,9 +30,10 @@ export const Protocol = {
     return { type: MsgType.JOIN_ROOM, nickname, weapon, costume };
   },
 
-  // Handshake registration acceptance frame
-  roomJoined(id, initialPlayers, mapWidth, mapHeight) {
-    return { type: MsgType.ROOM_JOINED, id, initialPlayers, mapWidth, mapHeight };
+  // Handshake registration acceptance frame. roomConfig carries the arena-size /
+  // storm / cover / healing settings so late-joiners get the same rules.
+  roomJoined(id, initialPlayers, mapWidth, mapHeight, roomConfig = null) {
+    return { type: MsgType.ROOM_JOINED, id, initialPlayers, mapWidth, mapHeight, roomConfig };
   },
 
   // Notify clients of a newcomer

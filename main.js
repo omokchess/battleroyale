@@ -10,6 +10,7 @@ import { Protocol } from './multiplayer/Protocol.js';
 import { RoomRegistry } from './multiplayer/RoomRegistry.js';
 import * as accountUI from './ui/account-ui.js';
 import { isMobileDevice, isPhoneDevice } from './game/Device.js';
+import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
 
 // Dom Elements
 const authScreen = document.getElementById('authScreen');
@@ -26,6 +27,11 @@ const hostBtn = document.getElementById('hostBtn');
 const dummyBtn = document.getElementById('dummyBtn');
 const joinBtn = document.getElementById('joinBtn');
 const leaveBtn = document.getElementById('leaveBtn');
+
+const openRoomCustomBtn = document.getElementById('openRoomCustomBtn');
+const roomCustomModal = document.getElementById('roomCustomModal');
+const roomCustomClose = document.getElementById('roomCustomClose');
+const healingRateRow = document.getElementById('healingRateRow');
 
 const weaponCards = document.querySelectorAll('.weapon-card');
 const weaponStats = document.getElementById('weaponStats');
@@ -197,13 +203,66 @@ function hideError() {
 }
 
 /**
+ * 3. Room custom modal — arena size / storm / cover / healing.
+ * Segmented option groups: clicking a button selects it within its group.
+ */
+function openRoomCustom() {
+  if (!roomCustomModal) return;
+  hideError();
+  roomCustomModal.classList.remove('hidden');
+  // Prefill the room code from whatever the user may have typed before.
+  const codeInput = document.getElementById('hostRoomInput');
+  if (codeInput && !codeInput.value) codeInput.focus();
+}
+function closeRoomCustom() {
+  if (roomCustomModal) roomCustomModal.classList.add('hidden');
+}
+
+if (openRoomCustomBtn) openRoomCustomBtn.addEventListener('click', openRoomCustom);
+if (roomCustomClose) roomCustomClose.addEventListener('click', closeRoomCustom);
+if (roomCustomModal) roomCustomModal.addEventListener('click', (e) => {
+  if (e.target === roomCustomModal) closeRoomCustom(); // tap backdrop = cancel
+});
+
+// Segmented-group selection: one active option per [data-config-group].
+if (roomCustomModal) roomCustomModal.addEventListener('click', (e) => {
+  const opt = e.target.closest('.cfg-opt');
+  if (!opt) return;
+  const group = opt.closest('[data-config-group]');
+  if (!group) return;
+  group.querySelectorAll('.cfg-opt').forEach(b => b.classList.toggle('selected', b === opt));
+  // Healing rate row only matters when healing is ON.
+  if (group.dataset.configGroup === 'healing' && healingRateRow) {
+    healingRateRow.classList.toggle('hidden', opt.dataset.value !== 'on');
+  }
+});
+
+/** Read the currently selected room settings out of the modal. */
+function readRoomConfig() {
+  const pick = (group, fallback) => {
+    const el = roomCustomModal
+      ? roomCustomModal.querySelector(`[data-config-group="${group}"] .cfg-opt.selected`)
+      : null;
+    return el ? el.dataset.value : fallback;
+  };
+  return normalizeRoomConfig({
+    arenaSize: pick('arenaSize', 'tiny'),
+    storm: pick('storm', 'off') === 'on',
+    cover: pick('cover', 'none'),
+    healing: pick('healing', 'off') === 'on',
+    healingRate: pick('healingRate', 'normal'),
+  });
+}
+
+/**
  * 3. Match Hosting workflow
  */
 function doHost(dummy = false) {
   const nickname = nicknameInput.value.trim();
   const roomCode = hostRoomInput.value.trim();
   const btn = dummy ? dummyBtn : hostBtn;
-  const idleLabel = dummy ? '더미방 만들기' : '방 만들기';
+  const idleLabel = dummy ? '더미방 생성' : '방 생성';
+  const roomConfig = readRoomConfig();
 
   if (!nickname) {
     showError('방을 만들기 전에 닉네임을 입력해 주세요.');
@@ -215,6 +274,7 @@ function doHost(dummy = false) {
   }
 
   hideError();
+  closeRoomCustom();
   if (btn) { btn.disabled = true; btn.textContent = 'P2P 세션 할당 중...'; }
 
   // Instantiate network manager
@@ -225,8 +285,8 @@ function doHost(dummy = false) {
 
     enterGameScreen(true);
 
-    // Run Game (apply the player's equipped costume colors, if any)
-    activeGame = new Game(gameCanvas, netManager, accountUI.getEquippedCostume(), { dummyRoom: dummy });
+    // Run Game (apply the player's equipped costume colors + chosen room settings)
+    activeGame = new Game(gameCanvas, netManager, accountUI.getEquippedCostume(), { dummyRoom: dummy, roomConfig });
     activeGame.start((stats) => {
       // Match ended / disconnected — award coins then return to lobby.
       handleMatchEnd(stats);
@@ -238,7 +298,8 @@ function doHost(dummy = false) {
       host: nickname,
       weapon,
       players: activeGame ? Object.values(activeGame.players).filter(p => !p.isDummy).length : 1,
-      dummy
+      dummy,
+      config: activeGame ? activeGame.roomConfig : roomConfig
     }));
   });
 
@@ -432,7 +493,7 @@ function renderRoomList(rooms) {
   updateRoomListStatus();
 
   // Skip rebuilding identical DOM (the prune timer fires every 2.5s).
-  const sig = rooms.map(r => `${r.code}|${r.host}|${r.weapon}|${r.players}|${r.dummy ? 1 : 0}`).join(';');
+  const sig = rooms.map(r => `${r.code}|${r.host}|${r.weapon}|${r.players}|${r.dummy ? 1 : 0}|${roomConfigBadges(r.config).join(',')}`).join(';');
   if (sig === lastRoomSig) return;
   lastRoomSig = sig;
 
@@ -455,11 +516,19 @@ function renderRoomList(rooms) {
     const dummyBadge = isDummy
       ? '<span class="font-mono text-[9px] text-red-300 border border-red-500 px-1 py-0.5 uppercase shrink-0">더미방</span>'
       : '';
+    // Room-setting badges (arena size always shown; storm/cover/healing when on).
+    const badges = roomConfigBadges(room.config)
+      .map(b => `<span class="font-mono text-[9px] text-[#66fcf1] border border-[#2b6f72] bg-[#0b0c10] px-1 py-0.5 uppercase">${escapeHtml(b)}</span>`)
+      .join('');
+    const badgeRow = badges
+      ? `<div class="flex flex-wrap gap-1 mt-1">${badges}</div>`
+      : '';
     return `
       <button class="room-row w-full text-left bg-[#0b0c10] border-2 ${borderCls} p-2.5 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2" data-code="${code}">
         <div class="min-w-0">
           <div class="font-mono text-sm text-white font-bold truncate flex items-center gap-1.5">${dummyBadge}<span class="truncate">${code}</span></div>
           <div class="font-mono text-[10px] text-gray-400 truncate">${uiIcon('user')} ${host} · <span style="color:${cfg.color}">${cfg.name}</span></div>
+          ${badgeRow}
         </div>
         <div class="text-right shrink-0">
           <div class="font-mono text-[10px] ${isDummy ? 'text-red-300' : 'text-[#66fcf1]'} font-bold">${uiIcon('play')}참가</div>

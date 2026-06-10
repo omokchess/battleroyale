@@ -12,6 +12,7 @@ import { Renderer } from './Renderer.js';
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig, MagicConfig, AuxSkillConfig } from './Weapons.js';
 import { isMobileDevice } from './Device.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
+import { normalizeRoomConfig, arenaDimensions } from './RoomConfig.js';
 
 // Time a dead player waits before respawning.
 const RESPAWN_MS = 500;
@@ -27,14 +28,21 @@ export class Game {
     this.dummyRoom = !!options.dummyRoom;
     this.dummyCount = Number.isFinite(options.dummyCount) ? options.dummyCount : 3;
 
+    // Room custom settings (arena size / storm / cover / healing). The host owns
+    // these; clients overwrite them from the ROOM_JOINED handshake. Defaults match
+    // current behavior so an untouched config plays identically to before.
+    this.roomConfig = normalizeRoomConfig(options.roomConfig);
+
     // Floating damage numbers (local render-only, derived from HP deltas so they
     // work the same on host and clients without any extra netcode).
     this._dmgPopups = [];
     this._prevHpById = {};
 
-    // Arena Boundaries
-    this.mapWidth = 700;
-    this.mapHeight = 700;
+    // Arena Boundaries — derived from the room's arena-size preset (tiny=700
+    // keeps the legacy default). Clients re-derive this from ROOM_JOINED.
+    const dims = arenaDimensions(this.roomConfig);
+    this.mapWidth = dims.mapWidth;
+    this.mapHeight = dims.mapHeight;
 
     this.renderer = new Renderer(canvas);
     this.camera = new Camera();
@@ -3414,12 +3422,14 @@ export class Game {
         existingPlayers[id] = this.players[id].serialize();
       });
 
-      // 4. Send hand-shake ROOM_JOINED acceptance packed specifically to the guest
+      // 4. Send hand-shake ROOM_JOINED acceptance packed specifically to the guest.
+      //    roomConfig rides along so late-joiners get the exact same arena/rules.
       this.networkManager.sendTo(remoteId, Protocol.roomJoined(
-        remoteId, 
-        existingPlayers, 
-        this.mapWidth, 
-        this.mapHeight
+        remoteId,
+        existingPlayers,
+        this.mapWidth,
+        this.mapHeight,
+        this.roomConfig
       ));
 
       // 5. Broadcast to everyone else that a new player entered
@@ -3466,8 +3476,12 @@ export class Game {
         // --- CLIENT HANDLERS ---
         if (data.type === MsgType.ROOM_JOINED) {
           this.localPlayerId = data.id;
-          this.mapWidth = data.mapWidth;
-          this.mapHeight = data.mapHeight;
+          // Adopt the host's room settings, then trust the explicit map dims it
+          // sent (falling back to the size derived from the config).
+          this.roomConfig = normalizeRoomConfig(data.roomConfig);
+          const dims = arenaDimensions(this.roomConfig);
+          this.mapWidth = Number.isFinite(data.mapWidth) ? data.mapWidth : dims.mapWidth;
+          this.mapHeight = Number.isFinite(data.mapHeight) ? data.mapHeight : dims.mapHeight;
           
           // Reconstitute players list
           this.players = {};

@@ -286,19 +286,84 @@
         <!-- Create Room -->
         <div id="lobbyCreate" class="pt-3 border-t border-gray-700 mt-4">
           <span class="font-mono text-xs text-[#66fcf1] uppercase">방 만들기</span>
-          <p class="font-mono text-[10px] text-amber-300/80 mt-1 leading-snug">⚔ 방장이 되어 경기를 호스팅합니다. 방 코드는 <b>3글자 이상</b>(영문·숫자)이며, 친구에게 코드를 알려주면 입장할 수 있어요.</p>
-          <div class="flex gap-2 mt-2">
-            <input type="text" id="hostRoomInput" maxlength="10" placeholder="3글자 이상 방 코드 입력"
-              class="flex-1 min-w-0 bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-3 py-2 rounded-none font-mono text-xs focus:outline-none uppercase" />
-            <button id="hostBtn" class="bg-gradient-to-r from-teal-500 to-[#1f2833] hover:from-teal-400 hover:to-[#223040] border-2 border-teal-300 text-white font-mono text-xs px-5 py-2 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform whitespace-nowrap">
-              방 만들기
-            </button>
-          </div>
-          <!-- Dummy (practice) room: spawns stationary training targets. -->
-          <p class="font-mono text-[10px] text-red-300/80 mt-3 leading-snug">🎯 더미방은 가만히 서 있는 연습용 더미들이 있는 연습장입니다. 방 목록엔 <b class="text-red-300">빨간 테두리</b>로 표시돼요.</p>
-          <button id="dummyBtn" class="w-full mt-2 bg-[#0b0c10] hover:bg-[#1a0e12] border-2 border-red-500 text-red-300 font-mono text-xs px-5 py-2.5 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
-            더미방 만들기
+          <p class="font-mono text-[10px] text-amber-300/80 mt-1 leading-snug">⚔ 방장이 되어 경기를 호스팅합니다. 경기장 크기·자기장·엄폐물·회복을 직접 설정할 수 있어요.</p>
+          <button id="openRoomCustomBtn" class="w-full mt-2 bg-gradient-to-r from-teal-500 to-[#1f2833] hover:from-teal-400 hover:to-[#223040] border-2 border-teal-300 text-white font-mono text-xs px-5 py-2.5 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
+            방 커스텀
           </button>
+        </div>
+
+        <!-- ROOM CUSTOM MODAL: arena size / storm / cover / healing. Shared by both
+             the normal room and the dummy (practice) room so settings can be tested. -->
+        <div id="roomCustomModal" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-[#0b0c10]/85 backdrop-blur-sm font-mono p-4 overflow-y-auto">
+          <div class="border-4 border-[#45f3ff] bg-[#1f2833] w-full max-w-md my-auto shadow-[0_0_24px_rgba(69,243,255,0.35)] max-h-[92vh] overflow-y-auto">
+            <div class="p-5 sm:p-6">
+              <div class="flex items-center justify-between mb-1">
+                <h2 class="text-lg font-bold text-[#66fcf1] uppercase tracking-widest select-none">방 커스텀</h2>
+                <button id="roomCustomClose" class="text-gray-400 hover:text-white text-2xl leading-none px-2 cursor-pointer" aria-label="닫기">&times;</button>
+              </div>
+              <div class="my-2 h-0.5 bg-gradient-to-r from-transparent via-[#facc15] to-transparent"></div>
+
+              <label class="block font-mono text-[10px] text-[#66fcf1] uppercase mb-1">방 코드</label>
+              <input type="text" id="hostRoomInput" maxlength="10" placeholder="3글자 이상 (영문·숫자)"
+                class="w-full bg-[#0b0c10] border-2 border-gray-600 focus:border-[#45f3ff] text-white px-3 py-2 font-mono text-xs focus:outline-none uppercase mb-4" />
+
+              <div class="mb-3" data-config-group="arenaSize">
+                <div class="font-mono text-[10px] text-gray-300 uppercase mb-1">경기장 크기</div>
+                <div class="grid grid-cols-5 gap-1">
+                  <button type="button" class="cfg-opt selected" data-value="tiny">초소형</button>
+                  <button type="button" class="cfg-opt" data-value="small">소형</button>
+                  <button type="button" class="cfg-opt" data-value="medium">중형</button>
+                  <button type="button" class="cfg-opt" data-value="large">대형</button>
+                  <button type="button" class="cfg-opt" data-value="huge">초대형</button>
+                </div>
+              </div>
+
+              <div class="mb-3" data-config-group="storm">
+                <div class="font-mono text-[10px] text-gray-300 uppercase mb-1">자기장</div>
+                <div class="grid grid-cols-2 gap-1">
+                  <button type="button" class="cfg-opt selected" data-value="off">OFF</button>
+                  <button type="button" class="cfg-opt" data-value="on">ON</button>
+                </div>
+              </div>
+
+              <div class="mb-3" data-config-group="cover">
+                <div class="font-mono text-[10px] text-gray-300 uppercase mb-1">엄폐물</div>
+                <div class="grid grid-cols-4 gap-1">
+                  <button type="button" class="cfg-opt selected" data-value="none">없음</button>
+                  <button type="button" class="cfg-opt" data-value="few">적음</button>
+                  <button type="button" class="cfg-opt" data-value="some">보통</button>
+                  <button type="button" class="cfg-opt" data-value="many">많음</button>
+                </div>
+              </div>
+
+              <div class="mb-3" data-config-group="healing">
+                <div class="font-mono text-[10px] text-gray-300 uppercase mb-1">회복 아이템</div>
+                <div class="grid grid-cols-2 gap-1">
+                  <button type="button" class="cfg-opt selected" data-value="off">OFF</button>
+                  <button type="button" class="cfg-opt" data-value="on">ON</button>
+                </div>
+              </div>
+
+              <div class="mb-4 hidden" id="healingRateRow" data-config-group="healingRate">
+                <div class="font-mono text-[10px] text-gray-300 uppercase mb-1">회복 스폰 주기</div>
+                <div class="grid grid-cols-3 gap-1">
+                  <button type="button" class="cfg-opt" data-value="fast">빠름</button>
+                  <button type="button" class="cfg-opt selected" data-value="normal">보통</button>
+                  <button type="button" class="cfg-opt" data-value="slow">느림</button>
+                </div>
+              </div>
+
+              <div class="h-px bg-gray-700 my-3"></div>
+
+              <button id="hostBtn" class="w-full bg-gradient-to-r from-teal-500 to-[#1f2833] hover:from-teal-400 hover:to-[#223040] border-2 border-teal-300 text-white font-mono text-xs px-5 py-2.5 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
+                방 생성
+              </button>
+              <p class="font-mono text-[10px] text-red-300/80 mt-3 leading-snug">🎯 더미방은 위 설정을 그대로 쓰는 연습장입니다(가만히 서 있는 연습용 더미 포함). 방 목록엔 <b class="text-red-300">빨간 테두리</b>로 표시돼요.</p>
+              <button id="dummyBtn" class="w-full mt-1 bg-[#0b0c10] hover:bg-[#1a0e12] border-2 border-red-500 text-red-300 font-mono text-xs px-5 py-2.5 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
+                더미방 생성
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Controls Guide -->
