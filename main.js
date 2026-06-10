@@ -601,18 +601,19 @@ function setupLobbyPerfToggle() {
 }
 
 /**
- * Match end: record this session's kills (→ coins) for the logged-in player,
- * then return to the lobby. `stats.kills` is passed by Game.quit().
+ * Match end: record this session's stats (kills → coins, +completion/daily bonus)
+ * for the logged-in player, then return to the lobby. `stats` is passed by
+ * Game.quit(): { kills, deaths, weapon, durationMs, dummy }.
+ * Practice (dummy) rooms are never reported — their kills are excluded server-side
+ * anyway, and skipping the report avoids farming the completion/daily bonuses.
  */
 async function handleMatchEnd(stats) {
   showLobbyScreen();
-  const kills = stats && stats.kills ? stats.kills : 0;
-  if (kills > 0) {
-    try {
-      await accountUI.reportMatch(kills);
-    } catch (e) {
-      console.error('reportMatch failed', e);
-    }
+  if (stats && stats.dummy) return; // 연습방은 보고하지 않음
+  try {
+    await accountUI.reportMatch(stats || { kills: 0 });
+  } catch (e) {
+    console.error('reportMatch failed', e);
   }
 }
 

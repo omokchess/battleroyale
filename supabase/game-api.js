@@ -15,7 +15,7 @@ export async function fetchLeaderboard(limit = 100) {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from('profiles')
-    .select('username, total_kills, games_played, equipped_costume')
+    .select('username, total_kills, total_deaths, games_played, equipped_costume')
     .order('total_kills', { ascending: false })
     .order('games_played', { ascending: true })
     .limit(limit);
@@ -26,11 +26,24 @@ export async function fetchLeaderboard(limit = 100) {
   return data ?? [];
 }
 
-/** 한 판 결과 기록(킬 → 코인/누적킬). 갱신된 내 프로필 반환. */
-export async function recordMatch(kills) {
+/**
+ * 한 판 결과 기록 → 코인/누적킬/판수 갱신 + 텔레메트리 로그. 갱신된 프로필 반환.
+ * @param {number|{kills:number, deaths?:number, weapon?:string, durationMs?:number}} stats
+ *   숫자만 넘기던 구버전 호출도 지원.
+ */
+export async function recordMatch(stats) {
   if (!supabase) return null;
-  const k = Math.max(0, Math.floor(Number(kills) || 0));
-  const { data, error } = await supabase.rpc('record_match', { p_kills: k });
+  const s = (typeof stats === 'object' && stats !== null) ? stats : { kills: stats };
+  const k = Math.max(0, Math.floor(Number(s.kills) || 0));
+  const d = Math.max(0, Math.floor(Number(s.deaths) || 0));
+  const dur = Math.max(0, Math.floor(Number(s.durationMs) || 0));
+  const weapon = typeof s.weapon === 'string' ? s.weapon : null;
+  const { data, error } = await supabase.rpc('record_match', {
+    p_kills: k,
+    p_weapon: weapon,
+    p_deaths: d,
+    p_duration_ms: dur,
+  });
   if (error) {
     console.error('[supabase] recordMatch', error);
     return null;

@@ -90,7 +90,7 @@ export async function fetchMyProfile() {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, coins, total_kills, games_played, equipped_costume')
+    .select('id, username, coins, total_kills, total_deaths, games_played, equipped_costume')
     .eq('id', uid)
     .maybeSingle();
 

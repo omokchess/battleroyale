@@ -659,7 +659,7 @@ test('matchlock instakills the first enemy on the aim line and goes on a long co
 
   game._fireMatchlock(gunner, 1000);
   assert.ok(victim.hp <= 0);                       // instakill regardless of max HP
-  assert.ok(gunner.skillCdLeft > 14);              // ~15s cooldown
+  assert.ok(gunner.skillCdLeft > 9);               // ~10s cooldown
   assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'matchlock'), true);
 
   // A perpendicular target is NOT on the line and survives.
@@ -823,11 +823,12 @@ test('magic staff lifebound heals the caster, capped at max hp', () => {
   assert.equal(mage.hp, mage.maxHp);
 });
 
-test('sniper: F instakills; R arms a bounded targeted blink; dash allowed', () => {
+test('sniper: F telegraphs then instakills; R arms a bounded targeted blink; dash allowed', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
   game.projectiles = [];
+  game.pendingSniperShots = [];
   game.mapWidth = 700;
   game.mapHeight = 700;
   game._creditKill = () => {};
@@ -838,9 +839,19 @@ test('sniper: F instakills; R arms a bounded targeted blink; dash allowed', () =
   game.players[sniper.id] = sniper;
   game.players[victim.id] = victim;
 
-  game._fireSniperShot(sniper, 1000);                         // F = shot
+  const tele = SkillConfig.sniper.telegraphMs;
+  game._fireSniperShot(sniper, 1000);                         // F = telegraphed shot
+  assert.equal(victim.hp, victim.maxHp);                      // not hit yet — 0.5s exposure window
+  assert.ok(sniper.skillCdLeft > 1.9);                        // cooldown starts at fire time
+  assert.equal(game.pendingSniperShots.length, 1);
+  assert.equal(game.effects.some(e => e.type === 'sniper_telegraph' && e.weapon === 'sniper'), true);
+
+  game._releaseDueSniperShots(1000 + tele - 1);               // still within the window
+  assert.equal(victim.hp, victim.maxHp);
+
+  game._releaseDueSniperShots(1000 + tele);                   // exposure elapsed → shot lands
   assert.ok(victim.hp <= 0);                                  // instakill hitscan
-  assert.ok(sniper.skillCdLeft > 1.9);                        // F shot's own ~2s cooldown
+  assert.equal(game.pendingSniperShots.length, 0);
   assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'sniper'), true);
 
   game._handleTeleport(sniper, 2000);                         // R = target mode
@@ -1092,4 +1103,68 @@ test('effect rebase preserves extra skill fields (railbeam endpoints, blast radi
   assert.equal(rebased.y2, 120);
   assert.equal(rebased.radius, 70);
   assert.equal(rebased.progress, 0.5);
+});
+
+test('dummy kills are tallied separately and never credited as real kills', () => {
+  const game = Object.create(Game.prototype);
+  const announces = [];
+  game.players = {};
+  game._announce = (msg) => announces.push(msg);
+
+  const killer = new Player('killer', 'Hunter', 'sword', 0, 0);
+  const realTarget = new Player('real', 'Rival', 'sword', 50, 0);
+  const dummy = new Player('dummy_0', '더미 1', 'sword', 80, 0);
+  dummy.isDummy = true;
+  game.players[killer.id] = killer;
+  game.players[realTarget.id] = realTarget;
+  game.players[dummy.id] = dummy;
+
+  // Practice dummy: counts toward dummyKills only, no kill-feed line.
+  game._creditKill(killer.id, dummy, '검으로');
+  assert.equal(killer.kills, 0);
+  assert.equal(killer.dummyKills, 1);
+  assert.equal(announces.length, 0);
+
+  // Real opponent: counts toward kills (reported) and announces.
+  game._creditKill(killer.id, realTarget, '검으로');
+  assert.equal(killer.kills, 1);
+  assert.equal(killer.dummyKills, 1);
+  assert.equal(announces.length, 1);
+});
+
+test('player kills/dummyKills/deaths survive serialization', () => {
+  const p = new Player('stat-sync', 'Stats', 'sword', 0, 0);
+  p.kills = 7;
+  p.dummyKills = 3;
+  p.deaths = 2;
+
+  const restored = new Player('stat-sync', 'Stats', 'sword', 0, 0);
+  restored.deserialize(p.serialize());
+
+  assert.equal(restored.kills, 7);
+  assert.equal(restored.dummyKills, 3);
+  assert.equal(restored.deaths, 2);
+});
+
+test('a target that steps off the locked sniper line survives the telegraphed shot', () => {
+  const game = Object.create(Game.prototype);
+  game.players = {};
+  game.effects = [];
+  game.pendingSniperShots = [];
+  game.mapWidth = 700;
+  game.mapHeight = 700;
+  game._creditKill = () => {};
+
+  const sniper = new Player('snp2', 'Snp', 'sniper', 100, 100);
+  sniper.angle = 0; // locked toward +x
+  const target = new Player('mover', 'Mover', 'sword', 400, 100); // on the line at fire time
+  game.players[sniper.id] = sniper;
+  game.players[target.id] = target;
+
+  const tele = SkillConfig.sniper.telegraphMs;
+  game._fireSniperShot(sniper, 1000);
+  // Dodge: step well off the locked line during the exposure window.
+  target.y = 300;
+  game._releaseDueSniperShots(1000 + tele);
+  assert.equal(target.hp, target.maxHp); // shot followed the frozen line and missed
 });

@@ -84,8 +84,8 @@ export const Weapons = {
     angle: 210,
     fixedSwingDirection: 1,
     type: 'melee_arc',
-    description: '전방 100도를 같은 방향으로 두 번 베고, 3타에 짧은 검기를 발사하는 중량 무기입니다.',
-    skill: 'F 홀드: 최대 3초 예열 후 대미지 85 강공격을 발동합니다.',
+    description: '평타 없이 F 스킬 차징으로만 공격하는 중량 무기입니다. 차징 시간에 따라 피해량이 달라집니다.',
+    skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 1~70 피해를 줍니다.',
     color: '#8bd3ff'
   },
   scythe: {
@@ -118,8 +118,8 @@ export const Weapons = {
     critDamage: 20,
     hitCooldownRefundMs: 40,
     type: 'melee_precise_line',
-    description: '빠른 초근접 무기입니다. 3타마다 짧게 대시하고, 적의 등 뒤를 찌르면 큰 피해를 줍니다.',
-    skill: 'F 스킬: 가장 가까운 적을 찍고 2초 뒤 배후 QTE를 시작합니다. 원이 맞을 때 Space를 누르면 70 피해.',
+    description: '레이피어처럼 얇은 직선 판정으로 빠르게 찌르는 암살 무기입니다.',
+    skill: 'F 스킬: 가장 가까운 적과 0.7초간 사슬을 잇고, 원 타이밍에 F를 누르면 배후 공격으로 70 피해를 줍니다.',
     color: '#f8fafc'
   },
   rapier: {
@@ -131,7 +131,7 @@ export const Weapons = {
     moveSpeed: 1.15,
     range: 87,
     width: 1,
-    hitCooldownRefundMs: 180,
+    hitCooldownRefundMs: 120,
     missPenaltyMs: 150,
     type: 'melee_precise_line',
     description: '1px짜리 바늘 같은 찌르기 무기입니다. 평타 5타째에 강하게 내지르고, 명중 시 템포가 빨라집니다.',
@@ -157,20 +157,20 @@ export const Weapons = {
     name: '화승총',
     damage: Infinity,       // 확정킬(즉사) — actual hit resolves via SkillConfig.matchlock
     maxHp: 80,
-    cooldown: 15000,        // F-triggered only (automaticAttack false)
+    cooldown: 10000,        // F-triggered only (automaticAttack false)
     automaticAttack: false,
     moveSpeed: 0.9,
     range: Infinity,
     speed: 50000,           // label only — fires as an instant hitscan
     type: 'projectile',     // draws an aim line to the wall as the preview
-    description: 'F 키로 직선상의 첫 적을 즉사시키는 화기입니다. 조준선이 닿으면 즉시 처치하지만 쿨타임이 매우 깁니다.',
-    skill: 'F 키: 조준 직선상의 첫 적을 즉사(확정킬) · 쿨타임 15초',
+    description: 'F 키로 직선상의 첫 적을 즉사시키는 화기입니다. 조준선이 닿으면 즉시 처치하지만 쿨타임이 깁니다.',
+    skill: 'F 키: 조준 직선상의 첫 적을 즉사(확정킬) · 쿨타임 10초',
     color: '#ef4444'
   },
   katana: {
     name: '카타나',
     damage: 24,
-    maxHp: 110,
+    maxHp: 100,             // 검(120)보다 낮은 체력으로 역할 분리
     cooldown: 430,          // 검(550)보다 빠른 평타
     moveSpeed: 1.2,
     range: 70,
@@ -178,8 +178,8 @@ export const Weapons = {
     type: 'melee_arc',
     hitMode: 'melee_blade_sweep',
     bladeHalfWidth: 12,
-    description: '검과 같은 베기지만 더 빠르게 휘두르는 쾌속 도검입니다.',
-    skill: 'F 스킬: 앞으로 돌진하며 2회 베고, 벨 때마다 벽까지 닿는 검기 발사 (직접 40·검기 30) · 쿨타임 7초',
+    description: '검보다 빠르게 휘두르지만 체력이 낮은 쾌속 도검입니다. 빠른 평타와 발도술로 압박합니다.',
+    skill: 'F: 기존 2회 베기 그대로 ·  R 홀드: 1초간 발도술 차징 후 전방 40px 폭 직선을 베어 80 피해',
     color: '#f43f5e'
   },
   magicstaff: {
@@ -192,8 +192,8 @@ export const Weapons = {
     range: Infinity,
     speed: 540,             // shown as cast speed
     type: 'projectile',     // idle preview draws the aim line
-    description: '평타가 3종 주문 중 하나로 무작위 시전되는 지팡이입니다. 파이어볼·아이스 샤드·라이프바운드가 무작위로 나갑니다.',
-    skill: '평타(자동, 3초): 무작위 시전 — 파이어볼(40+화염 2/초·4초), 아이스 샤드(고드름 4발 장전→F로 발사·각 12), 라이프바운드(자힐 30)',
+    description: '세 가지 주문을 상황에 맞게 따로 쓰는 마법 지팡이입니다.',
+    skill: 'F: 파이어볼 발사 ·  좌클릭: 조준 지점에 아이스 샤드 ·  R: 자가 회복  (주문마다 개별 쿨타임 2초)',
     color: '#a855f7'
   },
   sniper: {
@@ -206,44 +206,11 @@ export const Weapons = {
     range: Infinity,
     speed: Infinity,        // instant hitscan
     type: 'projectile',     // idle preview draws the aim line
-    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 저격총입니다. F로 조준 직선상 첫 적을 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
-    skill: 'F 키: 조준 직선상 첫 적 즉사(즉시 명중·쿨 4초) · R 키: 무작위 순간이동(쿨 4초)',
+    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 저격총입니다. F로 0.5초간 조준선을 노출한 뒤 직선상 첫 적을 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
+    skill: 'F: 0.5초 조준선 노출(텔레그래프) 후 직선상 첫 적 즉사 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)',
     color: '#22c55e'
   }
 };
-
-Object.assign(Weapons.greatsword, {
-  description: '전방 100도를 같은 방향으로 두 번 베고, 3타에 넓은 검기를 발사하는 중량 무기입니다.',
-  skill: 'F 홀드: 최대 1초 예열 후 창처럼 뻗는 상단베기로 최대 85 피해를 줍니다.'
-});
-
-Object.assign(Weapons.greatsword, {
-  description: '전방 210도를 같은 방향으로 두 번 베고, 3타에 넓은 검기를 발사하는 중량 무기입니다.',
-  skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 최대 85 피해를 줍니다.'
-});
-
-Object.assign(Weapons.greatsword, {
-  description: '평타 없이 F 스킬 차징으로만 공격하는 중량 무기입니다. 차징 시간에 따라 피해량이 달라집니다.',
-  skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 1~70 피해를 줍니다.'
-});
-
-Object.assign(Weapons.dagger, {
-  description: '레이피어처럼 얇은 직선 판정으로 빠르게 찌르는 암살 무기입니다.',
-  skill: 'F 스킬: 가장 가까운 적과 0.7초간 사슬을 잇고, 원 타이밍에 F를 누르면 배후 공격으로 70 피해를 줍니다.'
-});
-
-Object.assign(Weapons.magicstaff, {
-  description: '세 가지 주문을 상황에 맞게 따로 쓰는 마법 지팡이입니다.',
-  skill: 'F: 파이어볼 발사 ·  좌클릭: 조준 지점에 아이스 샤드 ·  R: 자가 회복  (주문마다 개별 쿨타임 2초)'
-});
-
-Object.assign(Weapons.sniper, {
-  skill: 'F: 즉사 저격 사격 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)'
-});
-
-Object.assign(Weapons.katana, {
-  skill: 'F: 기존 2회 베기 그대로 ·  R 홀드: 1초간 발도술 차징 후 전방 40px 폭 직선을 베어 80 피해'
-});
 
 // --- Dash (Spacebar) tuning --------------------------------------------------
 // All values are easy to retune here without touching game logic.
@@ -349,7 +316,7 @@ export const SkillConfig = {
     buffCooldown: 250,       // attack cooldown while buffed (was 430)
     buffRange: 105,          // reach while buffed (was 87)
     buffWidth: 6,            // wider crit/hit window while buffed
-    buffHitRefundMs: 250     // bigger on-hit tempo refund while buffed
+    buffHitRefundMs: 180     // bigger on-hit tempo refund while buffed
   },
   hammer: {
     cooldownMs: 8500,
@@ -367,7 +334,7 @@ export const SkillConfig = {
     ]
   },
   matchlock: {
-    cooldownMs: 15000,
+    cooldownMs: 10000,
     damage: 9999,           // instakill
     speed: 50000            // label only — instant hitscan
   },
@@ -390,6 +357,7 @@ export const SkillConfig = {
   },
   sniper: {
     cooldownMs: 2000,         // F: instakill shot cooldown
+    telegraphMs: 500,         // F: aim-laser exposure before the shot lands (counterplay window)
     teleportCooldownMs: 2000, // R: targeted teleport cooldown
     teleportRadius: 200,      // 400px diameter target circle
     teleportTargetWindowMs: 3500

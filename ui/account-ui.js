@@ -108,12 +108,15 @@ export async function refreshProfile() {
   return profile;
 }
 
-/** 한 판 결과(킬)를 서버에 기록하고 코인/상단바 갱신 */
-export async function reportMatch(kills) {
+/**
+ * 한 판 결과를 서버에 기록하고 코인/상단바 갱신.
+ * @param {number|{kills:number, deaths?:number, weapon?:string, durationMs?:number}} stats
+ * 킬이 0이어도 판 완료/일일 보너스를 위해 기록한다(서버가 60초 속도 제한으로 보호).
+ */
+export async function reportMatch(stats) {
   if (!isSupabaseConfigured || !profile) return;
-  const k = Math.max(0, Math.floor(Number(kills) || 0));
-  if (k <= 0) return;
-  const updated = await recordMatch(k);
+  const s = (typeof stats === 'object' && stats !== null) ? stats : { kills: stats };
+  const updated = await recordMatch(s);
   if (updated) {
     profile = updated;
     renderAccountBar();
@@ -268,6 +271,7 @@ async function openLeaderboard() {
           <th class="text-left py-1 w-10">#</th>
           <th class="text-left py-1">닉네임</th>
           <th class="text-right py-1 w-16">킬</th>
+          <th class="text-right py-1 w-16">K/D</th>
           <th class="text-right py-1 w-16">판수</th>
         </tr>
       </thead>
@@ -275,10 +279,14 @@ async function openLeaderboard() {
         ${rows.map((r, i) => {
           const mine = myName && r.username === myName;
           const rankColor = i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-amber-600' : 'text-gray-500';
+          const deaths = r.total_deaths ?? 0;
+          // 사망 0일 땐 나눗셈 대신 킬 수를 그대로 비율로 표기.
+          const kd = deaths > 0 ? (r.total_kills / deaths).toFixed(2) : (r.total_kills > 0 ? r.total_kills.toFixed(2) : '0.00');
           return `<tr class="${mine ? 'bg-[#0b3038]' : ''} border-b border-gray-800">
             <td class="py-1 font-bold ${rankColor}">${i + 1}</td>
             <td class="py-1 text-white truncate max-w-[140px]">${escapeHtml(r.username)}${mine ? ' <span class="text-[#45f3ff]">(나)</span>' : ''}</td>
             <td class="py-1 text-right text-[#66fcf1] font-bold">${r.total_kills}</td>
+            <td class="py-1 text-right text-gray-300">${kd}</td>
             <td class="py-1 text-right text-gray-400">${r.games_played ?? 0}</td>
           </tr>`;
         }).join('')}

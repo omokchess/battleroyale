@@ -20,7 +20,9 @@ export class Player {
     this.speed = 180; // px/s
     this.radius = 14;
     this.angle = 0; // aim angle in radians
-    this.kills = 0;
+    this.kills = 0;       // real-opponent kills (reported to the server for coins/rank)
+    this.dummyKills = 0;  // practice-dummy kills (HUD only — never reported/credited)
+    this.deaths = 0;      // times this player has been killed (telemetry / K-D)
     this.isDead = false;
     this.respawnRemainingMs = 0;
     // Training dummy: spawned by the host in a dummy room. Doesn't move or
@@ -279,6 +281,8 @@ export class Player {
       hp: this.hp,
       angle: this.angle,
       kills: this.kills,
+      dummyKills: this.dummyKills || 0,
+      deaths: this.deaths || 0,
       isDead: this.isDead,
       isDummy: this.isDummy,
       respawnRemainingMs: this.respawnRemainingMs || 0,
@@ -318,6 +322,8 @@ export class Player {
     this.maxHp = Number.isFinite(data.maxHp) ? data.maxHp : (Weapons[this.weapon]?.maxHp || this.maxHp || 100);
     this.hp = Number.isFinite(data.hp) ? Math.min(data.hp, this.maxHp) : this.maxHp;
     this.kills = data.kills;
+    this.dummyKills = data.dummyKills || 0;
+    this.deaths = data.deaths || 0;
     this.isDead = data.isDead;
     this.isDummy = Boolean(data.isDummy);
     this.respawnRemainingMs = data.respawnRemainingMs || 0;
