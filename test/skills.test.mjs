@@ -642,24 +642,35 @@ test('hammer outer shockwave misses targets beyond the first wave radius', () =>
   assert.equal(target.hp, target.maxHp - w2.damage);
 });
 
-test('matchlock instakills the first enemy on the aim line and goes on a long cooldown', () => {
+test('matchlock: F telegraphs 0.5s then instakills on the aim line', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
   game.projectiles = [];
+  game.pendingMatchlockShots = [];
   game.mapWidth = 700;
   game.mapHeight = 700;
   game._creditKill = () => {};
 
   const gunner = new Player('gun', 'Gun', 'matchlock', 100, 100);
   gunner.angle = 0; // facing +x
-  const victim = new Player('vic', 'Vic', 'sword', 300, 100); // directly on the aim line
+  const victim = new Player('vic', 'Vic', 'sword', 300, 100); // on the aim line
   game.players[gunner.id] = gunner;
   game.players[victim.id] = victim;
 
+  const tele = SkillConfig.matchlock.telegraphMs;
   game._fireMatchlock(gunner, 1000);
-  assert.ok(victim.hp <= 0);                       // instakill regardless of max HP
-  assert.ok(gunner.skillCdLeft > 9);               // ~10s cooldown
+  assert.equal(victim.hp, victim.maxHp);            // not hit yet — telegraph window
+  assert.ok(gunner.skillCdLeft > 9);                // ~10s cooldown starts immediately
+  assert.equal(game.pendingMatchlockShots.length, 1);
+  assert.equal(game.effects.some(e => e.type === 'matchlock_telegraph' && e.weapon === 'matchlock'), true);
+
+  game._releaseDueMatchlockShots(1000 + tele - 1);  // still within window
+  assert.equal(victim.hp, victim.maxHp);
+
+  game._releaseDueMatchlockShots(1000 + tele);       // window elapsed → fires
+  assert.ok(victim.hp <= 0);
+  assert.equal(game.pendingMatchlockShots.length, 0);
   assert.equal(game.effects.some(e => e.type === 'railbeam' && e.weapon === 'matchlock'), true);
 
   // A perpendicular target is NOT on the line and survives.
@@ -667,6 +678,7 @@ test('matchlock instakills the first enemy on the aim line and goes on a long co
   game.players[safe.id] = safe;
   gunner.skillCdLeft = 0;
   game._fireMatchlock(gunner, 2000);
+  game._releaseDueMatchlockShots(2000 + tele);
   assert.equal(safe.hp, safe.maxHp);
 });
 
@@ -1165,7 +1177,7 @@ test('player kills/dummyKills/deaths survive serialization', () => {
   assert.equal(restored.deaths, 2);
 });
 
-test('a target that steps off the locked sniper line survives the telegraphed shot', () => {
+test('a target that moves off the live sniper aim line during the telegraph survives', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -1175,15 +1187,16 @@ test('a target that steps off the locked sniper line survives the telegraphed sh
   game._creditKill = () => {};
 
   const sniper = new Player('snp2', 'Snp', 'sniper', 100, 100);
-  sniper.angle = 0; // locked toward +x
-  const target = new Player('mover', 'Mover', 'sword', 400, 100); // on the line at fire time
+  sniper.angle = 0; // still aiming +x when shot resolves
+  const target = new Player('mover', 'Mover', 'sword', 400, 100); // on line at fire time
   game.players[sniper.id] = sniper;
   game.players[target.id] = target;
 
   const tele = SkillConfig.sniper.telegraphMs;
   game._fireSniperShot(sniper, 1000);
-  // Dodge: step well off the locked line during the exposure window.
+  // Dodge: target steps well off the aim line during the exposure window.
+  // Sniper keeps angle=0, so shot resolves along +x — target at y=300 is safe.
   target.y = 300;
   game._releaseDueSniperShots(1000 + tele);
-  assert.equal(target.hp, target.maxHp); // shot followed the frozen line and missed
+  assert.equal(target.hp, target.maxHp); // live aim missed the moved target
 });

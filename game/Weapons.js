@@ -335,6 +335,7 @@ export const SkillConfig = {
   },
   matchlock: {
     cooldownMs: 10000,
+    telegraphMs: 500,       // aim-line preview before the shot fires
     damage: 9999,           // instakill
     speed: 50000            // label only — instant hitscan
   },

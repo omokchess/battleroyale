@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -47,6 +47,7 @@ export class Game {
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
     this.pendingSniperShots = [];
+    this.pendingMatchlockShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
@@ -92,6 +93,7 @@ export class Game {
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
     this.pendingSniperShots = [];
+    this.pendingMatchlockShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
@@ -412,6 +414,7 @@ export class Game {
     this._releaseDueMagicShards(now);
     this._releaseDueKatanaSlashes(now);
     this._releaseDueSniperShots(now);
+    this._releaseDueMatchlockShots(now);
     this._processSpearThrowQueue(now);
     this._processPendingMeleeHits(now);
     this._processGreatswordCharges(now);
@@ -534,6 +537,7 @@ export class Game {
           this._clearPendingMeleeHitsFor(p.id);
           this._clearPendingHammerSlamsFor(p.id);
           this._clearPendingSniperShotsFor(p.id);
+          this._clearPendingMatchlockShotsFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
@@ -1188,6 +1192,7 @@ export class Game {
     this._clearPendingMeleeHitsFor(player.id);
     this._clearPendingHammerSlamsFor(player.id);
     this._clearPendingSniperShotsFor(player.id);
+    this._clearPendingMatchlockShotsFor(player.id);
   }
 
   /**
@@ -1912,14 +1917,46 @@ export class Game {
     });
   }
 
-  // --- 화승총 (matchlock): instant hitscan that executes the first enemy on the
-  // aim line. Same ray solve as the bow railgun, but a single confirmed-kill shot.
+  // --- 화승총 (matchlock): 0.5s telegraph then hitscan instakill.
+  // Same mechanic as sniper — aim line tracks mouse during the window.
   _fireMatchlock(player, now) {
+    const sk = SkillConfig.matchlock;
+    player.skillCdLeft = sk.cooldownMs / 1000;
+    const telegraphMs = Math.max(0, sk.telegraphMs ?? 500);
+    const beamDist = Math.max(this.mapWidth, this.mapHeight);
+
+    if (!this.pendingMatchlockShots) this.pendingMatchlockShots = [];
+    this.pendingMatchlockShots.push({ playerId: player.id, releaseAt: now + telegraphMs });
+
+    this.effects.push({
+      id: `${player.id}-matchlocktelegraph-${now}`,
+      attackerId: player.id,
+      x: player.x, y: player.y,
+      angle: player.angle,
+      beamDist,
+      weapon: 'matchlock',
+      type: 'matchlock_telegraph',
+      progress: 0, timestamp: now, lifetime: telegraphMs
+    });
+  }
+
+  _releaseDueMatchlockShots(now) {
+    if (!this.pendingMatchlockShots?.length) return;
+    const waiting = [];
+    for (const shot of this.pendingMatchlockShots) {
+      if (shot.releaseAt > now) { waiting.push(shot); continue; }
+      const player = this.players[shot.playerId];
+      if (!player || player.isDead || player.weapon !== 'matchlock') continue;
+      this._resolveMatchlockShot(player, now);
+    }
+    this.pendingMatchlockShots = waiting;
+  }
+
+  _resolveMatchlockShot(player, now) {
     const sk = SkillConfig.matchlock;
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
-
     let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
     let hitTarget = null;
     Object.keys(this.players).forEach(tid => {
@@ -1928,27 +1965,25 @@ export class Game {
       const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, target.x, target.y, target.radius);
       if (d !== null && d <= hitDist) { hitDist = d; hitTarget = target; }
     });
-
     if (hitTarget) {
-      const died = hitTarget.takeDamage(sk.damage, player.nickname); // instakill
+      const died = hitTarget.takeDamage(sk.damage, player.nickname);
       if (died) this._creditKill(player.id, hitTarget, '화승총으로');
     }
-
-    player.skillCdLeft = sk.cooldownMs / 1000;
     this.effects.push({
       id: `${player.id}-matchbeam-${now}`,
       attackerId: player.id,
-      x: player.x,
-      y: player.y,
-      x2: player.x + dirX * hitDist,
-      y2: player.y + dirY * hitDist,
+      x: player.x, y: player.y,
+      x2: player.x + dirX * hitDist, y2: player.y + dirY * hitDist,
       angle: player.angle,
       weapon: 'matchlock',
       type: 'railbeam',
-      progress: 0,
-      timestamp: now,
-      lifetime: 360
+      progress: 0, timestamp: now, lifetime: 360
     });
+  }
+
+  _clearPendingMatchlockShotsFor(playerId) {
+    if (!this.pendingMatchlockShots?.length) return;
+    this.pendingMatchlockShots = this.pendingMatchlockShots.filter(s => s.playerId !== playerId);
   }
 
   // --- 카타나 (katana): dash forward and cut twice; each cut deals a direct arc
@@ -2335,29 +2370,20 @@ export class Game {
   _fireSniperShot(player, now) {
     const sk = SkillConfig.sniper || {};
     player.skillCdLeft = (sk.cooldownMs || 4000) / 1000;
-    const dirX = Math.cos(player.angle);
-    const dirY = Math.sin(player.angle);
-    const originX = player.x;
-    const originY = player.y;
-    const wallDist = Collision.rayToBoundsDistance(originX, originY, dirX, dirY, this.mapWidth, this.mapHeight);
-    const beamDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
     const telegraphMs = Math.max(0, sk.telegraphMs ?? 500);
+    const beamDist = Math.max(this.mapWidth, this.mapHeight);
 
     if (!this.pendingSniperShots) this.pendingSniperShots = [];
-    this.pendingSniperShots.push({
-      playerId: player.id,
-      originX, originY, dirX, dirY,
-      angle: player.angle,
-      releaseAt: now + telegraphMs
-    });
+    // Direction NOT frozen — shot fires along wherever the player is aiming
+    // when the telegraph window expires (mouse-tracking preview).
+    this.pendingSniperShots.push({ playerId: player.id, releaseAt: now + telegraphMs });
 
-    // Telegraph laser along the locked line (no damage — warning only).
     this.effects.push({
       id: `${player.id}-snipertelegraph-${now}`,
       attackerId: player.id,
-      x: originX, y: originY,
-      x2: originX + dirX * beamDist, y2: originY + dirY * beamDist,
+      x: player.x, y: player.y,
       angle: player.angle,
+      beamDist,             // max draw distance; renderer uses live player angle
       weapon: 'sniper',
       type: 'sniper_telegraph',
       progress: 0, timestamp: now, lifetime: telegraphMs
@@ -2378,7 +2404,11 @@ export class Game {
   }
 
   _resolveSniperShot(player, shot, now) {
-    const { originX, originY, dirX, dirY } = shot;
+    // Use current player position/angle — direction tracked live during telegraph.
+    const originX = player.x;
+    const originY = player.y;
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(originX, originY, dirX, dirY, this.mapWidth, this.mapHeight);
     let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
     let hitTarget = null;
@@ -3340,6 +3370,7 @@ export class Game {
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
     this.pendingSniperShots = [];
+    this.pendingMatchlockShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];

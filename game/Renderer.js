@@ -1086,9 +1086,20 @@ export class Renderer {
       } else if (e.type === 'railbeam') {
         const endScr = camera.toScreen(e.x2, e.y2, cw, ch);
         this._drawRailBeam(ctx, scr, endScr, e, weapon, alpha);
-      } else if (e.type === 'sniper_telegraph') {
-        const endScr = camera.toScreen(e.x2, e.y2, cw, ch);
-        this._drawSniperTelegraph(ctx, scr, endScr, e, weapon, alpha);
+      } else if (e.type === 'sniper_telegraph' || e.type === 'matchlock_telegraph') {
+        // Endpoint follows the attacker's live aim angle (mouse-tracking preview).
+        const attacker = this._findPlayerById(players, e.attackerId);
+        const liveAngle = Number.isFinite(attacker?.angle) ? attacker.angle : e.angle;
+        const liveX = attacker ? attacker.x : anchoredEffect.x;
+        const liveY = attacker ? attacker.y : anchoredEffect.y;
+        const dist = e.beamDist || Math.max(2000, cw + ch);
+        const endScr = camera.toScreen(
+          liveX + Math.cos(liveAngle) * dist,
+          liveY + Math.sin(liveAngle) * dist,
+          cw, ch
+        );
+        const originScr = camera.toScreen(liveX, liveY, cw, ch);
+        this._drawSniperTelegraph(ctx, originScr, endScr, e, weapon, alpha);
       } else if (e.type === 'buff_activate') {
         this._drawBuffActivate(ctx, scr, e, weapon, alpha, zoom);
       } else if (e.type === 'lifebound_heal') {
@@ -2457,7 +2468,8 @@ export class Renderer {
       effect.type !== 'projectile_burst' &&
       effect.type !== 'explosion' &&
       effect.type !== 'railbeam' &&
-      effect.type !== 'sniper_telegraph';
+      effect.type !== 'sniper_telegraph' &&
+      effect.type !== 'matchlock_telegraph';
   }
 
   _resolveEffectAttachment(effect, players = {}) {
