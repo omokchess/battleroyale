@@ -142,6 +142,182 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    // Tracking-mode HUD overlays: screen-space, drawn after the shake restore so
+    // they stay rock-steady. Only shown when the camera is following the player
+    // (i.e. the map is larger than the viewport); the legacy full-map view needs
+    // neither a minimap nor off-screen arrows.
+    if (camera.tracking && gameState.players) {
+      this._drawOffscreenEnemyArrows(ctx, camera, cw, ch, gameState.players, localPlayerId);
+      this._drawMinimap(ctx, cw, ch, gameState.players, localPlayerId, mapWidth, mapHeight, gameState);
+    }
+  }
+
+  // Device-pixel ratio used by the backing store, so HUD strokes/sizes stay
+  // crisp and consistent in CSS terms across desktop/retina/mobile.
+  _dpr() {
+    const cssW = this.canvas.clientWidth || parseFloat(this.canvas.style.width) || this.canvas.width;
+    return Math.max(1, Math.min(3, this.canvas.width / (cssW || this.canvas.width)));
+  }
+
+  /**
+   * Corner minimap (tracking mode only). Angular pixel-theme panel showing the
+   * arena outline, the local player (bright cyan), enemies (red), practice
+   * dummies (gray), plus optional storm zone (Task 5) and healing items (Task 9).
+   */
+  _drawMinimap(ctx, cw, ch, players, localPlayerId, mapWidth, mapHeight, gameState = {}) {
+    const dpr = this._dpr();
+    const portrait = ch > cw * 1.1;
+    const pad = Math.round(10 * dpr);
+    // Smaller on phones; sits in the reserved top band (portrait) or the free
+    // bottom-right corner (landscape/desktop) to dodge the existing HUD panels.
+    const size = Math.round(Math.min(cw, ch) * (portrait ? 0.19 : 0.16));
+    const px = portrait ? Math.round((cw - size) / 2) : (cw - size - pad);
+    const py = portrait ? pad : (ch - size - pad);
+
+    // Map area inside the panel, aspect-preserved (arena is square today).
+    const inset = Math.round(5 * dpr);
+    const innerW = size - inset * 2;
+    const innerH = size - inset * 2;
+    const aspect = mapWidth / mapHeight;
+    let mw = innerW, mh = innerW / aspect;
+    if (mh > innerH) { mh = innerH; mw = innerH * aspect; }
+    const ox = px + inset + (innerW - mw) / 2;
+    const oy = py + inset + (innerH - mh) / 2;
+    const w2m = (wx, wy) => ({ x: ox + (wx / mapWidth) * mw, y: oy + (wy / mapHeight) * mh });
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // Panel + border (angular, no glow).
+    ctx.fillStyle = 'rgba(11, 12, 16, 0.74)';
+    ctx.fillRect(px, py, size, size);
+    ctx.lineWidth = Math.max(1, 2 * dpr);
+    ctx.strokeStyle = '#2b6f72';
+    ctx.strokeRect(px + 0.5, py + 0.5, size - 1, size - 1);
+    // Inner arena outline.
+    ctx.strokeStyle = 'rgba(69, 243, 255, 0.55)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.strokeRect(Math.round(ox), Math.round(oy), Math.round(mw), Math.round(mh));
+
+    // Storm zone (Task 5): safe circle + incoming target ring. Inert until then.
+    const storm = gameState.storm;
+    if (storm && Number.isFinite(storm.x) && Number.isFinite(storm.y) && Number.isFinite(storm.radius)) {
+      const c = w2m(storm.x, storm.y);
+      const rr = (storm.radius / mapWidth) * mw;
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.85)';
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.beginPath(); ctx.arc(c.x, c.y, Math.max(1, rr), 0, Math.PI * 2); ctx.stroke();
+      if (Number.isFinite(storm.nextX) && Number.isFinite(storm.nextRadius)) {
+        const nc = w2m(storm.nextX, storm.nextY);
+        const nr = (storm.nextRadius / mapWidth) * mw;
+        ctx.setLineDash([3 * dpr, 3 * dpr]);
+        ctx.strokeStyle = 'rgba(244, 114, 182, 0.8)';
+        ctx.beginPath(); ctx.arc(nc.x, nc.y, Math.max(1, nr), 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // Healing items (Task 9): small green squares. Inert until then.
+    const items = gameState.healingItems;
+    if (Array.isArray(items)) {
+      const s = Math.max(2, Math.round(2 * dpr));
+      ctx.fillStyle = '#34d399';
+      for (const it of items) {
+        if (!it || !Number.isFinite(it.x)) continue;
+        const m = w2m(it.x, it.y);
+        ctx.fillRect(Math.round(m.x - s / 2), Math.round(m.y - s / 2), s, s);
+      }
+    }
+
+    // Players: dummies gray, enemies red, local bright cyan (drawn last/on top).
+    const dot = Math.max(2, Math.round(3 * dpr));
+    const ids = Object.keys(players);
+    for (const id of ids) {
+      const p = players[id];
+      if (!p || p.isDead || id === localPlayerId) continue;
+      const m = w2m(p.x, p.y);
+      ctx.fillStyle = p.isDummy ? '#9ca3af' : '#ff4d4d';
+      ctx.fillRect(Math.round(m.x - dot / 2), Math.round(m.y - dot / 2), dot, dot);
+    }
+    const local = players[localPlayerId];
+    if (local && !local.isDead) {
+      const m = w2m(local.x, local.y);
+      const ld = dot + Math.round(dpr);
+      ctx.fillStyle = '#5ffbf1';
+      ctx.fillRect(Math.round(m.x - ld / 2), Math.round(m.y - ld / 2), ld, ld);
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(m.x - ld / 2) - 0.5, Math.round(m.y - ld / 2) - 0.5, ld + 1, ld + 1);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Edge arrows pointing toward off-screen enemies (tracking mode only).
+   * Capped to the nearest few so a crowded match stays readable; closer enemies
+   * draw more opaque.
+   */
+  _drawOffscreenEnemyArrows(ctx, camera, cw, ch, players, localPlayerId) {
+    const local = players[localPlayerId];
+    if (!local || local.isDead) return;
+    const dpr = this._dpr();
+    const margin = Math.round(24 * dpr);
+    const localScr = camera.toScreen(local.x, local.y, cw, ch);
+
+    const offscreen = [];
+    for (const id of Object.keys(players)) {
+      if (id === localPlayerId) continue;
+      const p = players[id];
+      if (!p || p.isDead || p.isDummy) continue;
+      const s = camera.toScreen(p.x, p.y, cw, ch);
+      if (s.x >= 0 && s.x <= cw && s.y >= 0 && s.y <= ch) continue; // on screen → no arrow
+      offscreen.push({ p, s, d: Math.hypot(p.x - local.x, p.y - local.y) });
+    }
+    if (!offscreen.length) return;
+    offscreen.sort((a, b) => a.d - b.d);
+    const MAX_ARROWS = 4;
+
+    const left = margin, right = cw - margin, top = margin, bot = ch - margin;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (let i = 0; i < Math.min(MAX_ARROWS, offscreen.length); i++) {
+      const { s, d } = offscreen[i];
+      const dx = s.x - localScr.x;
+      const dy = s.y - localScr.y;
+      if (dx === 0 && dy === 0) continue;
+      // Intersect the ray from the local player toward the enemy with the inset
+      // rectangle to find where to pin the arrow.
+      let t = Infinity;
+      if (dx > 0) t = Math.min(t, (right - localScr.x) / dx);
+      else if (dx < 0) t = Math.min(t, (left - localScr.x) / dx);
+      if (dy > 0) t = Math.min(t, (bot - localScr.y) / dy);
+      else if (dy < 0) t = Math.min(t, (top - localScr.y) / dy);
+      if (!Number.isFinite(t) || t < 0) continue;
+      const ax = Math.max(left, Math.min(right, localScr.x + dx * t));
+      const ay = Math.max(top, Math.min(bot, localScr.y + dy * t));
+      const ang = Math.atan2(dy, dx);
+      const alpha = Math.max(0.35, Math.min(0.95, 1 - d / 2200));
+      const r = 9 * dpr;
+
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(ang);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#ff4d4d';
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(-r * 0.7, r * 0.7);
+      ctx.lineTo(-r * 0.7, -r * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   /**
