@@ -10,15 +10,44 @@ function oneRow(data) {
   return Array.isArray(data) ? data[0] : data;
 }
 
+// 새 컬럼이 아직 없는 구 스키마면 true (PostgREST 42703 / "does not exist").
+function isMissingColumnError(error) {
+  if (!error) return false;
+  const code = error.code || '';
+  const msg = `${error.message || ''} ${error.details || ''}`;
+  return code === '42703' || /column .* does not exist|total_deaths/i.test(msg);
+}
+
+// record_match 새 시그니처(p_weapon/p_deaths/p_duration_ms)가 아직 없는 구 스키마면 true.
+// PostgREST 는 함수 시그니처 미스 시 PGRST202 를 돌려줌.
+function isMissingFunctionError(error) {
+  if (!error) return false;
+  const code = error.code || '';
+  const msg = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+  return code === 'PGRST202' || /could not find the function|record_match/i.test(msg);
+}
+
 /** 랭킹: 누적 킬 내림차순 상위 N명 */
 export async function fetchLeaderboard(limit = 100) {
   if (!supabase) return [];
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('profiles')
     .select('username, total_kills, total_deaths, games_played, equipped_costume')
     .order('total_kills', { ascending: false })
     .order('games_played', { ascending: true })
     .limit(limit);
+
+  // 마이그레이션 전(총사망 컬럼 없음) DB 호환: 레거시 컬럼으로 재조회.
+  if (error && isMissingColumnError(error)) {
+    ({ data, error } = await supabase
+      .from('profiles')
+      .select('username, total_kills, games_played, equipped_costume')
+      .order('total_kills', { ascending: false })
+      .order('games_played', { ascending: true })
+      .limit(limit));
+    if (Array.isArray(data)) data.forEach(r => { if (r.total_deaths == null) r.total_deaths = 0; });
+  }
+
   if (error) {
     console.error('[supabase] fetchLeaderboard', error);
     return [];
@@ -38,12 +67,18 @@ export async function recordMatch(stats) {
   const d = Math.max(0, Math.floor(Number(s.deaths) || 0));
   const dur = Math.max(0, Math.floor(Number(s.durationMs) || 0));
   const weapon = typeof s.weapon === 'string' ? s.weapon : null;
-  const { data, error } = await supabase.rpc('record_match', {
+  let { data, error } = await supabase.rpc('record_match', {
     p_kills: k,
     p_weapon: weapon,
     p_deaths: d,
     p_duration_ms: dur,
   });
+
+  // 마이그레이션 전(구 1-인자 함수만 존재) DB 호환: 킬 수만 기록.
+  if (error && isMissingFunctionError(error)) {
+    ({ data, error } = await supabase.rpc('record_match', { p_kills: k }));
+  }
+
   if (error) {
     console.error('[supabase] recordMatch', error);
     return null;

@@ -18,6 +18,15 @@ function idToEmail(id) {
   return `${String(id || '').trim().toLowerCase()}@${ID_EMAIL_DOMAIN}`;
 }
 
+// 새 컬럼(total_deaths 등)이 아직 없는 구 스키마인지 판별.
+// PostgREST 는 없는 컬럼 조회 시 42703 / "does not exist" 로 400 을 돌려줌.
+function isMissingColumnError(error) {
+  if (!error) return false;
+  const code = error.code || '';
+  const msg = `${error.message || ''} ${error.details || ''}`;
+  return code === '42703' || /column .* does not exist|total_deaths/i.test(msg);
+}
+
 /**
  * 아이디 + 비밀번호 회원가입. username 은 아이디로 저장됨(트리거가 처리).
  * 반환된 session 이 null 이면 Supabase 의 "Confirm email" 이 켜져 있는 상태.
@@ -88,11 +97,21 @@ export async function fetchMyProfile() {
   const uid = userData?.user?.id;
   if (!uid) return null;
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('profiles')
     .select('id, username, coins, total_kills, total_deaths, games_played, equipped_costume')
     .eq('id', uid)
     .maybeSingle();
+
+  // 마이그레이션 전(총사망 컬럼 없음) DB 호환: 레거시 컬럼으로 재조회.
+  if (error && isMissingColumnError(error)) {
+    ({ data, error } = await supabase
+      .from('profiles')
+      .select('id, username, coins, total_kills, games_played, equipped_costume')
+      .eq('id', uid)
+      .maybeSingle());
+    if (data && data.total_deaths == null) data.total_deaths = 0;
+  }
 
   if (error) {
     console.error('[supabase] fetchMyProfile', error);
