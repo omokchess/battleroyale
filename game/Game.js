@@ -3382,10 +3382,6 @@ export class Game {
       this.networkManager.stop();
     }
 
-    // Hide result overlay
-    const overlay = document.getElementById('resultOverlay');
-    if (overlay) overlay.classList.add('hidden');
-
     if (this.onQuitCallback) {
       this.onQuitCallback(matchStats);
     }

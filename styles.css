@@ -162,8 +162,7 @@
    and a cool neon glow (modern), with a faint stone grain. */
 body,
 #authScreen,
-#lobbyMenu,
-#resultOverlay {
+#lobbyMenu {
   background-color: #0c0a12 !important;
   background-image:
     radial-gradient(110% 75% at 10% -8%, rgba(251, 146, 60, 0.14), transparent 55%),

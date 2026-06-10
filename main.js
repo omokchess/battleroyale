@@ -26,7 +26,6 @@ const hostBtn = document.getElementById('hostBtn');
 const dummyBtn = document.getElementById('dummyBtn');
 const joinBtn = document.getElementById('joinBtn');
 const leaveBtn = document.getElementById('leaveBtn');
-const resultLobbyBtn = document.getElementById('resultLobbyBtn');
 
 const weaponCards = document.querySelectorAll('.weapon-card');
 const weaponStats = document.getElementById('weaponStats');
@@ -404,12 +403,6 @@ if (leaveConfirmYes) leaveConfirmYes.addEventListener('click', () => {
 if (leaveConfirmNo) leaveConfirmNo.addEventListener('click', closeLeaveConfirm);
 if (leaveConfirmModal) leaveConfirmModal.addEventListener('click', (e) => {
   if (e.target === leaveConfirmModal) closeLeaveConfirm(); // tap backdrop = cancel
-});
-
-resultLobbyBtn.addEventListener('click', () => {
-  if (activeGame) {
-    activeGame.quit();
-  }
 });
 
 /**
