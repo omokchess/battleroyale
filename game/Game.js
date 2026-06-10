@@ -38,6 +38,12 @@ export class Game {
     this._dmgPopups = [];
     this._prevHpById = {};
 
+    // Hit feedback (Task 8) — all local render-only, never touches simulation.
+    this._hitstopUntil = 0;     // freeze the displayed frame until this time
+    this._hitFlashUntil = 0;    // local-player damage vignette end time
+    this._hitFlashStrength = 0; // 0..1 vignette intensity
+    this._killFeed = [];        // recent kill notices (synced via Protocol)
+
     // Arena Boundaries — derived from the room's arena-size preset (tiny=700
     // keeps the legacy default). Clients re-derive this from ROOM_JOINED.
     const dims = arenaDimensions(this.roomConfig);
@@ -803,6 +809,13 @@ export class Game {
       if (died) this._creditKill(attacker.id, target);
     });
 
+    // Landing a hit on someone gives the local attacker a tiny hitstop (juice).
+    // Host-authoritative, so this fires for the host player; guests still get
+    // the synced damage numbers / kill feed.
+    if (hitCount > 0 && attacker.id === this.localPlayerId) {
+      this._triggerHitstop(now, 42);
+    }
+
     return hitCount;
   }
 
@@ -1166,9 +1179,72 @@ export class Game {
       killer.kills++;
       const via = viaLabel ? `${viaLabel} ` : '';
       this._announce(`${killer.nickname}님이 ${via}${target.nickname}님을 처치했습니다!`);
+
+      // Kill feed: broadcast so every peer shows it, and add locally (host).
+      const evt = Protocol.killEvent(
+        killer.id, killer.nickname, target.id, target.nickname,
+        killer.weapon, viaLabel
+      );
+      if (this.networkManager?.isHost) this.networkManager.broadcast(evt);
+      this._pushKillFeed(evt);
     } else {
       this._announce(`${target.nickname}님이 전사했습니다.`);
     }
+  }
+
+  /**
+   * Append a kill-feed notice (used by the host on a kill and by clients when
+   * they receive a KILL_EVENT). Render-only; expires in the renderer/HUD.
+   */
+  _pushKillFeed(evt) {
+    if (!this._killFeed) this._killFeed = [];
+    const involvesLocal = evt.killerId === this.localPlayerId || evt.victimId === this.localPlayerId;
+    this._killFeed.push({
+      killerName: evt.killerName,
+      victimName: evt.victimName,
+      weapon: evt.weapon,
+      via: evt.via || '',
+      involvesLocal,
+      isLocalKill: evt.killerId === this.localPlayerId,
+      born: Date.now()
+    });
+    if (this._killFeed.length > 6) this._killFeed.shift();
+  }
+
+  /**
+   * Rebuild the top-right kill-feed DOM. Entries live ~3.5s and fade out near
+   * the end. Lines involving the local player are highlighted.
+   */
+  _renderKillFeed(now) {
+    const el = document.getElementById('killFeed');
+    if (!el) return;
+    const LIFE = 3500;
+    this._killFeed = this._killFeed.filter(e => now - e.born < LIFE);
+    if (!this._killFeed.length) {
+      if (el.childElementCount) el.replaceChildren();
+      return;
+    }
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const rows = this._killFeed.map(e => {
+      const age = (now - e.born) / LIFE;
+      const opacity = age > 0.8 ? Math.max(0, (1 - age) / 0.2) : 1;
+      const wName = (Weapons[e.weapon]?.name) || e.weapon || '';
+      const wColor = Weapons[e.weapon]?.color || '#9ca3af';
+      const border = e.involvesLocal ? '#facc15' : '#2b3540';
+      const killerColor = e.isLocalKill ? '#66fcf1' : '#e5e7eb';
+      const victimColor = (e.involvesLocal && !e.isLocalKill) ? '#ff6b6b' : '#9ca3af';
+      const via = e.via ? `<span class="text-gray-500">${esc(e.via)}</span> ` : '';
+      return `<div class="bg-[#1f2833]/85 border-2 px-2 py-1 text-[11px] leading-tight drop-shadow"
+        style="opacity:${opacity.toFixed(2)};border-color:${border}">
+        <span style="color:${killerColor}" class="font-bold">${esc(e.killerName)}</span>
+        <span class="text-gray-500 mx-1">${via}»</span>
+        <span style="color:${wColor}" class="font-bold">${esc(wName)}</span>
+        <span class="text-gray-500 mx-1">»</span>
+        <span style="color:${victimColor}">${esc(e.victimName)}</span>
+      </div>`;
+    });
+    el.innerHTML = rows.join('');
   }
 
   /**
@@ -2885,7 +2961,19 @@ export class Game {
    * Render composite scene
    */
   _renderFrame() {
-    this._trackDamagePopups(Date.now());
+    const now = Date.now();
+    // Always track HP deltas, even during hitstop, so no damage number is lost.
+    this._trackDamagePopups(now);
+
+    // Hitstop: hold the previously drawn frame (skip re-render). Simulation has
+    // already advanced above/around this — only the picture pauses.
+    if (now < this._hitstopUntil) return;
+
+    // Local-player damage vignette intensity (fades out over its window).
+    const flashLeft = this._hitFlashUntil - now;
+    const hitFlash = flashLeft > 0
+      ? this._hitFlashStrength * Math.min(1, flashLeft / 220)
+      : 0;
 
     // Generate simple state packet to supply to standard renderer
     const state = {
@@ -2893,6 +2981,8 @@ export class Game {
       projectiles: this.projectiles,
       effects: this.effects,
       damagePopups: this._dmgPopups,
+      hitFlash,
+      killFeed: this._killFeed,
       // In mobile joystick mode, the cursor is only flashed for actual target casts.
       cursorPos: this.input ? this.input.getCursorPos() : null
     };
@@ -2922,6 +3012,7 @@ export class Game {
       if (prev !== undefined && cur < prev - 0.5) {
         const dmg = Math.round(prev - cur);
         if (dmg > 0) {
+          const isLocal = id === this.localPlayerId;
           // Merge rapid hits / DoT ticks on the same target into one number.
           const recent = this._dmgPopups.find(d => d.targetId === id && now - d.born < 140);
           if (recent) {
@@ -2929,13 +3020,21 @@ export class Game {
             recent.born = now;
             recent.x = p.x;
             recent.y = p.y;
+            recent.tier = damageTier(recent.amount);
           } else {
             this._dmgPopups.push({
               targetId: id, amount: dmg, x: p.x, y: p.y,
-              born: now, isLocal: id === this.localPlayerId
+              born: now, isLocal,
+              tier: damageTier(dmg),
+              // Random horizontal drift so stacked numbers fan out instead of
+              // overlapping into an unreadable blob.
+              vx: (Math.random() - 0.5) * 2
             });
             if (this._dmgPopups.length > 60) this._dmgPopups.shift();
           }
+          // Local player took damage → screen-edge vignette + camera shake,
+          // scaled by how hard the hit was (instakills hit hardest).
+          if (isLocal) this._onLocalDamaged(dmg, now);
         }
       }
       this._prevHpById[id] = cur;
@@ -2944,6 +3043,30 @@ export class Game {
     // Drop tracking for players who left, and expire popups after ~900ms.
     Object.keys(this._prevHpById).forEach(id => { if (!players[id]) delete this._prevHpById[id]; });
     this._dmgPopups = this._dmgPopups.filter(d => now - d.born < 900);
+  }
+
+  /**
+   * Local player got hit — fire the screen-edge vignette and a camera shake,
+   * scaled by the hit size. Pure local feedback; simulation is untouched.
+   */
+  _onLocalDamaged(dmg, now) {
+    const strength = clamp01(dmg / 70); // ~full at a 70+ blow (instakills max out)
+    this._hitFlashStrength = Math.max(this._hitFlashStrength, 0.4 + strength * 0.6);
+    this._hitFlashUntil = now + 260;
+    if (this.camera && typeof this.camera.startShake === 'function') {
+      this.camera.startShake(5 + strength * 9, 180 + strength * 160);
+    }
+    this._vibrateDevice(dmg >= 60 ? [60, 30, 60] : [30]);
+  }
+
+  /**
+   * Freeze the *displayed* frame for a few ms on a landed hit (juice). The
+   * simulation keeps running — only rendering pauses. Capped + non-extending so
+   * rapid-fire weapons can't stack it into a stutter.
+   */
+  _triggerHitstop(now, ms = 40) {
+    if (now < this._hitstopUntil) return; // already stopping → don't accumulate
+    this._hitstopUntil = now + Math.min(50, Math.max(20, ms));
   }
 
   /**
@@ -2972,6 +3095,8 @@ export class Game {
    * Sync stats to overlay HUD displays
    */
   _updateHUD() {
+    this._renderKillFeed(Date.now());
+
     const local = this.players[this.localPlayerId];
     if (!local) return;
     this.input?.setLocalWeapon?.(local.weapon);
@@ -3519,6 +3644,10 @@ export class Game {
           }
         } 
         
+        else if (data.type === MsgType.KILL_EVENT) {
+          this._pushKillFeed(data);
+        }
+
         else if (data.type === MsgType.GAME_STATE) {
           // Reconcile and snap correct positions
           this.remainingPlayersCount = data.remainingPlayersCount;
@@ -3792,4 +3921,12 @@ function deserializeMagicCooldowns(cooldowns = {}) {
 function clamp01(value) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
+}
+
+// Damage number styling tier (drives color + size in the renderer). Derived
+// from the amount alone so it needs no extra netcode.
+function damageTier(amount) {
+  if (amount >= 80) return 'lethal'; // instakills / charged finishers
+  if (amount >= 38) return 'big';    // skills, heavy hits
+  return 'normal';
 }

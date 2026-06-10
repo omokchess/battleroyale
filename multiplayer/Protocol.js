@@ -15,6 +15,7 @@ export const MsgType = {
   PLAYER_ACTION: 'PLAYER_ACTION',
   WEAPON_SELECT: 'WEAPON_SELECT',
   GAME_STATE: 'GAME_STATE',
+  KILL_EVENT: 'KILL_EVENT',
   PING: 'PING',
   PONG: 'PONG',
   ERROR: 'ERROR'
@@ -79,6 +80,18 @@ export const Protocol = {
       effects, 
       remainingPlayersCount,
       timestamp: Date.now() 
+    };
+  },
+
+  // Kill feed line, broadcast by the host so every peer shows the same notice.
+  // `weapon` is the killer's weapon key (for the icon/label); `via` is an
+  // optional method label (e.g. '활로'). killerId/victimId let clients highlight
+  // their own kills/deaths.
+  killEvent(killerId, killerName, victimId, victimName, weapon, via = '') {
+    return {
+      type: MsgType.KILL_EVENT,
+      killerId, killerName, victimId, victimName, weapon, via,
+      timestamp: Date.now()
     };
   },
 

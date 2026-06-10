@@ -522,6 +522,10 @@
               <input id="settingPerformanceMode" type="checkbox" class="visual-setting-toggle" />
             </label>
           </div>
+
+          <!-- Kill feed: host broadcasts each kill (KILL_EVENT); every peer shows
+               it here. Transient (~3.5s), right-aligned, never blocks input. -->
+          <div id="killFeed" class="flex flex-col items-end gap-1 pointer-events-none select-none font-mono w-full"></div>
         </div>
       </div>
 

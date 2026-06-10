@@ -198,6 +198,11 @@ export class Renderer {
       this._drawOffscreenEnemyArrows(this.ctx, camera, cw, ch, gameState.players, localPlayerId);
       this._drawMinimap(this.ctx, cw, ch, gameState.players, localPlayerId, mapWidth, mapHeight, gameState);
     }
+
+    // Local-player damage vignette (full-res, on top of everything else).
+    if (gameState.hitFlash) {
+      this._drawHitVignette(this.ctx, cw, ch, gameState.hitFlash);
+    }
   }
 
   // Device-pixel ratio used by the backing store, so HUD strokes/sizes stay
@@ -369,29 +374,40 @@ export class Renderer {
 
   /**
    * Floating pixel-font damage numbers that rise and fade above a character.
-   * Local player's damage is red; dummies/enemies are gold for contrast.
+   * Color/size encode the hit tier; your own damage is always red so you can
+   * tell at a glance that YOU got hit. Each number drifts on its own random
+   * horizontal vector so stacked hits fan out instead of overlapping.
    */
   _drawDamagePopups(ctx, camera, cw, ch, popups, now) {
     const z = camera.zoom || 1;
     // Readable on phones but still scales modestly with zoom (clamped — this is
     // UI feedback, not a hitbox, so it keeps a legibility floor).
-    const size = Math.round(15 * Math.max(0.85, Math.min(1.5, z)));
+    const baseSize = 15 * Math.max(0.85, Math.min(1.5, z));
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `${size}px "Galmuri11", monospace`;
     ctx.lineJoin = 'round';
     for (const d of popups) {
       const life = (now - d.born) / 900; // 0..1
       if (life >= 1) continue;
+
+      // Tier → palette + size bump. Your own hits override to red.
+      const tier = d.tier || 'normal';
+      const sizeMul = tier === 'lethal' ? 1.55 : tier === 'big' ? 1.25 : 1;
+      const size = Math.round(baseSize * sizeMul);
+      let fill = '#ffe27a';
+      if (tier === 'big') fill = '#ff9d3a';
+      if (tier === 'lethal') fill = '#ff5d5d';
+      if (d.isLocal) fill = '#ff5555';
+
       const anchor = camera.toScreen(d.x, d.y, cw, ch);
       const rise = 14 + life * 30;                    // drift upward (screen px)
-      const x = anchor.x;
+      const x = anchor.x + (d.vx || 0) * (10 + life * 22) * z * 0.4;
       const y = anchor.y - 22 * z - rise;
       const alpha = life < 0.7 ? 1 : Math.max(0, 1 - (life - 0.7) / 0.3);
       const pop = life < 0.12 ? 1 + (0.12 - life) * 2.2 : 1; // brief scale-in punch
       const text = String(d.amount);
-      const fill = d.isLocal ? '#ff5555' : '#ffe27a';
+      ctx.font = `${size}px "Galmuri11", monospace`;
       ctx.globalAlpha = alpha;
       ctx.save();
       ctx.translate(x, y);
@@ -401,8 +417,35 @@ export class Renderer {
       ctx.strokeText(text, 0, 0);
       ctx.fillStyle = fill;
       ctx.fillText(text, 0, 0);
+      // Lethal hits get a tiny white core for extra pop.
+      if (tier === 'lethal') {
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, 0, 0);
+      }
       ctx.restore();
     }
+    ctx.restore();
+  }
+
+  /**
+   * Local-player damage vignette: a soft red glow hugging the screen edges.
+   * Drawn on the MAIN canvas at full res (after the world blit) so it stays
+   * crisp and never tints the pixel buffer. `strength` is 0..1.
+   */
+  _drawHitVignette(ctx, cw, ch, strength) {
+    if (!(strength > 0)) return;
+    const s = Math.min(1, strength);
+    ctx.save();
+    // Radial gradient: transparent center → red at the corners.
+    const cx = cw / 2, cy = ch / 2;
+    const inner = Math.min(cw, ch) * 0.28;
+    const outer = Math.hypot(cw, cy) * 0.62;
+    const grad = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    grad.addColorStop(0, 'rgba(255,0,0,0)');
+    grad.addColorStop(1, `rgba(190,12,12,${0.55 * s})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
     ctx.restore();
   }
 
