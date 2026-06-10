@@ -26,8 +26,28 @@ export class Camera {
     // Minimap / off-screen indicators only render in this mode.
     this.tracking = false;
 
+    // User zoom multiplier (mouse wheel). Multiplies the auto-computed base zoom
+    // WITHOUT affecting the full-view-vs-tracking decision, so wheeling in never
+    // makes the minimap appear/disappear.
+    this.userZoom = 1.0;
+    this.minUserZoom = 0.55;
+    this.maxUserZoom = 2.6;
+
     // Lerping inertia (0.1 means 10% movement per frame leading to very smooth chase)
     this.lerpSpeed = 0.12;
+  }
+
+  /**
+   * Step the wheel zoom. `dir > 0` zooms in, `dir < 0` zooms out. Multiplicative
+   * steps feel even across the range. Clamped to [minUserZoom, maxUserZoom].
+   */
+  adjustZoom(dir, step = 0.12) {
+    const factor = dir > 0 ? (1 + step) : 1 / (1 + step);
+    this.userZoom = Math.max(this.minUserZoom, Math.min(this.maxUserZoom, this.userZoom * factor));
+  }
+
+  resetZoom() {
+    this.userZoom = 1.0;
   }
 
   /**
@@ -66,7 +86,10 @@ export class Camera {
     );
 
     this.tracking = fitZoom < trackZoom - 1e-3;
-    this.zoom = this.tracking ? trackZoom : fitZoom;
+    const baseZoom = this.tracking ? trackZoom : fitZoom;
+    // Apply the wheel zoom on top of the auto base, clamped wider than the
+    // auto-fit range so the multiplier isn't crushed.
+    this.zoom = Math.max(0.06, Math.min(4, baseZoom * this.userZoom));
 
     let focusX = mapWidth / 2;
     let focusY = mapHeight / 2;

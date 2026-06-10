@@ -53,3 +53,28 @@ test('any arena larger than the tiny reference tracks (so the minimap shows)', (
   for (let i = 0; i < 400; i++) cam.update(700, 700, 1600, 1600, 1400, 1400);
   assert.equal(cam.tracking, true);
 });
+
+test('wheel zoom multiplies the base zoom and clamps to its range', () => {
+  const cam = new Camera();
+  // Zoom in past the max — userZoom saturates at maxUserZoom.
+  for (let i = 0; i < 100; i++) cam.adjustZoom(1);
+  assert.ok(Math.abs(cam.userZoom - cam.maxUserZoom) < 1e-9);
+  settle(cam, 900, 900, 1800, 1800);
+  const baseZoom = VH / (REF + PAD); // tracking base on this view
+  assert.ok(Math.abs(cam.zoom - baseZoom * cam.maxUserZoom) < 1e-6);
+
+  // Zoom out past the min.
+  for (let i = 0; i < 200; i++) cam.adjustZoom(-1);
+  assert.ok(Math.abs(cam.userZoom - cam.minUserZoom) < 1e-9);
+
+  cam.resetZoom();
+  assert.equal(cam.userZoom, 1.0);
+});
+
+test('wheel zoom does not flip the full-view-vs-tracking decision', () => {
+  // Even zoomed all the way in, the tiny arena stays in full-map view (no minimap).
+  const cam = new Camera();
+  for (let i = 0; i < 100; i++) cam.adjustZoom(1);
+  settle(cam, 350, 350, 700, 700);
+  assert.equal(cam.tracking, false);
+});

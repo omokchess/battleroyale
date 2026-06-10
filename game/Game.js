@@ -170,10 +170,18 @@ export class Game {
     window.addEventListener('resize', this._resizeBound);
     window.visualViewport?.addEventListener('resize', this._resizeBound);
     window.visualViewport?.addEventListener('scroll', this._resizeBound);
+    // Mouse wheel = camera zoom (and don't let the page scroll underneath).
+    this.canvas.addEventListener('wheel', this._wheelBound, { passive: false });
   }
 
   // Bind resize context
   _resizeBound = () => this._resizeCanvas();
+
+  // Mouse wheel zooms the camera. Wheel up (deltaY < 0) zooms in.
+  _wheelBound = (e) => {
+    e.preventDefault();
+    if (this.camera) this.camera.adjustZoom(e.deltaY < 0 ? 1 : -1);
+  };
 
   _resizeCanvas() {
     // Render at the device's true pixel density so phones/retina screens look
@@ -3362,6 +3370,7 @@ export class Game {
     window.removeEventListener('resize', this._resizeBound);
     window.visualViewport?.removeEventListener('resize', this._resizeBound);
     window.visualViewport?.removeEventListener('scroll', this._resizeBound);
+    this.canvas.removeEventListener('wheel', this._wheelBound);
     this._cleanupVisualSettingsPanel();
     
     // Clear background tab active preservation loops
