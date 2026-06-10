@@ -129,7 +129,7 @@ export const Weapons = {
     maxHp: 100,
     cooldown: 430,
     moveSpeed: 1.15,
-    range: 87,
+    range: 97,     // +10px so the hit reaches the visible blade tip
     width: 1,
     hitCooldownRefundMs: 120,
     missPenaltyMs: 150,
