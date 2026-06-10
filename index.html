@@ -62,7 +62,10 @@
 
         <!-- COLUMN 1: Account / My Page (sits left of weapon + create on desktop) -->
         <div id="lobbyAccount" class="w-full lg:w-80 lg:shrink-0 flex flex-col p-5 sm:p-6 bg-[#1f2833] border-4 border-[#45f3ff] rounded-none shadow-[0_0_20px_rgba(69,243,255,0.3)] overflow-y-auto max-h-[92vh]">
-          <span class="hidden lg:block font-mono text-xs text-[#66fcf1] uppercase font-bold mb-3">내 페이지</span>
+          <div class="flex items-center justify-between mb-3">
+            <span class="hidden lg:block font-mono text-xs text-[#66fcf1] uppercase font-bold">내 페이지</span>
+            <button id="muteToggleLobby" type="button" class="mute-toggle ml-auto bg-[#0b0c10] hover:bg-gray-800 border-2 border-gray-600 text-[#45f3ff] font-mono text-[10px] px-2.5 py-1.5 uppercase cursor-pointer active:scale-95 transition-transform">🔊 소리</button>
+          </div>
 
           <!-- Account bar: username, coins, ranking/shop/logout (filled by account-ui) -->
           <div id="accountBar" class="hidden items-center justify-between gap-2 mb-5 p-2.5 bg-[#0b0c10] border-2 border-gray-700">
@@ -505,6 +508,7 @@
                   <span>조이스틱 ON</span>
                 </span>
               </button>
+              <button id="muteToggleHud" type="button" class="mute-toggle bg-[#1f2833] hover:bg-gray-700 border border-[#45f3ff] text-[#45f3ff] font-mono text-[10px] md:text-xs px-2.5 py-2 uppercase cursor-pointer active:scale-95 transition-all">🔊 소리</button>
               <button id="leaveBtn" class="bg-red-700 hover:bg-red-600 border border-red-500 text-white font-mono text-[10px] md:text-xs px-3 py-2 uppercase cursor-pointer active:scale-95 transition-all">
                 게임 나가기
               </button>

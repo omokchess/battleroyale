@@ -11,6 +11,7 @@ import { RoomRegistry } from './multiplayer/RoomRegistry.js';
 import * as accountUI from './ui/account-ui.js';
 import { isMobileDevice, isPhoneDevice } from './game/Device.js';
 import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
+import { Sound } from './game/Sound.js';
 
 // Dom Elements
 const authScreen = document.getElementById('authScreen');
@@ -44,6 +45,37 @@ const refreshRoomsBtn = document.getElementById('refreshRoomsBtn');
 
 let netManager = null;
 let activeGame = null;
+
+// --- Sound setup: unlock audio on first gesture, sync mute toggles, UI blips.
+(function setupSound() {
+  const unlockOnce = () => Sound.unlock();
+  window.addEventListener('pointerdown', unlockOnce, { once: true });
+  window.addEventListener('keydown', unlockOnce, { once: true });
+
+  const syncMuteButtons = (muted) => {
+    document.querySelectorAll('.mute-toggle').forEach(btn => {
+      btn.textContent = muted ? '🔇 음소거' : '🔊 소리';
+      btn.classList.toggle('opacity-60', muted);
+    });
+  };
+  syncMuteButtons(Sound.isMuted());
+  Sound.onMuteChange(syncMuteButtons);
+
+  // Delegated UI sounds for every button (lobby + HUD). Gameplay action buttons
+  // and the mute toggles handle their own audio, so skip them here.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    Sound.unlock();
+    if (btn.classList.contains('mute-toggle')) {
+      Sound.toggleMute();
+      if (!Sound.isMuted()) Sound.play('ui');
+      return;
+    }
+    if (btn.classList.contains('mobile-action-btn')) return; // gameplay, not UI
+    Sound.play(btn.id === 'hostBtn' || btn.id === 'dummyBtn' ? 'uiConfirm' : 'ui');
+  }, true);
+})();
 
 function registerPwa() {
   if (!('serviceWorker' in navigator)) return;

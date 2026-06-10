@@ -13,6 +13,7 @@ import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig, Magi
 import { isMobileDevice } from './Device.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 import { normalizeRoomConfig, arenaDimensions } from './RoomConfig.js';
+import { Sound } from './Sound.js';
 
 // Time a dead player waits before respawning.
 const RESPAWN_MS = 500;
@@ -306,6 +307,7 @@ export class Game {
             this._tryDash(hp, dx, dy);
           }
           if (this.input.consumeSkillDown()) {
+            Sound.play('skill');
             this._handleSkillPressed(hp, now);
           }
           if (this.input.consumeSkillUp()) {
@@ -349,10 +351,11 @@ export class Game {
         const dash = this.input.consumeDash();
         if (dash) {
           const { dx, dy } = this._resolveInputDashVector(dash);
-          localPlayer.startDash(dx, dy);
+          if (localPlayer.startDash(dx, dy)) Sound.play('dash');
           this.networkManager.sendToHost(Protocol.clientAction('dash', dx, dy));
         }
         if (this.input.consumeSkillDown()) {
+          Sound.play('skill');
           this.networkManager.sendToHost(Protocol.clientAction('skillDown'));
         }
         if (this.input.consumeSkillUp()) {
@@ -1196,9 +1199,46 @@ export class Game {
    * Append a kill-feed notice (used by the host on a kill and by clients when
    * they receive a KILL_EVENT). Render-only; expires in the renderer/HUD.
    */
+  /**
+   * Derive sound cues from synced state (effects + projectiles), so attack/
+   * warning sounds play identically on the host and every client with no extra
+   * netcode — the same trick the damage popups use.
+   */
+  _trackSoundCues() {
+    if (!this._seenSfxIds) this._seenSfxIds = new Set();
+    const seen = this._seenSfxIds;
+    const local = this.localPlayerId;
+
+    for (const e of this.effects) {
+      const key = 'fx:' + (e.id || `${e.attackerId}-${e.timestamp}-${e.type}`);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const type = e.type || '';
+      if (type === 'sniper_telegraph' || type === 'matchlock_telegraph') {
+        // Warning beep for the targets/bystanders — gives a chance to dodge.
+        if (e.attackerId !== local) Sound.play('warn');
+      } else if (type.startsWith('melee_')) {
+        if (e.attackerId === local) {
+          const fam = type.includes('slam') ? 'slam' : type.includes('line') ? 'thrust' : 'slash';
+          Sound.play(fam);
+        }
+      }
+    }
+
+    for (const p of this.projectiles) {
+      const key = 'pj:' + p.id;
+      if (!p.id || seen.has(key)) continue;
+      seen.add(key);
+      if (p.ownerId === local) Sound.play('shoot');
+    }
+
+    if (seen.size > 500) this._seenSfxIds = new Set([...seen].slice(-200));
+  }
+
   _pushKillFeed(evt) {
     if (!this._killFeed) this._killFeed = [];
     const involvesLocal = evt.killerId === this.localPlayerId || evt.victimId === this.localPlayerId;
+    if (evt.killerId === this.localPlayerId) Sound.play('kill');
     this._killFeed.push({
       killerName: evt.killerName,
       victimName: evt.victimName,
@@ -1317,7 +1357,7 @@ export class Game {
   _tryDash(player, dirX, dirY) {
     if (!player || player.isDead) return;
     if (player.daggerQte) return;
-    player.startDash(dirX, dirY);
+    if (player.startDash(dirX, dirY) && player.id === this.localPlayerId) Sound.play('dash');
   }
 
   _resolveInputDashVector(dash) {
@@ -2964,6 +3004,7 @@ export class Game {
     const now = Date.now();
     // Always track HP deltas, even during hitstop, so no damage number is lost.
     this._trackDamagePopups(now);
+    this._trackSoundCues();
 
     // Hitstop: hold the previously drawn frame (skip re-render). Simulation has
     // already advanced above/around this — only the picture pauses.
@@ -3035,8 +3076,19 @@ export class Game {
           // Local player took damage → screen-edge vignette + camera shake,
           // scaled by how hard the hit was (instakills hit hardest).
           if (isLocal) this._onLocalDamaged(dmg, now);
+          // Impact sound for any non-dummy hit you can see (throttled in Sound).
+          if (!p.isDummy || isLocal) Sound.play('hit');
         }
       }
+
+      // Death / respawn cues for the local player (isDead transitions).
+      const wasDead = this._prevDeadById?.[id];
+      if (wasDead !== undefined && wasDead !== p.isDead && id === this.localPlayerId) {
+        Sound.play(p.isDead ? 'death' : 'respawn');
+      }
+      if (!this._prevDeadById) this._prevDeadById = {};
+      this._prevDeadById[id] = p.isDead;
+
       this._prevHpById[id] = cur;
     });
 
@@ -3100,6 +3152,11 @@ export class Game {
     const local = this.players[this.localPlayerId];
     if (!local) return;
     this.input?.setLocalWeapon?.(local.weapon);
+
+    // Subtle chime when the main skill cooldown finishes (transition >0 → 0).
+    const skillReady = (local.skillCdLeft || 0) <= 0 && !local.isDead;
+    if (this._prevSkillReady === false && skillReady) Sound.play('ready');
+    this._prevSkillReady = skillReady;
 
     // Weapon switch panel: mark the equipped weapon and the queued (pending) one.
     const wsp = document.getElementById('weaponSwitchPanel');
