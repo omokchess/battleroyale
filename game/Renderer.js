@@ -112,7 +112,9 @@ export class Renderer {
       }
       ctx = this.offCtx;
       usingBuffer = true;
-      ctx.setTransform(cw / ow, 0, 0, ch / oh, 0, 0); // logical→buffer pixels
+      // Map logical [0,cw]x[0,ch] coords onto the smaller buffer: scale by
+      // ow/cw (= 1/S), NOT cw/ow. The blit below scales back up by S.
+      ctx.setTransform(ow / cw, 0, 0, oh / ch, 0, 0);
       ctx.imageSmoothingEnabled = false;               // crisp sprite pixels
     } else {
       ctx = this.ctx; // SSR / no document: draw straight to the main canvas
