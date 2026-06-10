@@ -50,6 +50,17 @@ export class Renderer {
     this.weaponSprites = {};
     this._glow = 1;     // shadowBlur multiplier — set to 0 by performance mode
     this._perf = false; // performance mode: glows + particles disabled
+
+    // --- Pixel-art pipeline -------------------------------------------------
+    // The world is drawn to a low-resolution offscreen buffer, then scaled up to
+    // the main canvas with smoothing OFF so every pixel becomes a chunky square.
+    // Drawing uses the SAME logical coordinates (camera.toScreen output), so the
+    // camera/input/coordinate system is completely unchanged — only the internal
+    // raster resolution drops. HUD overlays are drawn afterward at full res.
+    this._pixelScale = 2;        // world raster ≈ 1/2 res (3 in performance mode)
+    this.offscreen = (typeof document !== 'undefined') ? document.createElement('canvas') : null;
+    this.offCtx = this.offscreen ? this.offscreen.getContext('2d') : null;
+
     this._initWeaponSprites();
   }
 
@@ -70,7 +81,6 @@ export class Renderer {
    * Main render call
    */
   render(gameState, localPlayerId, camera, mapWidth, mapHeight, visualSettings = {}) {
-    const ctx = this.ctx;
     const cw = this.canvas.width;
     const ch = this.canvas.height;
 
@@ -80,10 +90,33 @@ export class Renderer {
     const activeEffects = gameState.effects || [];
 
     // Performance mode kills the two heaviest canvas costs: glows (every
-    // shadowBlur is multiplied by _glow) and particles. Everything else still
-    // renders normally.
+    // shadowBlur is multiplied by _glow) and particles. In performance mode the
+    // pixel raster also drops further (bigger pixels = fewer of them = cheaper).
     this._perf = !!visualSettings.performanceMode;
     this._glow = this._perf ? 0 : 1;
+    this._pixelScale = this._perf ? 3 : 2;
+
+    // --- Set up the low-res world buffer. All world drawing below targets this
+    // offscreen context via `ctx`; it shares the SAME logical coordinate space
+    // as the main canvas (a base scale transform maps [0,cw]x[0,ch] onto the
+    // smaller buffer), so camera math and the _draw* helpers are unchanged.
+    const S = this._pixelScale;
+    const ow = Math.max(1, Math.round(cw / S));
+    const oh = Math.max(1, Math.round(ch / S));
+    let ctx;
+    let usingBuffer = false;
+    if (this.offCtx) {
+      if (this.offscreen.width !== ow || this.offscreen.height !== oh) {
+        this.offscreen.width = ow;
+        this.offscreen.height = oh;
+      }
+      ctx = this.offCtx;
+      usingBuffer = true;
+      ctx.setTransform(cw / ow, 0, 0, ch / oh, 0, 0); // logical→buffer pixels
+      ctx.imageSmoothingEnabled = false;               // crisp sprite pixels
+    } else {
+      ctx = this.ctx; // SSR / no document: draw straight to the main canvas
+    }
 
     // Particle logic updates & triggers
     if (this._perf) {
@@ -143,13 +176,25 @@ export class Renderer {
 
     ctx.restore();
 
+    // Blit the low-res world buffer onto the main canvas with smoothing OFF, so
+    // every rendered pixel becomes a chunky upscaled square (the pixel-art look).
+    if (usingBuffer) {
+      const main = this.ctx;
+      main.setTransform(1, 0, 0, 1, 0, 0);
+      main.imageSmoothingEnabled = false;
+      main.clearRect(0, 0, cw, ch);
+      main.drawImage(this.offscreen, 0, 0, ow, oh, 0, 0, cw, ch);
+    }
+
     // Tracking-mode HUD overlays: screen-space, drawn after the shake restore so
     // they stay rock-steady. Only shown when the camera is following the player
     // (i.e. the map is larger than the viewport); the legacy full-map view needs
     // neither a minimap nor off-screen arrows.
     if (camera.tracking && gameState.players) {
-      this._drawOffscreenEnemyArrows(ctx, camera, cw, ch, gameState.players, localPlayerId);
-      this._drawMinimap(ctx, cw, ch, gameState.players, localPlayerId, mapWidth, mapHeight, gameState);
+      // HUD overlays render on the MAIN canvas at full resolution (crisp), not
+      // in the low-res world buffer.
+      this._drawOffscreenEnemyArrows(this.ctx, camera, cw, ch, gameState.players, localPlayerId);
+      this._drawMinimap(this.ctx, cw, ch, gameState.players, localPlayerId, mapWidth, mapHeight, gameState);
     }
   }
 
