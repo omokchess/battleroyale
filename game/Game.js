@@ -387,6 +387,11 @@ export class Game {
       const p = this.players[id];
       if (p.isDead) return;
 
+      // Snapshot this tick's start position BEFORE movement so melee hit tests
+      // can sweep the target's path (prev → current) this frame.
+      p.prevX = p.x;
+      p.prevY = p.y;
+
       if (id === this.localPlayerId) {
         // Local host input updates
         p.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);

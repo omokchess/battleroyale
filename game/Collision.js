@@ -3,6 +3,47 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// Max single-frame target travel that still gets a swept melee test. Anything
+// longer is treated as a teleport (sniper R, respawn) and collapses to a point
+// so it can't sweep a giant line across the map.
+const MAX_MELEE_SWEEP = 120;
+
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+// Squared shortest distance between segment P1Q1 and segment P2Q2.
+// (Ericson, Real-Time Collision Detection — ClosestPtSegmentSegment.)
+function segSegDistSq(p1x, p1y, q1x, q1y, p2x, p2y, q2x, q2y) {
+  const d1x = q1x - p1x, d1y = q1y - p1y; // segment 1 direction
+  const d2x = q2x - p2x, d2y = q2y - p2y; // segment 2 direction
+  const rx = p1x - p2x, ry = p1y - p2y;
+  const a = d1x * d1x + d1y * d1y;
+  const e = d2x * d2x + d2y * d2y;
+  const f = d2x * rx + d2y * ry;
+  const EPS = 1e-12;
+  let s, t;
+  if (a <= EPS && e <= EPS) {
+    s = 0; t = 0;
+  } else if (a <= EPS) {
+    s = 0; t = clamp01(f / e);
+  } else {
+    const c = d1x * rx + d1y * ry;
+    if (e <= EPS) {
+      t = 0; s = clamp01(-c / a);
+    } else {
+      const b = d1x * d2x + d1y * d2y;
+      const denom = a * e - b * b;
+      s = denom > EPS ? clamp01((b * f - c * e) / denom) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) { t = 0; s = clamp01(-c / a); }
+      else if (t > 1) { t = 1; s = clamp01((b - c) / a); }
+    }
+  }
+  const c1x = p1x + s * d1x, c1y = p1y + s * d1y;
+  const c2x = p2x + t * d2x, c2y = p2y + t * d2y;
+  const dx = c1x - c2x, dy = c1y - c2y;
+  return dx * dx + dy * dy;
+}
+
 export const Collision = {
   /**
    * Keep players inside map boundaries
@@ -65,17 +106,56 @@ export const Collision = {
   },
 
   /**
-   * Sweep and check if attacker hits target using weapon properties
+   * Check if attacker hits target, sweeping the target's path this frame so a
+   * fast-moving target can't tunnel through a thin or quick blade between ticks.
+   *
+   *  - Line weapons (spear/dagger/rapier…): the blade is a segment from the
+   *    attacker out to `range`; the target is its path segment. Hit when the two
+   *    segments come within halfWidth + radius (segment-vs-capsule).
+   *  - Everything else (arcs, circles, blade-sweep): the legacy point test is
+   *    sampled along the target's path (current, previous, midpoint).
    */
   checkMeleeHit(attacker, target, weapon) {
     if (attacker.id === target.id || target.isDead) return false;
 
-    const dx = target.x - attacker.x;
-    const dy = target.y - attacker.y;
+    const r = target.radius || 14;
+
+    // Target swept path: previous tick-start → current position. Teleports
+    // collapse to a point (see MAX_MELEE_SWEEP).
+    let px = Number.isFinite(target.prevX) ? target.prevX : target.x;
+    let py = Number.isFinite(target.prevY) ? target.prevY : target.y;
+    const movedSq = (target.x - px) * (target.x - px) + (target.y - py) * (target.y - py);
+    if (movedSq > MAX_MELEE_SWEEP * MAX_MELEE_SWEEP) { px = target.x; py = target.y; }
+    const swept = (px !== target.x || py !== target.y);
+
+    const lineTypes = new Set(['melee_line', 'melee_heavy_line', 'melee_precise_line']);
+    if (lineTypes.has(weapon.type)) {
+      const ax = attacker.x, ay = attacker.y;
+      const bx = ax + Math.cos(attacker.angle) * weapon.range;
+      const by = ay + Math.sin(attacker.angle) * weapon.range;
+      const limit = (weapon.width / 2) + r;
+      return segSegDistSq(ax, ay, bx, by, px, py, target.x, target.y) <= limit * limit;
+    }
+
+    if (this._meleePointHit(attacker, target.x, target.y, r, weapon)) return true;
+    if (swept) {
+      if (this._meleePointHit(attacker, px, py, r, weapon)) return true;
+      if (this._meleePointHit(attacker, (px + target.x) / 2, (py + target.y) / 2, r, weapon)) return true;
+    }
+    return false;
+  },
+
+  /**
+   * Legacy per-frame point hit test for one target position. Arc/circle/blade-
+   * sweep weapons route through here (sampled along the swept path above).
+   */
+  _meleePointHit(attacker, tx, ty, r, weapon) {
+    const dx = tx - attacker.x;
+    const dy = ty - attacker.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     // Attacker custom weapon range + target boundary radius
-    const maxRange = weapon.range + (target.radius || 14);
+    const maxRange = weapon.range + r;
 
     if (dist > maxRange) return false;
 
@@ -102,7 +182,7 @@ export const Collision = {
 
       // Perpendicular distance from the target to the nearest sweep-edge blade.
       const over = Math.abs(angleDiff) - halfSweep;
-      const halfWidthLimit = (weapon.bladeHalfWidth || 0) + (target.radius || 14);
+      const halfWidthLimit = (weapon.bladeHalfWidth || 0) + r;
       return dist * Math.sin(Math.min(over, Math.PI / 2)) <= halfWidthLimit;
     }
 
@@ -143,13 +223,13 @@ export const Collision = {
       const projLength = dx * uX + dy * uY;
 
       // Parallel check
-      if (projLength < 0 || projLength > weapon.range + (target.radius || 14)) {
+      if (projLength < 0 || projLength > weapon.range + r) {
         return false;
       }
 
       // Cross product or perpendicular component tells orthogonal deviation from centerline
       const perpDiff = Math.abs(dx * uY - dy * uX);
-      const halfWidthLimit = (weapon.width / 2) + (target.radius || 14);
+      const halfWidthLimit = (weapon.width / 2) + r;
 
       return perpDiff <= halfWidthLimit;
     }

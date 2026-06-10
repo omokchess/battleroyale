@@ -13,6 +13,10 @@ export class Player {
     const weaponConfig = Weapons[this.weapon] || Weapons.sword;
     this.x = x;
     this.y = y;
+    // Position at the start of the current host tick, used for swept melee hit
+    // tests so a fast-moving target can't tunnel through a thin/quick blade.
+    this.prevX = x;
+    this.prevY = y;
 
     // Core parameters
     this.maxHp = weaponConfig.maxHp || 100;
