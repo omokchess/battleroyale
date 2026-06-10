@@ -46,6 +46,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
+    this.pendingSniperShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
@@ -90,6 +91,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
+    this.pendingSniperShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
@@ -101,6 +103,7 @@ export class Game {
     
     this.localPlayerId = this.networkManager.localId;
     this.lastFrameTime = performance.now();
+    this.matchStartTime = Date.now(); // wall-clock match start (for telemetry duration)
 
     // Prepare Controls
     this.input.setupListeners(this.canvas);
@@ -408,6 +411,7 @@ export class Game {
     this._releaseDueBowRailguns(now);
     this._releaseDueMagicShards(now);
     this._releaseDueKatanaSlashes(now);
+    this._releaseDueSniperShots(now);
     this._processSpearThrowQueue(now);
     this._processPendingMeleeHits(now);
     this._processGreatswordCharges(now);
@@ -522,12 +526,14 @@ export class Game {
       if (p.isDead) {
         if (!p.respawnTime) {
           p.respawnTime = now + RESPAWN_MS;
+          if (!p.isDummy) p.deaths = (p.deaths || 0) + 1; // count once per death (telemetry / K-D)
           p.clearCombatTimers(); // drop buffs/dash/skill state on death
           this._clearPendingSwordWavesFor(p.id);
           this._clearPendingRailgunsFor(p.id);
           this._clearPendingMagicShardsFor(p.id);
           this._clearPendingMeleeHitsFor(p.id);
           this._clearPendingHammerSlamsFor(p.id);
+          this._clearPendingSniperShotsFor(p.id);
         }
         p.respawnRemainingMs = Math.max(0, p.respawnTime - now);
         if (now >= p.respawnTime) {
@@ -1125,9 +1131,14 @@ export class Game {
   _creditKill(killerId, target, viaLabel = '') {
     const killer = this.players[killerId];
     if (killer) {
+      // Practice dummies are tallied separately so they never earn coins/rank
+      // (see Game.quit → handleMatchEnd). They still show on the HUD for feel,
+      // and never spam the kill feed.
+      if (target.isDummy) {
+        killer.dummyKills = (killer.dummyKills || 0) + 1;
+        return;
+      }
       killer.kills++;
-      // Dummies are practice targets — no kill-feed spam for them.
-      if (target.isDummy) return;
       const via = viaLabel ? `${viaLabel} ` : '';
       this._announce(`${killer.nickname}님이 ${via}${target.nickname}님을 처치했습니다!`);
     } else {
@@ -1176,6 +1187,7 @@ export class Game {
     this._clearPendingMagicShardsFor(player.id);
     this._clearPendingMeleeHitsFor(player.id);
     this._clearPendingHammerSlamsFor(player.id);
+    this._clearPendingSniperShotsFor(player.id);
   }
 
   /**
@@ -2316,20 +2328,64 @@ export class Game {
     });
   }
 
-  // --- 스나이퍼 (sniper): immobile. Its basic attack is an instant hitscan that
-  // executes the first enemy on the aim line; mobility is the F teleport only.
+  // --- 스나이퍼 (sniper): immobile. Pressing F locks the aim line and exposes a
+  // telegraph laser for telegraphMs before the killing hitscan resolves, giving
+  // targets a window to dash/step out of the line (counterplay). The origin and
+  // direction are frozen at fire time so re-aiming mid-telegraph can't track.
   _fireSniperShot(player, now) {
-    player.skillCdLeft = (SkillConfig.sniper?.cooldownMs || 4000) / 1000;
+    const sk = SkillConfig.sniper || {};
+    player.skillCdLeft = (sk.cooldownMs || 4000) / 1000;
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
-    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+    const originX = player.x;
+    const originY = player.y;
+    const wallDist = Collision.rayToBoundsDistance(originX, originY, dirX, dirY, this.mapWidth, this.mapHeight);
+    const beamDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    const telegraphMs = Math.max(0, sk.telegraphMs ?? 500);
 
+    if (!this.pendingSniperShots) this.pendingSniperShots = [];
+    this.pendingSniperShots.push({
+      playerId: player.id,
+      originX, originY, dirX, dirY,
+      angle: player.angle,
+      releaseAt: now + telegraphMs
+    });
+
+    // Telegraph laser along the locked line (no damage — warning only).
+    this.effects.push({
+      id: `${player.id}-snipertelegraph-${now}`,
+      attackerId: player.id,
+      x: originX, y: originY,
+      x2: originX + dirX * beamDist, y2: originY + dirY * beamDist,
+      angle: player.angle,
+      weapon: 'sniper',
+      type: 'sniper_telegraph',
+      progress: 0, timestamp: now, lifetime: telegraphMs
+    });
+  }
+
+  // Resolve any telegraphed sniper shots whose exposure window has elapsed.
+  _releaseDueSniperShots(now) {
+    if (!this.pendingSniperShots?.length) return;
+    const waiting = [];
+    for (const shot of this.pendingSniperShots) {
+      if (shot.releaseAt > now) { waiting.push(shot); continue; }
+      const player = this.players[shot.playerId];
+      if (!player || player.isDead || player.weapon !== 'sniper') continue;
+      this._resolveSniperShot(player, shot, now);
+    }
+    this.pendingSniperShots = waiting;
+  }
+
+  _resolveSniperShot(player, shot, now) {
+    const { originX, originY, dirX, dirY } = shot;
+    const wallDist = Collision.rayToBoundsDistance(originX, originY, dirX, dirY, this.mapWidth, this.mapHeight);
     let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
     let hitTarget = null;
     Object.keys(this.players).forEach(tid => {
       const target = this.players[tid];
       if (target.id === player.id || target.isDead || target.isInvincible()) return;
-      const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, target.x, target.y, target.radius);
+      const d = Collision.rayCircleHitDistance(originX, originY, dirX, dirY, target.x, target.y, target.radius);
       if (d !== null && d <= hitDist) { hitDist = d; hitTarget = target; }
     });
 
@@ -2341,13 +2397,18 @@ export class Game {
     this.effects.push({
       id: `${player.id}-sniperbeam-${now}`,
       attackerId: player.id,
-      x: player.x, y: player.y,
-      x2: player.x + dirX * hitDist, y2: player.y + dirY * hitDist,
-      angle: player.angle,
+      x: originX, y: originY,
+      x2: originX + dirX * hitDist, y2: originY + dirY * hitDist,
+      angle: shot.angle,
       weapon: 'sniper',
       type: 'railbeam',
       progress: 0, timestamp: now, lifetime: 320
     });
+  }
+
+  _clearPendingSniperShotsFor(playerId) {
+    if (!this.pendingSniperShots?.length) return;
+    this.pendingSniperShots = this.pendingSniperShots.filter(s => s.playerId !== playerId);
   }
 
   // R key: arm a targeted blink. The next target-cast click/tap chooses a point
@@ -2908,7 +2969,9 @@ export class Game {
 
     // Stats counts
     const killsEl = document.getElementById('hudKills');
-    if (killsEl) killsEl.textContent = local.kills;
+    // HUD shows total takedowns (real + practice dummies) so practice still feels
+    // rewarding; only `local.kills` (real) is ever reported to the server.
+    if (killsEl) killsEl.textContent = local.kills + (local.dummyKills || 0);
 
     const aliveEl = document.getElementById('hudAlive');
     if (aliveEl) {
@@ -3242,8 +3305,15 @@ export class Game {
   quit() {
     if (this._hasQuit) return;
 
-    // Snapshot this session's kill count before teardown (used to award coins).
-    const localKills = this.players[this.localPlayerId]?.kills || 0;
+    // Snapshot this session's stats before teardown (used to award coins + log).
+    const local = this.players[this.localPlayerId];
+    const matchStats = {
+      kills: local?.kills || 0,          // real-opponent kills only (dummies excluded)
+      deaths: local?.deaths || 0,
+      weapon: local?.weapon || 'sword',
+      durationMs: Math.max(0, Date.now() - (this.matchStartTime || Date.now())),
+      dummy: !!this.dummyRoom            // practice rooms are never reported to the server
+    };
 
     this._hasQuit = true;
     this.isRunning = false;
@@ -3269,6 +3339,7 @@ export class Game {
     this.pendingSwordWaves = [];
     this.pendingRailguns = [];
     this.pendingKatanaSlashes = [];
+    this.pendingSniperShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
@@ -3285,7 +3356,7 @@ export class Game {
     if (overlay) overlay.classList.add('hidden');
 
     if (this.onQuitCallback) {
-      this.onQuitCallback({ kills: localKills });
+      this.onQuitCallback(matchStats);
     }
   }
 

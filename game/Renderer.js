@@ -1086,6 +1086,9 @@ export class Renderer {
       } else if (e.type === 'railbeam') {
         const endScr = camera.toScreen(e.x2, e.y2, cw, ch);
         this._drawRailBeam(ctx, scr, endScr, e, weapon, alpha);
+      } else if (e.type === 'sniper_telegraph') {
+        const endScr = camera.toScreen(e.x2, e.y2, cw, ch);
+        this._drawSniperTelegraph(ctx, scr, endScr, e, weapon, alpha);
       } else if (e.type === 'buff_activate') {
         this._drawBuffActivate(ctx, scr, e, weapon, alpha, zoom);
       } else if (e.type === 'lifebound_heal') {
@@ -2219,6 +2222,93 @@ export class Renderer {
     ctx.restore();
   }
 
+  // Sniper aim-line warning shown for ~0.5s before the killing shot lands.
+  // Color interpolates weapon color → bright red as the shot approaches.
+  _drawSniperTelegraph(ctx, startScr, endScr, e, weapon, alpha) {
+    const progress = clamp01(e.progress);
+    // Pulse frequency accelerates as progress increases — feels more urgent.
+    const pulseFreq = 3 + progress * 5;
+    const pulse = 0.45 + 0.55 * Math.abs(Math.sin(progress * Math.PI * pulseFreq));
+
+    // Ease-in curve so the red surge feels like a countdown.
+    const redT = progress * progress;
+    const dangerColor = this._lerpHexColor(weapon.color, '#ff2020', redT);
+    const dotColor = this._lerpHexColor('#ffffff', '#ff4040', redT);
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // Outer danger halo — grows wider and more opaque as shot nears.
+    const haloWidth = (6 + 10 * redT) * alpha + 1;
+    const haloAlpha = (0.12 + 0.30 * redT) * alpha * pulse;
+    ctx.strokeStyle = this._hexToRGB(dangerColor, haloAlpha);
+    ctx.lineWidth = haloWidth;
+    ctx.beginPath();
+    ctx.moveTo(startScr.x, startScr.y);
+    ctx.lineTo(endScr.x, endScr.y);
+    ctx.stroke();
+
+    // Dashed bright core — intensifies and shifts red.
+    const dashGap = Math.max(3, 8 - progress * 6); // gaps close as shot nears
+    ctx.setLineDash([10, dashGap]);
+    ctx.strokeStyle = this._hexToRGB(dangerColor, (0.5 + 0.45 * progress) * alpha);
+    ctx.lineWidth = (1.5 + 2.0 * redT) * alpha + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(startScr.x, startScr.y);
+    ctx.lineTo(endScr.x, endScr.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Final-20% warning: bright red full-line flash overlay.
+    if (progress > 0.80) {
+      const warnT = (progress - 0.80) / 0.20;
+      const flashPulse = 0.5 + 0.5 * Math.abs(Math.sin(progress * Math.PI * 10));
+      ctx.strokeStyle = this._hexToRGB('#ff0000', warnT * 0.55 * flashPulse * alpha);
+      ctx.lineWidth = (3 + 4 * warnT) * alpha;
+      ctx.beginPath();
+      ctx.moveTo(startScr.x, startScr.y);
+      ctx.lineTo(endScr.x, endScr.y);
+      ctx.stroke();
+    }
+
+    // Charge dot creeping from muzzle to impact — turns red and enlarges.
+    const dotX = startScr.x + (endScr.x - startScr.x) * progress;
+    const dotY = startScr.y + (endScr.y - startScr.y) * progress;
+    const dotR = (2.5 + 3.5 * redT) * alpha + 1.5 * pulse;
+    ctx.fillStyle = this._hexToRGB(dotColor, (0.85 + 0.15 * redT) * alpha);
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dot glow ring at the end.
+    if (progress > 0.6) {
+      const glowT = (progress - 0.6) / 0.4;
+      ctx.strokeStyle = this._hexToRGB('#ff2020', glowT * 0.6 * pulse * alpha);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, dotR * 2.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // Linearly interpolates between two 6-digit hex colors, returns hex string.
+  _lerpHexColor(hexA, hexB, t) {
+    const clampT = Math.max(0, Math.min(1, t));
+    const parse = (h) => [
+      parseInt(h.slice(1, 3), 16),
+      parseInt(h.slice(3, 5), 16),
+      parseInt(h.slice(5, 7), 16),
+    ];
+    const [ar, ag, ab] = parse(hexA.startsWith('hsl') ? '#888888' : hexA);
+    const [br, bg, bb] = parse(hexB);
+    const r = Math.round(ar + (br - ar) * clampT);
+    const g = Math.round(ag + (bg - ag) * clampT);
+    const b = Math.round(ab + (bb - ab) * clampT);
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  }
+
   _drawBuffActivate(ctx, scr, e, weapon, alpha, zoom) {
     const progress = clamp01(e.progress);
     const radius = (18 + 46 * easeOutCubic(progress)) * (0.6 + zoom * 0.4);
@@ -2366,7 +2456,8 @@ export class Renderer {
       effect.type !== 'projectile_shot' &&
       effect.type !== 'projectile_burst' &&
       effect.type !== 'explosion' &&
-      effect.type !== 'railbeam';
+      effect.type !== 'railbeam' &&
+      effect.type !== 'sniper_telegraph';
   }
 
   _resolveEffectAttachment(effect, players = {}) {
