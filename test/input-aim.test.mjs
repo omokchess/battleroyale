@@ -123,3 +123,138 @@ test('mobile joystick cursor only flashes after target casts', () => {
   }
 });
 
+test('mobile action buttons act as release-fire aim joysticks', () => {
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  const originalLocalStorage = globalThis.localStorage;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  globalThis.window = { innerWidth: 800, innerHeight: 600 };
+  globalThis.document = { getElementById: () => null };
+  globalThis.localStorage = { getItem: () => 'true' };
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { maxTouchPoints: 1 }
+  });
+
+  try {
+    const input = new Input();
+    const button = {
+      style: {},
+      getBoundingClientRect: () => ({ left: 100, top: 100, width: 60, height: 60 })
+    };
+    const topButton = {
+      style: {},
+      classList: { contains: name => name === 'mobile-action-top' },
+      getBoundingClientRect: () => ({ left: 100, top: 100, width: 60, height: 60 })
+    };
+
+    input._beginSkillAimJoystick(button, { pointerId: 7, clientX: 130, clientY: 130 });
+    assert.equal(input.isSkillAimActive, true);
+    assert.equal(input.skillAimPointerId, 7);
+
+    input._moveSkillAimJoystick(button, { clientX: 190, clientY: 130 });
+    assert.equal(input.aimAngle, 0);
+    assert.match(button.style.transform, /translateY\(-50%\) translate\(/);
+
+    input._moveSkillAimJoystick(button, { clientX: 130, clientY: 190 });
+    assert.ok(Math.abs(input.aimAngle - Math.PI / 2) < 1e-6);
+
+    input._resetSkillAimJoystick(button);
+    assert.equal(input.isSkillAimActive, false);
+    assert.equal(input.skillAimPointerId, null);
+    assert.equal(button.style.transform, '');
+
+    input._beginSkillAimJoystick(topButton, { pointerId: 8, clientX: 130, clientY: 130 });
+    input._moveSkillAimJoystick(topButton, { clientX: 130, clientY: 70 });
+    assert.match(topButton.style.transform, /translateX\(-50%\) translate\(/);
+
+    input._requestTargetCastDirection(Math.PI / 4);
+    assert.equal(input.consumeTargetCastDirection(), Math.PI / 4);
+    assert.equal(input.consumeTargetCastDirection(), null);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+
+    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = originalLocalStorage;
+
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+  }
+});
+
+test('mobile sniper R arms target mode without acting as an aim joystick', () => {
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  const originalLocalStorage = globalThis.localStorage;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const listeners = {};
+  const altSkillBtn = {
+    style: {},
+    addEventListener: (type, handler) => { listeners[type] = handler; },
+    setPointerCapture: () => {}
+  };
+  const canvas = {
+    width: 800,
+    height: 600,
+    style: {},
+    addEventListener: () => {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 })
+  };
+
+  globalThis.window = { innerWidth: 800, innerHeight: 600 };
+  globalThis.document = {
+    addEventListener: () => {},
+    getElementById: id => id === 'altSkillBtn' ? altSkillBtn : null
+  };
+  globalThis.localStorage = { getItem: () => 'true' };
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { maxTouchPoints: 1 }
+  });
+
+  try {
+    const input = new Input();
+    input.setLocalWeapon('sniper');
+    input.aimAngle = 0.25;
+    input.setupListeners(canvas);
+
+    const event = {
+      pointerId: 11,
+      pointerType: 'touch',
+      clientX: 130,
+      clientY: 130,
+      cancelable: true,
+      preventDefault: () => {},
+      stopPropagation: () => {}
+    };
+
+    listeners.pointerdown(event);
+    assert.equal(input.isSkillAimActive, false);
+    assert.equal(input.skillAimButton, null);
+
+    listeners.pointermove({ ...event, clientX: 230, clientY: 130 });
+    assert.equal(input.aimAngle, 0.25);
+
+    listeners.pointerup({ ...event, clientX: 230, clientY: 130 });
+    assert.equal(input.teleportRequested, true);
+    assert.equal(input.pointerTargetMode, 'sniperTeleport');
+    assert.equal(input.targetCastDirectionRequested, false);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+
+    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = originalLocalStorage;
+
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+  }
+});

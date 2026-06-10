@@ -293,7 +293,7 @@ export class Game {
           if (this.input.consumeTeleportUp()) {
             this._handleAltSkillReleased(hp, now);
           }
-          const targetCast = this._consumeTargetCastWorld();
+          const targetCast = this._consumeTargetCastWorld(hp);
           if (targetCast) {
             this._handleTargetCast(hp, targetCast.x, targetCast.y, now);
           }
@@ -340,7 +340,7 @@ export class Game {
         if (this.input.consumeTeleportUp()) {
           this.networkManager.sendToHost(Protocol.clientAction('teleportUp'));
         }
-        const targetCast = this._consumeTargetCastWorld();
+        const targetCast = this._consumeTargetCastWorld(localPlayer);
         if (targetCast) {
           this.networkManager.sendToHost(Protocol.clientAction('targetCast', 0, 0, targetCast));
         }
@@ -1225,14 +1225,33 @@ export class Game {
     return this.input.getMoveVector();
   }
 
-  _consumeTargetCastWorld() {
+  _consumeTargetCastWorld(player = null) {
     const pointer = this.input?.consumeTargetCast?.();
-    if (!pointer || !this.camera || typeof this.camera.toWorld !== 'function') return null;
-    const world = this.camera.toWorld(pointer.x, pointer.y, this.canvas.width, this.canvas.height);
-    return {
-      x: Math.max(0, Math.min(this.mapWidth, world.x)),
-      y: Math.max(0, Math.min(this.mapHeight, world.y))
+    if (pointer && this.camera && typeof this.camera.toWorld === 'function') {
+      const world = this.camera.toWorld(pointer.x, pointer.y, this.canvas.width, this.canvas.height);
+      return {
+        x: Math.max(0, Math.min(this.mapWidth, world.x)),
+        y: Math.max(0, Math.min(this.mapHeight, world.y))
+      };
+    }
+
+    const directionAngle = this.input?.consumeTargetCastDirection?.();
+    if (!Number.isFinite(directionAngle) || !player) return null;
+    const dirX = Math.cos(directionAngle);
+    const dirY = Math.sin(directionAngle);
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+    const dist = Number.isFinite(wallDist) ? Math.max(0, wallDist) : Math.max(this.mapWidth, this.mapHeight);
+    const target = {
+      x: Math.max(0, Math.min(this.mapWidth, player.x + dirX * dist)),
+      y: Math.max(0, Math.min(this.mapHeight, player.y + dirY * dist))
     };
+    if (this.input && this.camera && typeof this.camera.toScreen === 'function' && this.canvas) {
+      const screen = this.camera.toScreen(target.x, target.y, this.canvas.width, this.canvas.height);
+      if (Number.isFinite(screen?.x) && Number.isFinite(screen?.y)) {
+        this.input.mouse = { x: screen.x, y: screen.y };
+      }
+    }
+    return target;
   }
 
   _handleSkillPressed(player, now) {
