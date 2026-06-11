@@ -223,6 +223,21 @@ export const Weapons = {
     description: '던지면 날아갔다가 부메랑처럼 돌아오는 원반입니다. 나가는 길과 돌아오는 길 양쪽에 피해를 주지만, 원반이 떠 있는 동안은 비무장 상태가 됩니다.',
     skill: 'F 스킬: 부채꼴 3방향으로 동시에 차크람을 던집니다(각 18 피해) · 쿨타임 6초',
     color: '#38bdf8'
+  },
+  pistols: {
+    name: '쌍권총',
+    damage: 9,
+    maxHp: 90,
+    cooldown: 200,          // rapid fire
+    moveSpeed: 1.25,        // full speed while shooting (no move penalty)
+    range: 260,             // bullets vanish past this distance
+    speed: 520,             // projectile speed (px/s)
+    spreadDeg: 4,           // slight per-shot spread → weak at max range
+    type: 'projectile',
+    projectileKind: 'pistol',
+    description: '사거리가 제한된 빠른 탄을 연사하는 유일한 일반 총기입니다. 이동 패널티 없이 무빙샷이 가능하지만, 단발 화력이 낮고 탄퍼짐 탓에 최대 사거리에서는 명중률이 떨어집니다.',
+    skill: 'F 스킬: 0.6초간 8발 부채꼴 난사 후 뒤로 짧게 점프(이탈) · 쿨타임 6초',
+    color: '#fb7185'
   }
 };
 
@@ -282,6 +297,16 @@ export const SkillConfig = {
     range: 280,
     speed: 640,
     returnSpeed: 720
+  },
+  pistols: {
+    cooldownMs: 6000,
+    burstCount: 8,
+    burstMs: 600,          // 8 shots spread across 0.6s
+    fanSpreadDeg: 70,      // total fan width of the barrage
+    damage: 11,            // per barrage bullet
+    speed: 560,
+    range: 300,
+    hopDistance: 90        // backward escape hop after the barrage
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends

@@ -481,6 +481,7 @@ export class Game {
     this._processKatanaCharges(now);
     this._processDaggerQtes(now);
     this._processHammerSlams(now);
+    this._processPistolBursts(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -577,6 +578,13 @@ export class Game {
             proj.isDead = true;
             const died = target.takeDamage(proj.damage, '아이스 샤드');
             if (died) this._creditKill(proj.ownerId, target, '아이스 샤드로');
+            return;
+          }
+
+          if (proj.kind === 'pistol') {
+            proj.isDead = true;
+            const died = target.takeDamage(proj.damage, '쌍권총');
+            if (died) this._creditKill(proj.ownerId, target, '쌍권총으로');
             return;
           }
 
@@ -757,12 +765,17 @@ export class Game {
         };
     this.effects.push(shotEffect);
 
+    // Optional per-shot spread (pistols) so accuracy drops at max range.
+    const spread = attackConfig.spreadDeg
+      ? ((Math.random() - 0.5) * 2 * attackConfig.spreadDeg * Math.PI) / 180
+      : 0;
+    const fireAngle = player.angle + spread;
     const proj = new Projectile(
       arrowId,
       player.id,
-      player.x + Math.cos(player.angle) * spawnDist,
-      player.y + Math.sin(player.angle) * spawnDist,
-      player.angle,
+      player.x + Math.cos(fireAngle) * spawnDist,
+      player.y + Math.sin(fireAngle) * spawnDist,
+      fireAngle,
       attackConfig.speed,
       attackConfig.range,
       attackConfig.damage,
@@ -1656,6 +1669,7 @@ export class Game {
       case 'katana': this._castKatanaSkill(player, now); break;
       case 'sniper': this._fireSniperShot(player, now); break;
       case 'chakram': this._throwChakramFan(player, now); break;
+      case 'pistols': this._firePistolBarrage(player, now); break;
       default: break;
     }
   }
@@ -3186,6 +3200,62 @@ export class Game {
     proj.x += proj.vx * deltaTime;
     proj.y += proj.vy * deltaTime;
     damageLeg(proj.hitBack, 'back');
+  }
+
+  // --- 쌍권총 (dual pistols): F barrage of 8 fanned shots, then a back-hop -----
+  _spawnPistolBullet(player, angle, damage, speed, range, now, tag) {
+    const spawnDist = (player.radius || 14) + 3;
+    const proj = new Projectile(
+      `${player.id}-pistol-${tag}`,
+      player.id,
+      player.x + Math.cos(angle) * spawnDist,
+      player.y + Math.sin(angle) * spawnDist,
+      angle, speed, range, damage, 'pistol'
+    );
+    proj.weapon = 'pistols';
+    proj.radius = 5;
+    this.projectiles.push(proj);
+  }
+
+  _firePistolBarrage(player, now) {
+    const sk = SkillConfig.pistols;
+    player.skillCdLeft = (sk.cooldownMs || 6000) / 1000;
+    const count = sk.burstCount || 8;
+    if (!this.pendingPistolBursts) this.pendingPistolBursts = [];
+    this.pendingPistolBursts.push({
+      playerId: player.id,
+      shotsLeft: count,
+      total: count,
+      interval: (sk.burstMs || 600) / count,
+      nextAt: now,
+      hopped: false
+    });
+  }
+
+  _processPistolBursts(now) {
+    if (!this.pendingPistolBursts?.length) return;
+    const sk = SkillConfig.pistols;
+    const fan = ((sk.fanSpreadDeg || 70) * Math.PI) / 180;
+    const waiting = [];
+    for (const b of this.pendingPistolBursts) {
+      const player = this.players[b.playerId];
+      if (!player || player.isDead || player.weapon !== 'pistols') continue; // drop
+      while (b.shotsLeft > 0 && now >= b.nextAt) {
+        const idx = b.total - b.shotsLeft;
+        const t = b.total <= 1 ? 0.5 : idx / (b.total - 1);
+        const off = (t - 0.5) * fan;
+        this._spawnPistolBullet(player, player.angle + off, sk.damage, sk.speed, sk.range, now, `barrage-${b.nextAt}-${idx}`);
+        b.shotsLeft--;
+        b.nextAt += b.interval;
+      }
+      if (b.shotsLeft > 0) {
+        waiting.push(b);
+      } else if (!b.hopped) {
+        this._lungePlayer(player, -(sk.hopDistance || 90)); // backward escape hop
+        b.hopped = true;
+      }
+    }
+    this.pendingPistolBursts = waiting;
   }
 
   _sendLocalInput(now) {

@@ -1050,6 +1050,8 @@ export class Renderer {
         this._drawIceShard(ctx, scr, angle, zoom);
       } else if (p.kind === 'chakram') {
         this._drawChakram(ctx, scr, zoom);
+      } else if (p.kind === 'pistol') {
+        this._drawPistolBullet(ctx, scr, angle, zoom);
       } else {
         this._drawArrow(ctx, scr, angle);
       }
@@ -1120,6 +1122,26 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
 
+    ctx.restore();
+  }
+
+  // Small fast bullet with a short motion streak (dual pistols).
+  _drawPistolBullet(ctx, scr, angle, zoom) {
+    const len = 9 * (0.7 + zoom * 0.3);
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(251, 113, 133, 0.4)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.lineTo(scr.x - Math.cos(angle) * len, scr.y - Math.sin(angle) * len);
+    ctx.stroke();
+    ctx.shadowColor = '#fb7185';
+    ctx.shadowBlur = this._glow ? 6 : 0;
+    ctx.fillStyle = '#fecdd3';
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, 2.6, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
