@@ -94,10 +94,11 @@ export const Protocol = {
   // `weapon` is the killer's weapon key (for the icon/label); `via` is an
   // optional method label (e.g. '활로'). killerId/victimId let clients highlight
   // their own kills/deaths.
-  killEvent(killerId, killerName, victimId, victimName, weapon, via = '') {
+  killEvent(killerId, killerName, victimId, victimName, weapon, via = '', killerTitle = null, victimTitle = null) {
     return {
       type: MsgType.KILL_EVENT,
       killerId, killerName, victimId, victimName, weapon, via,
+      killerTitle, victimTitle,
       timestamp: Date.now()
     };
   },

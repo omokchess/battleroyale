@@ -286,6 +286,15 @@ function readRoomConfig() {
   });
 }
 
+// The local player's full appearance: equipped costume colors + the cosmetic
+// loadout (weapon skin / kill fx / dash trail / respawn fx / title). Passed to
+// Game and into JOIN_ROOM so everyone renders it.
+function localAppearance() {
+  return Object.assign({}, accountUI.getEquippedCostume() || {}, {
+    cosmetics: accountUI.getEquippedCosmetics(),
+  });
+}
+
 /**
  * 3. Match Hosting workflow
  */
@@ -317,8 +326,8 @@ function doHost(dummy = false) {
 
     enterGameScreen(true);
 
-    // Run Game (apply the player's equipped costume colors + chosen room settings)
-    activeGame = new Game(gameCanvas, netManager, accountUI.getEquippedCostume(), { dummyRoom: dummy, roomConfig });
+    // Run Game (apply the player's equipped costume colors + cosmetics + room settings)
+    activeGame = new Game(gameCanvas, netManager, localAppearance(), { dummyRoom: dummy, roomConfig });
     activeGame.start((stats) => {
       // Match ended / disconnected — award coins then return to lobby.
       handleMatchEnd(stats);
@@ -373,7 +382,7 @@ function startJoin(rawCode) {
 
   // Create registration payload frame (carry costume so the host paints us
   // correctly, and isMobile so the host gives touch players instant-fire).
-  const joinPayload = Protocol.joinRoom(nickname, chosenWeapon, accountUI.getEquippedCostume(), isMobileDevice());
+  const joinPayload = Protocol.joinRoom(nickname, chosenWeapon, localAppearance(), isMobileDevice());
 
   netManager.on('onConnected', () => {
     joinBtn.disabled = false;
@@ -381,7 +390,7 @@ function startJoin(rawCode) {
 
     enterGameScreen(false);
 
-    activeGame = new Game(gameCanvas, netManager, accountUI.getEquippedCostume());
+    activeGame = new Game(gameCanvas, netManager, localAppearance());
     activeGame.start((stats) => {
       handleMatchEnd(stats);
     });

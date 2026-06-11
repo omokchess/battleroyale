@@ -165,27 +165,39 @@ export async function fetchMyItemIds() {
   return new Set((data ?? []).map((r) => r.item_id));
 }
 
-/** 내 카테고리별 착용 정보 ({costume, weaponskin, killfx, dashtrail, respawnfx, title}). */
+// Normalize a stored slot value to a full catalog id (e.g. 'ember' or
+// 'weaponskin:ember' or 'none' → 'weaponskin:ember' / 'weaponskin:none').
+function normEquip(cat, v) {
+  if (!v || v === 'none') return cat + ':none';
+  return String(v).includes(':') ? v : cat + ':' + v;
+}
+
+/** 내 카테고리별 착용 정보를 "전체 아이템 id" 로 정규화해 반환. */
+export function equippedFromProfile(p) {
+  if (!p) return { costume: 'costume:default', weaponskin: 'weaponskin:none', killfx: 'killfx:none', dashtrail: 'dashtrail:none', respawnfx: 'respawnfx:none', title: 'title:none' };
+  return {
+    costume: 'costume:' + (p.equipped_costume || 'default'),
+    weaponskin: normEquip('weaponskin', p.equipped_weaponskin),
+    killfx: normEquip('killfx', p.equipped_killfx),
+    dashtrail: normEquip('dashtrail', p.equipped_dashtrail),
+    respawnfx: normEquip('respawnfx', p.equipped_respawnfx),
+    title: normEquip('title', p.equipped_title)
+  };
+}
+
+/** 내 카테고리별 착용 정보 (전체 아이템 id). 구 스키마/미로그인이면 기본값. */
 export async function fetchMyEquipped() {
-  const fallback = { costume: 'default', weaponskin: 'none', killfx: 'none', dashtrail: 'none', respawnfx: 'none', title: 'none' };
-  if (!supabase) return fallback;
+  if (!supabase) return equippedFromProfile(null);
   const { data: userData } = await supabase.auth.getUser();
   const uid = userData?.user?.id;
-  if (!uid) return fallback;
+  if (!uid) return equippedFromProfile(null);
   const { data, error } = await supabase
     .from('profiles')
     .select('equipped_costume, equipped_weaponskin, equipped_killfx, equipped_dashtrail, equipped_respawnfx, equipped_title')
     .eq('id', uid)
     .maybeSingle();
-  if (error || !data) return fallback;
-  return {
-    costume: data.equipped_costume || 'default',
-    weaponskin: data.equipped_weaponskin || 'none',
-    killfx: data.equipped_killfx || 'none',
-    dashtrail: data.equipped_dashtrail || 'none',
-    respawnfx: data.equipped_respawnfx || 'none',
-    title: data.equipped_title || 'none'
-  };
+  if (error || !data) return equippedFromProfile(null);
+  return equippedFromProfile(data);
 }
 
 /** 아이템 구매(RPC). 갱신된 프로필 반환. 실패 시 throw. */

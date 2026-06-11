@@ -9,6 +9,7 @@ export class Player {
   constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
     this.id = id;
     this.nickname = nickname || 'Gladiator';
+    this.isMobile = false;   // touch player → instant sniper/matchlock + visible aim tell
     this.weapon = weaponType in Weapons ? weaponType : 'sword';
     const weaponConfig = Weapons[this.weapon] || Weapons.sword;
     this.x = x;
@@ -92,6 +93,32 @@ export class Player {
       this.costumeDecoration = null;
       this.costumeEffect = null;
     }
+
+    // Cosmetic-only loadout (shop). None of these touch combat.
+    this.applyCosmetics(costume?.cosmetics);
+  }
+
+  /** Adopt an equipped-cosmetics set ({weaponskin, killfx, dashtrail, respawnfx, title}). */
+  applyCosmetics(cos) {
+    this.weaponTint = cos?.weaponskin?.data?.tint || null;
+    this.dashTrailColor = cos?.dashtrail?.data?.color || null;
+    this.killFx = cos?.killfx?.data || null;          // { style, color }
+    this.respawnFxColor = cos?.respawnfx?.data?.color || null;
+    this.title = cos?.title?.data || null;            // { text, color }
+  }
+
+  /** Restore the compact serialized cosmetics blob (see serialize). */
+  applyCosmeticsSnapshot(c) {
+    this.weaponTint = c?.wt || null;
+    this.dashTrailColor = c?.dt || null;
+    this.killFx = c?.kf || null;
+    this.respawnFxColor = c?.rf || null;
+    this.title = c?.ti || null;
+  }
+
+  /** Compact cosmetics blob for the wire. */
+  cosmeticsSnapshot() {
+    return { wt: this.weaponTint, dt: this.dashTrailColor, kf: this.killFx, rf: this.respawnFxColor, ti: this.title };
   }
 
   /**
@@ -314,6 +341,7 @@ export class Player {
       stunMs: Math.round(this.stunTimeLeft * 1000),
       spearThrown: this.spearThrown,
       flameSpraying: this.flameSpraying,
+      isMobile: this.isMobile,
       arrowStacks: this.arrowStacks || 0,
       greatswordChargeMs: this.greatswordChargeStart > 0 ? Math.max(0, Date.now() - this.greatswordChargeStart) : 0,
       katanaChargeMs: this.katanaChargeStart > 0 ? Math.max(0, Date.now() - this.katanaChargeStart) : 0,
@@ -330,7 +358,8 @@ export class Player {
       color: this.color,
       accentColor: this.accentColor,
       costumeDecoration: this.costumeDecoration || null,
-      costumeEffect: this.costumeEffect || null
+      costumeEffect: this.costumeEffect || null,
+      cos: this.cosmeticsSnapshot()
     };
   }
 
@@ -370,6 +399,7 @@ export class Player {
     this.accentColor = data.accentColor;
     this.costumeDecoration = data.costumeDecoration || null;
     this.costumeEffect = data.costumeEffect || null;
+    this.applyCosmeticsSnapshot(data.cos);
 
     // Coordinate smoothing can be applied in game loop,
     // but assign directly first
