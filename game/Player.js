@@ -54,6 +54,7 @@ export class Player {
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
     this.chakramOut = false;  // true while a thrown chakram hasn't returned (disarmed)
+    this.slowTimeLeft = 0;    // seconds of a movement slow (harpoon pull) — can still attack
     this.hammerSkillUntil = 0; // host-ms timestamp: no basic attacks until the hammer skill fully ends
     this.pendingIcicles = 0;   // magic staff: ice shards loaded, waiting for F to fire
     this.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };
@@ -121,6 +122,7 @@ export class Player {
     if (this.iframeTimeLeft > 0) this.iframeTimeLeft = Math.max(0, this.iframeTimeLeft - deltaTime);
     if (this.dashCdLeft > 0) this.dashCdLeft = Math.max(0, this.dashCdLeft - deltaTime);
     if (this.stunTimeLeft > 0) this.stunTimeLeft = Math.max(0, this.stunTimeLeft - deltaTime);
+    if (this.slowTimeLeft > 0) this.slowTimeLeft = Math.max(0, this.slowTimeLeft - deltaTime);
   }
 
   /**
@@ -168,7 +170,8 @@ export class Player {
     if (dx !== 0 || dy !== 0) {
       const length = Math.sqrt(dx * dx + dy * dy);
       const weaponConfig = Weapons[this.weapon] || Weapons.sword;
-      const moveSpeed = this.speed * (weaponConfig.moveSpeed ?? 1);
+      const slowMul = this.slowTimeLeft > 0 ? 0.35 : 1; // harpoon pull drag
+      const moveSpeed = this.speed * (weaponConfig.moveSpeed ?? 1) * slowMul;
       this.x += (dx / length) * moveSpeed * deltaTime;
       this.y += (dy / length) * moveSpeed * deltaTime;
     }
@@ -217,6 +220,7 @@ export class Player {
     this.buffTimeLeft = 0;
     this.spearThrown = false;
     this.chakramOut = false;
+    this.slowTimeLeft = 0;
     this.hammerSkillUntil = 0;
     this.pendingIcicles = 0;
     this.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };

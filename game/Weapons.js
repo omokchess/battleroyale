@@ -256,6 +256,20 @@ export const Weapons = {
     description: '칼날 두 개가 몸 주위를 공전하며 닿는 적을 자동으로 벱니다. 조준이 없어 무빙과 거리 조절이 전부이며, 사거리가 몸 둘레뿐이라 긴 사거리 무기에 접근하기 어렵습니다.',
     skill: 'F 스킬: 칼날 2개를 바깥으로 발사(각 24 피해)했다가 회수하며, 회수 전까지 비무장 · 쿨타임 5초',
     color: '#2dd4bf'
+  },
+  harpoon: {
+    name: '작살',
+    damage: 12,
+    maxHp: 105,
+    cooldown: 1100,
+    moveSpeed: 1.0,
+    range: 200,             // throw distance
+    speed: 700,
+    type: 'projectile',
+    projectileKind: 'harpoon',
+    description: '중거리로 작살을 던져 명중한 적을 자신 앞으로 끌어옵니다. 끌어온 직후 짧은 경직을 주지만 본인 평타가 약해, 마무리할 다음 수가 필요한 시동기입니다.',
+    skill: 'F 스킬: 조준 방향의 적 또는 벽으로 자신이 끌려가는 이동기(피해 없음) · 쿨타임 5초',
+    color: '#60a5fa'
   }
 };
 
@@ -331,6 +345,13 @@ export const SkillConfig = {
     launchDamage: 24,      // per launched blade, per leg
     launchRange: 200,      // outward flight before the blade returns
     launchSpeed: 560
+  },
+  harpoon: {
+    cooldownMs: 5000,
+    pullRange: 360,        // max self-pull distance toward enemy/wall
+    stopGap: 32,           // stop short of the contact point
+    pullToFront: 50,       // basic-attack pulls the target this far in front
+    slowMs: 300            // brief drag on a hooked target (not a stun)
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends

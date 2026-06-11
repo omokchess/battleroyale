@@ -589,6 +589,26 @@ export class Game {
             return;
           }
 
+          if (proj.kind === 'harpoon') {
+            proj.isDead = true;
+            const hk = SkillConfig.harpoon;
+            const died = target.takeDamage(proj.damage, '작살');
+            const attacker = this.players[proj.ownerId];
+            if (!died && attacker) {
+              // Yank the target to just in front of the attacker along the line.
+              const a = proj.angle;
+              target.x = attacker.x + Math.cos(a) * (hk.pullToFront || 50);
+              target.y = attacker.y + Math.sin(a) * (hk.pullToFront || 50);
+              Collision.clampToMap(target, this.mapWidth, this.mapHeight);
+              if (this.cover.length) resolveCover(this.cover, target, target.radius || 14);
+              target.slowTimeLeft = (hk.slowMs || 300) / 1000;
+              target.prevX = target.x; // discontinuous move — don't let melee sweep it
+              target.prevY = target.y;
+            }
+            if (died) this._creditKill(proj.ownerId, target, '작살로');
+            return;
+          }
+
           proj.isDead = true;
           if (proj.kind === 'arrow') {
             this._awardBowArrowStack(this.players[proj.ownerId]);
@@ -1672,6 +1692,7 @@ export class Game {
       case 'chakram': this._throwChakramFan(player, now); break;
       case 'pistols': this._firePistolBarrage(player, now); break;
       case 'guardian': this._launchGuardianBlades(player, now); break;
+      case 'harpoon': this._harpoonPull(player, now); break;
       default: break;
     }
   }
@@ -3204,6 +3225,39 @@ export class Game {
     proj.x += proj.vx * deltaTime;
     proj.y += proj.vy * deltaTime;
     damageLeg(proj.hitBack, 'back');
+  }
+
+  // --- 작살 (harpoon): F yanks the player toward the aimed enemy/wall ---------
+  _harpoonPull(player, now) {
+    const sk = SkillConfig.harpoon;
+    player.skillCdLeft = (sk.cooldownMs || 5000) / 1000;
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+    let dist = Math.min(sk.pullRange || 360, Number.isFinite(wallDist) ? wallDist : (sk.pullRange || 360));
+    if (this.cover.length) dist = Math.min(dist, coverRayDistance(this.cover, player.x, player.y, dirX, dirY));
+    Object.keys(this.players).forEach(tid => {
+      const t = this.players[tid];
+      if (t.id === player.id || t.isDead) return;
+      const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, t.x, t.y, (t.radius || 14) + 5);
+      if (d !== null && d < dist) dist = d;
+    });
+    const travel = Math.max(0, dist - (sk.stopGap || 32));
+    const fromX = player.x, fromY = player.y;
+    player.x += dirX * travel;
+    player.y += dirY * travel;
+    Collision.clampToMap(player, this.mapWidth, this.mapHeight);
+    if (this.cover.length) resolveCover(this.cover, player, player.radius || 14);
+    player.prevX = player.x; // discontinuous — avoid melee sweep across the yank
+    player.prevY = player.y;
+    this.effects.push({
+      id: `${player.id}-harpoonpull-${now}`,
+      attackerId: player.id,
+      x: fromX, y: fromY,
+      x2: player.x, y2: player.y,
+      angle: player.angle, weapon: 'harpoon', type: 'railbeam',
+      progress: 0, timestamp: now, lifetime: 260
+    });
   }
 
   // --- 쌍권총 (dual pistols): F barrage of 8 fanned shots, then a back-hop -----

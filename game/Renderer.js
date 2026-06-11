@@ -1056,6 +1056,8 @@ export class Renderer {
         this._drawPistolBullet(ctx, scr, angle, zoom);
       } else if (p.kind === 'guardianblade') {
         this._drawGuardianBlade(ctx, scr, zoom);
+      } else if (p.kind === 'harpoon') {
+        this._drawHarpoon(ctx, scr, angle, zoom);
       } else {
         this._drawArrow(ctx, scr, angle);
       }
@@ -1126,6 +1128,34 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
 
+    ctx.restore();
+  }
+
+  // Harpoon bolt: a barbed head with a trailing rope back along its path.
+  _drawHarpoon(ctx, scr, angle, zoom) {
+    const len = 20 * (0.7 + zoom * 0.3);
+    const tailX = scr.x - Math.cos(angle) * len;
+    const tailY = scr.y - Math.sin(angle) * len;
+    ctx.save();
+    // rope
+    ctx.strokeStyle = 'rgba(96,165,250,0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // head
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(angle);
+    ctx.shadowColor = '#60a5fa';
+    ctx.shadowBlur = this._glow ? 6 : 0;
+    ctx.fillStyle = '#bfdbfe';
+    ctx.beginPath();
+    ctx.moveTo(7, 0); ctx.lineTo(-3, -5); ctx.lineTo(0, 0); ctx.lineTo(-3, 5);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
 
