@@ -1048,6 +1048,8 @@ export class Renderer {
         this._drawFireball(ctx, scr, angle, zoom);
       } else if (p.kind === 'iceshard') {
         this._drawIceShard(ctx, scr, angle, zoom);
+      } else if (p.kind === 'chakram') {
+        this._drawChakram(ctx, scr, zoom);
       } else {
         this._drawArrow(ctx, scr, angle);
       }
@@ -1118,6 +1120,43 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
 
+    ctx.restore();
+  }
+
+  // Spinning chakram disc — a bladed ring that rotates over time.
+  _drawChakram(ctx, scr, zoom) {
+    const r = 13 * (0.7 + zoom * 0.3);
+    const spin = (Date.now() / 90) % (Math.PI * 2);
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(spin);
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = this._glow ? 8 : 0;
+    // Outer ring
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Four blade spikes
+    ctx.fillStyle = '#bae6fd';
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      ctx.save();
+      ctx.rotate(a);
+      ctx.beginPath();
+      ctx.moveTo(r - 2, -3);
+      ctx.lineTo(r + 5, 0);
+      ctx.lineTo(r - 2, 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    // Hub
+    ctx.fillStyle = '#0ea5e9';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 

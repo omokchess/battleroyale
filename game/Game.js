@@ -508,6 +508,11 @@ export class Game {
         this._updateThrownSpear(proj, deltaTime, now);
         return;
       }
+      // Chakram boomerangs out then back, hitting on both legs.
+      if (proj.kind === 'chakram') {
+        this._updateChakram(proj, deltaTime, now);
+        return;
+      }
 
       proj.update(deltaTime);
 
@@ -656,6 +661,10 @@ export class Game {
   _performAutomaticAttack(player, weaponConfig, now) {
     if (player.weapon === 'magicstaff') {
       this._castMagicStaff(player, now);
+      return;
+    }
+    if (player.weapon === 'chakram') {
+      this._throwChakram(player, weaponConfig, now);
       return;
     }
     const combo = this._resolveComboAttack(player, weaponConfig, now);
@@ -1646,6 +1655,7 @@ export class Game {
       case 'matchlock': this._fireMatchlock(player, now); break;
       case 'katana': this._castKatanaSkill(player, now); break;
       case 'sniper': this._fireSniperShot(player, now); break;
+      case 'chakram': this._throwChakramFan(player, now); break;
       default: break;
     }
   }
@@ -3065,6 +3075,117 @@ export class Game {
         if (died) this._creditKill(proj.ownerId, target, '투창으로');
       }
     });
+  }
+
+  // --- 차크람 (chakram): boomerang disc, basic attack + 3-way fan skill -------
+
+  // Spawn one chakram disc travelling at `angle`. `isSkill` discs don't lock the
+  // owner's primary throw (the F fan fires multiple at once).
+  _spawnChakram(player, angle, damage, outRange, speed, now, tag, isSkill) {
+    const spawnDist = (player.radius || 14) + 3;
+    const proj = new Projectile(
+      `${player.id}-chakram-${tag}`,
+      player.id,
+      player.x + Math.cos(angle) * spawnDist,
+      player.y + Math.sin(angle) * spawnDist,
+      angle, speed, Infinity, damage, 'chakram'
+    );
+    proj.weapon = 'chakram';
+    proj.radius = 13;
+    proj.phase = 'out';
+    proj.bornAt = now;
+    proj.outRange = outRange;
+    proj.locksOwner = !isSkill;     // only the basic throw disarms until return
+    proj.hitOut = new Set();
+    proj.hitBack = new Set();
+    this.projectiles.push(proj);
+    return proj;
+  }
+
+  _throwChakram(player, cfg, now) {
+    player.lastAttackTime = now;    // re-stamped on return so the 900ms cd starts then
+    player.chakramOut = true;
+    this._spawnChakram(player, player.angle, cfg.damage, cfg.range, cfg.speed, now, `${now}`, false);
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+      weapon: 'chakram', type: 'projectile_shot', projectileKind: 'chakram',
+      progress: 0, timestamp: now, lifetime: 200
+    });
+  }
+
+  // F skill: three discs in a fan. These don't disarm the player (the basic disc
+  // may still be out); they simply expire on return without re-stamping cooldown.
+  _throwChakramFan(player, now) {
+    const sk = SkillConfig.chakram;
+    player.skillCdLeft = (sk.cooldownMs || 6000) / 1000;
+    const n = sk.fanCount || 3;
+    const spread = ((sk.fanSpreadDeg || 34) * Math.PI) / 180;
+    for (let i = 0; i < n; i++) {
+      const off = n === 1 ? 0 : (i - (n - 1) / 2) * (spread / (n - 1));
+      this._spawnChakram(player, player.angle + off, sk.damage, sk.range, sk.speed, now, `fan-${now}-${i}`, true);
+    }
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+      weapon: 'chakram', type: 'projectile_shot', projectileKind: 'chakram',
+      progress: 0, timestamp: now, lifetime: 240
+    });
+  }
+
+  _updateChakram(proj, deltaTime, now) {
+    const owner = this.players[proj.ownerId];
+    if (!owner || owner.isDead) {
+      proj.isDead = true;
+      if (owner && proj.locksOwner) owner.chakramOut = false;
+      return;
+    }
+
+    const damageLeg = (hitSet, label) => {
+      Object.keys(this.players).forEach(tid => {
+        const target = this.players[tid];
+        if (target.id === proj.ownerId || target.isDead || target.isInvincible() || hitSet.has(target.id)) return;
+        if (Collision.checkProjectileHit(proj, target)) {
+          hitSet.add(target.id);
+          const died = target.takeDamage(proj.damage, '차크람');
+          if (died) this._creditKill(proj.ownerId, target, '차크람으로');
+        }
+      });
+    };
+
+    if (proj.phase === 'out') {
+      proj.x += proj.vx * deltaTime;
+      proj.y += proj.vy * deltaTime;
+      damageLeg(proj.hitOut, 'out');
+      const flew = Math.hypot(proj.x - proj.startX, proj.y - proj.startY);
+      const hitWall = proj.x <= proj.radius || proj.x >= this.mapWidth - proj.radius ||
+                      proj.y <= proj.radius || proj.y >= this.mapHeight - proj.radius;
+      const hitCover = this.cover.length && coverBlocksCircle(this.cover, proj.x, proj.y, proj.radius);
+      if (flew >= proj.outRange || hitWall || hitCover) {
+        proj.x = Math.max(proj.radius, Math.min(this.mapWidth - proj.radius, proj.x));
+        proj.y = Math.max(proj.radius, Math.min(this.mapHeight - proj.radius, proj.y));
+        proj.phase = 'return';
+      }
+      return;
+    }
+
+    // Return leg: home toward the owner; re-hit anyone not struck on the way back.
+    const dx = owner.x - proj.x;
+    const dy = owner.y - proj.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 22) {
+      proj.isDead = true;
+      if (proj.locksOwner) {
+        owner.chakramOut = false;
+        owner.lastAttackTime = now; // cooldown starts once the disc is back in hand
+      }
+      return;
+    }
+    const sp = Math.max(SkillConfig.chakram.returnSpeed || 720, proj.speed * 0.95);
+    const ux = dx / dist, uy = dy / dist;
+    proj.vx = ux * sp; proj.vy = uy * sp;
+    proj.angle = Math.atan2(uy, ux);
+    proj.x += proj.vx * deltaTime;
+    proj.y += proj.vy * deltaTime;
+    damageLeg(proj.hitBack, 'back');
   }
 
   _sendLocalInput(now) {

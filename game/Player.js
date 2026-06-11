@@ -53,6 +53,7 @@ export class Player {
     this.buffType = null;     // 'axe_rage' | 'gauntlet_lance' | null
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
+    this.chakramOut = false;  // true while a thrown chakram hasn't returned (disarmed)
     this.hammerSkillUntil = 0; // host-ms timestamp: no basic attacks until the hammer skill fully ends
     this.pendingIcicles = 0;   // magic staff: ice shards loaded, waiting for F to fire
     this.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };
@@ -215,6 +216,7 @@ export class Player {
     this.buffType = null;
     this.buffTimeLeft = 0;
     this.spearThrown = false;
+    this.chakramOut = false;
     this.hammerSkillUntil = 0;
     this.pendingIcicles = 0;
     this.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };
@@ -241,7 +243,7 @@ export class Player {
    * Try to initiate an attack based on weapon cooldown
    */
   canAttack(now) {
-    if (this.isDead || this.stunTimeLeft > 0 || this.spearThrown || this.greatswordChargeStart > 0 || this.katanaChargeStart > 0 || this.daggerQte) return false;
+    if (this.isDead || this.stunTimeLeft > 0 || this.spearThrown || this.chakramOut || this.greatswordChargeStart > 0 || this.katanaChargeStart > 0 || this.daggerQte) return false;
     // Hammer skill: absolutely no basic attacks from cast until the last shockwave fires.
     if (now < (this.hammerSkillUntil || 0)) return false;
     // Magic staff: don't auto-cast again while ice shards are loaded (waiting for F).
