@@ -677,6 +677,13 @@ export class Game {
           p.respawnTime = 0;
           p.respawnRemainingMs = 0;
           p.clearCombatTimers();
+          // Cosmetic respawn effect (equipped), synced to all.
+          if (p.respawnFxColor) {
+            this.effects.push({
+              attackerId: p.id, x: p.x, y: p.y, weapon: '', type: 'respawn_fx',
+              color: p.respawnFxColor, progress: 0, timestamp: now, lifetime: 560
+            });
+          }
           if (!p.isDummy) this._announce(`${p.nickname}님이 다시 부활했습니다!`);
         }
       } else {
@@ -1289,10 +1296,21 @@ export class Game {
       // Kill feed: broadcast so every peer shows it, and add locally (host).
       const evt = Protocol.killEvent(
         killer.id, killer.nickname, target.id, target.nickname,
-        killer.weapon, viaLabel
+        killer.weapon, viaLabel,
+        killer.title || null, target.title || null
       );
       if (this.networkManager?.isHost) this.networkManager.broadcast(evt);
       this._pushKillFeed(evt);
+
+      // Cosmetic kill effect at the victim (equipped kill-fx), synced to all.
+      const kfx = killer.killFx;
+      if (kfx && kfx.style && target) {
+        this.effects.push({
+          attackerId: killer.id, x: target.x, y: target.y,
+          weapon: '', type: 'kill_fx', style: kfx.style, color: kfx.color || '#ffd24a',
+          progress: 0, timestamp: Date.now(), lifetime: 520
+        });
+      }
     } else {
       this._announce(`${target.nickname}님이 전사했습니다.`);
     }
@@ -1432,6 +1450,8 @@ export class Game {
       victimName: evt.victimName,
       weapon: evt.weapon,
       via: evt.via || '',
+      killerTitle: evt.killerTitle || null,
+      victimTitle: evt.victimTitle || null,
       involvesLocal,
       isLocalKill: evt.killerId === this.localPlayerId,
       born: Date.now()
@@ -1463,13 +1483,15 @@ export class Game {
       const killerColor = e.isLocalKill ? '#66fcf1' : '#e5e7eb';
       const victimColor = (e.involvesLocal && !e.isLocalKill) ? '#ff6b6b' : '#9ca3af';
       const via = e.via ? `<span class="text-gray-500">${esc(e.via)}</span> ` : '';
+      const title = (t) => (t && t.text)
+        ? `<span style="color:${t.color || '#9ca3af'}" class="text-[9px] mr-0.5">${esc(t.text)}</span>` : '';
       return `<div class="bg-[#1f2833]/85 border-2 px-2 py-1 text-[11px] leading-tight drop-shadow"
         style="opacity:${opacity.toFixed(2)};border-color:${border}">
-        <span style="color:${killerColor}" class="font-bold">${esc(e.killerName)}</span>
+        ${title(e.killerTitle)}<span style="color:${killerColor}" class="font-bold">${esc(e.killerName)}</span>
         <span class="text-gray-500 mx-1">${via}»</span>
         <span style="color:${wColor}" class="font-bold">${esc(wName)}</span>
         <span class="text-gray-500 mx-1">»</span>
-        <span style="color:${victimColor}">${esc(e.victimName)}</span>
+        ${title(e.victimTitle)}<span style="color:${victimColor}">${esc(e.victimName)}</span>
       </div>`;
     });
     el.innerHTML = rows.join('');
@@ -4242,6 +4264,7 @@ export class Game {
       const weapon = Weapons[joinPayload.weapon] ? joinPayload.weapon : 'sword';
       const costume = sanitizeCostume(joinPayload.costume);
       const guestPlayer = new Player(remoteId, nickname, weapon, spawnP.x, spawnP.y, costume);
+      guestPlayer.applyCosmetics(sanitizeCosmetics(joinPayload.costume?.cosmetics));
       guestPlayer.isMobile = !!joinPayload.isMobile; // touch players fire instantly
       this.players[remoteId] = guestPlayer;
 
@@ -4393,6 +4416,7 @@ export class Game {
             p.accentColor = snap.accentColor;
             p.costumeDecoration = snap.costumeDecoration || null;
             p.costumeEffect = snap.costumeEffect || null;
+            p.applyCosmeticsSnapshot(snap.cos);
 
             if (id !== this.localPlayerId) {
               // Soft buffer coordinates for smooth client interpolation
@@ -4574,6 +4598,28 @@ function sanitizeCostume(costume) {
     decoration: safeToken(costume.decoration, decorations),
     effect: safeToken(costume.effect, effects)
   };
+}
+
+// Validate a guest's cosmetic loadout (P2P → never trust the wire). Drops
+// anything malformed/unknown so it falls back to the default look. Cosmetic
+// only — nothing here can affect combat.
+function sanitizeCosmetics(cos) {
+  if (!cos || typeof cos !== 'object') return null;
+  const color = (c) => (typeof c === 'string' &&
+    /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|(?:hsla?|rgba?)\([0-9.,%\s]+\))$/.test(c.trim().slice(0, 40)))
+    ? c.trim().slice(0, 40) : null;
+  const out = {};
+  if (color(cos.weaponskin?.data?.tint)) out.weaponskin = { data: { tint: color(cos.weaponskin.data.tint) } };
+  if (color(cos.dashtrail?.data?.color)) out.dashtrail = { data: { color: color(cos.dashtrail.data.color) } };
+  if (color(cos.respawnfx?.data?.color)) out.respawnfx = { data: { color: color(cos.respawnfx.data.color) } };
+  const styles = new Set(['firework', 'skull', 'coins']);
+  if (styles.has(cos.killfx?.data?.style)) {
+    out.killfx = { data: { style: cos.killfx.data.style, color: color(cos.killfx.data.color) } };
+  }
+  if (typeof cos.title?.data?.text === 'string' && cos.title.data.text.trim()) {
+    out.title = { data: { text: cos.title.data.text.trim().slice(0, 12), color: color(cos.title.data.color) } };
+  }
+  return out;
 }
 
 function sanitizeInputKeys(keys = {}) {

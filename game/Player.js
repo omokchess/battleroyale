@@ -93,6 +93,32 @@ export class Player {
       this.costumeDecoration = null;
       this.costumeEffect = null;
     }
+
+    // Cosmetic-only loadout (shop). None of these touch combat.
+    this.applyCosmetics(costume?.cosmetics);
+  }
+
+  /** Adopt an equipped-cosmetics set ({weaponskin, killfx, dashtrail, respawnfx, title}). */
+  applyCosmetics(cos) {
+    this.weaponTint = cos?.weaponskin?.data?.tint || null;
+    this.dashTrailColor = cos?.dashtrail?.data?.color || null;
+    this.killFx = cos?.killfx?.data || null;          // { style, color }
+    this.respawnFxColor = cos?.respawnfx?.data?.color || null;
+    this.title = cos?.title?.data || null;            // { text, color }
+  }
+
+  /** Restore the compact serialized cosmetics blob (see serialize). */
+  applyCosmeticsSnapshot(c) {
+    this.weaponTint = c?.wt || null;
+    this.dashTrailColor = c?.dt || null;
+    this.killFx = c?.kf || null;
+    this.respawnFxColor = c?.rf || null;
+    this.title = c?.ti || null;
+  }
+
+  /** Compact cosmetics blob for the wire. */
+  cosmeticsSnapshot() {
+    return { wt: this.weaponTint, dt: this.dashTrailColor, kf: this.killFx, rf: this.respawnFxColor, ti: this.title };
   }
 
   /**
@@ -332,7 +358,8 @@ export class Player {
       color: this.color,
       accentColor: this.accentColor,
       costumeDecoration: this.costumeDecoration || null,
-      costumeEffect: this.costumeEffect || null
+      costumeEffect: this.costumeEffect || null,
+      cos: this.cosmeticsSnapshot()
     };
   }
 
@@ -372,6 +399,7 @@ export class Player {
     this.accentColor = data.accentColor;
     this.costumeDecoration = data.costumeDecoration || null;
     this.costumeEffect = data.costumeEffect || null;
+    this.applyCosmeticsSnapshot(data.cos);
 
     // Coordinate smoothing can be applied in game loop,
     // but assign directly first
