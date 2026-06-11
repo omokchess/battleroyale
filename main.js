@@ -371,8 +371,9 @@ function startJoin(rawCode) {
 
   netManager = new NetworkManager();
 
-  // Create registration payload frame (carry costume so the host paints us correctly)
-  const joinPayload = Protocol.joinRoom(nickname, chosenWeapon, accountUI.getEquippedCostume());
+  // Create registration payload frame (carry costume so the host paints us
+  // correctly, and isMobile so the host gives touch players instant-fire).
+  const joinPayload = Protocol.joinRoom(nickname, chosenWeapon, accountUI.getEquippedCostume(), isMobileDevice());
 
   netManager.on('onConnected', () => {
     joinBtn.disabled = false;

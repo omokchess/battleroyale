@@ -147,6 +147,13 @@ export class Renderer {
     // Draw Map Borders
     this._drawBorders(ctx, camera, cw, ch, mapWidth, mapHeight);
 
+    // Storm zone boundary (under entities so players read on top of it).
+    if (gameState.storm) this._drawZone(ctx, camera, cw, ch, gameState.storm, nowTime);
+
+    // Cover obstacles + healing items sit on the floor, under players.
+    if (gameState.cover && gameState.cover.length) this._drawCover(ctx, camera, cw, ch, gameState.cover);
+    if (gameState.healingItems && gameState.healingItems.length) this._drawHealingItems(ctx, camera, cw, ch, gameState.healingItems, nowTime);
+
     // Draw Active Attack Visual Effects
     if (activeEffects.length) {
       this._drawEffects(ctx, camera, cw, ch, activeEffects, gameState.players, localPlayerId, visualSettings);
@@ -203,6 +210,11 @@ export class Renderer {
     if (gameState.hitFlash) {
       this._drawHitVignette(this.ctx, cw, ch, gameState.hitFlash);
     }
+    // Out-of-zone warning: pulsing purple screen edge while taking storm damage.
+    if (gameState.zoneOutside) {
+      const pulse = 0.45 + 0.25 * Math.sin(nowTime / 140);
+      this._drawZoneWarning(this.ctx, cw, ch, pulse);
+    }
   }
 
   // Device-pixel ratio used by the backing store, so HUD strokes/sizes stay
@@ -253,6 +265,18 @@ export class Renderer {
     ctx.strokeRect(Math.round(ox), Math.round(oy), Math.round(mw), Math.round(mh));
 
     // Storm zone (Task 5): safe circle + incoming target ring. Inert until then.
+    // Cover tiles (Task 9): faint gray blocks for navigation.
+    const cover = gameState.cover;
+    if (Array.isArray(cover) && cover.length) {
+      ctx.fillStyle = 'rgba(120, 132, 150, 0.8)';
+      for (const t of cover) {
+        const a = w2m(t.x, t.y);
+        const w = Math.max(1, (t.w / mapWidth) * mw);
+        const h = Math.max(1, (t.h / mapHeight) * mh);
+        ctx.fillRect(Math.round(a.x), Math.round(a.y), Math.ceil(w), Math.ceil(h));
+      }
+    }
+
     const storm = gameState.storm;
     if (storm && Number.isFinite(storm.x) && Number.isFinite(storm.y) && Number.isFinite(storm.radius)) {
       const c = w2m(storm.x, storm.y);
@@ -446,6 +470,115 @@ export class Renderer {
     grad.addColorStop(1, `rgba(190,12,12,${0.55 * s})`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, cw, ch);
+    ctx.restore();
+  }
+
+  // Purple screen-edge glow while the local player stands outside the storm.
+  _drawZoneWarning(ctx, cw, ch, strength) {
+    const s = Math.max(0, Math.min(1, strength));
+    ctx.save();
+    const cx = cw / 2, cy = ch / 2;
+    const inner = Math.min(cw, ch) * 0.30;
+    const outer = Math.hypot(cw, cy) * 0.62;
+    const grad = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    grad.addColorStop(0, 'rgba(168,85,247,0)');
+    grad.addColorStop(1, `rgba(147,51,234,${0.5 * s})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.restore();
+  }
+
+  /** Solid cover tiles — pixel blocks with a lighter top bevel. */
+  _drawCover(ctx, camera, cw, ch, cover) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (const t of cover) {
+      const a = camera.toScreen(t.x, t.y, cw, ch);
+      const w = t.w * z, h = t.h * z;
+      // Cull off-screen tiles.
+      if (a.x + w < -20 || a.x > cw + 20 || a.y + h < -20 || a.y > ch + 20) continue;
+      const x = Math.round(a.x), y = Math.round(a.y);
+      ctx.fillStyle = '#3a4250';
+      ctx.fillRect(x, y, Math.ceil(w), Math.ceil(h));
+      ctx.fillStyle = '#4b5566';                 // top bevel
+      ctx.fillRect(x, y, Math.ceil(w), Math.max(2, Math.round(h * 0.18)));
+      ctx.strokeStyle = '#222831';
+      ctx.lineWidth = Math.max(1, z);
+      ctx.strokeRect(x + 0.5, y + 0.5, Math.ceil(w) - 1, Math.ceil(h) - 1);
+    }
+    ctx.restore();
+  }
+
+  /** Storm zone: solid safe-circle ring + dashed incoming next circle. */
+  _drawZone(ctx, camera, cw, ch, storm, now) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    // Incoming circle (during warning/shrinking the next target is shown dashed).
+    if (Number.isFinite(storm.nextRadius) && storm.phase !== 'safe' &&
+        (storm.nextRadius !== storm.radius || storm.nextX !== storm.x)) {
+      const nc = camera.toScreen(storm.nextX, storm.nextY, cw, ch);
+      ctx.setLineDash([6 * z, 5 * z]);
+      ctx.lineWidth = Math.max(1, 2 * z);
+      ctx.strokeStyle = 'rgba(244,114,182,0.85)';
+      ctx.beginPath();
+      ctx.arc(nc.x, nc.y, Math.max(2, storm.nextRadius * z), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Current safe-circle boundary.
+    const c = camera.toScreen(storm.x, storm.y, cw, ch);
+    const r = Math.max(2, storm.radius * z);
+    ctx.lineWidth = Math.max(2, 3 * z);
+    ctx.strokeStyle = 'rgba(168,85,247,0.9)';
+    ctx.shadowColor = 'rgba(168,85,247,0.8)';
+    ctx.shadowBlur = this._glow ? 10 * z : 0;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Pixel hearts for healing items, with a gentle bob. */
+  _drawHealingItems(ctx, camera, cw, ch, items, now) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (const it of items) {
+      if (!it || !Number.isFinite(it.x)) continue;
+      const bob = Math.sin((now + (it.id || 0) * 320) / 360) * 3 * z;
+      const s = camera.toScreen(it.x, it.y, cw, ch);
+      this._drawPixelHeart(ctx, s.x, s.y + bob, 5 * z);
+    }
+    ctx.restore();
+  }
+
+  // A small chunky heart centered at (cx,cy); `u` is the pixel unit size.
+  _drawPixelHeart(ctx, cx, cy, u) {
+    const px = Math.max(1, Math.round(u));
+    // 7x6 heart bitmap.
+    const rows = [
+      '0110110',
+      '1111111',
+      '1111111',
+      '0111110',
+      '0011100',
+      '0001000'
+    ];
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,80,120,0.8)';
+    ctx.shadowBlur = this._glow ? 6 : 0;
+    const w = 7 * px, h = rows.length * px;
+    const ox = Math.round(cx - w / 2), oy = Math.round(cy - h / 2);
+    ctx.fillStyle = '#ff5d7a';
+    for (let r = 0; r < rows.length; r++) {
+      for (let cI = 0; cI < 7; cI++) {
+        if (rows[r][cI] === '1') ctx.fillRect(ox + cI * px, oy + r * px, px, px);
+      }
+    }
+    // tiny white highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillRect(ox + px, oy + px, px, px);
     ctx.restore();
   }
 
@@ -4105,10 +4238,32 @@ export class Renderer {
       const startScr = camera.toScreen(startWorldX, startWorldY, cw, ch);
       const endScr = camera.toScreen(endWorldX, endWorldY, cw, ch);
 
-      ctx.beginPath();
-      ctx.moveTo(startScr.x, startScr.y);
-      ctx.lineTo(endScr.x, endScr.y);
-      ctx.stroke();
+      if (isLocal) {
+        // Always-on aim preview for the local ranged weapon: a glowing
+        // weapon-colored beam so the shot is easy to pre-aim — important on
+        // mobile where sniper/matchlock fire instantly (no telegraph window).
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.shadowColor = weapon.color;
+        ctx.shadowBlur = this._glow ? 8 : 0;
+        ctx.strokeStyle = this._hexToRGB(weapon.color, 0.9);
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(startScr.x, startScr.y);
+        ctx.lineTo(endScr.x, endScr.y);
+        ctx.stroke();
+        // bright impact dot at the wall
+        ctx.fillStyle = this._hexToRGB(weapon.color, 0.95);
+        ctx.beginPath();
+        ctx.arc(endScr.x, endScr.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(startScr.x, startScr.y);
+        ctx.lineTo(endScr.x, endScr.y);
+        ctx.stroke();
+      }
 
       ctx.setLineDash([]);
       ctx.fillStyle = this._hexToRGB(guideColor, 0.25);
