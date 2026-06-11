@@ -75,7 +75,7 @@ export const Protocol = {
 
   // System snapshot state. zone (storm) + healingItems are dynamic and ride
   // along here; cover is static and goes in ROOM_JOINED instead.
-  gameState(players, projectiles, effects, remainingPlayersCount, zone = null, healingItems = null, mines = null) {
+  gameState(players, projectiles, effects, remainingPlayersCount, zone = null, healingItems = null, mines = null, firePatches = null) {
     return {
       type: MsgType.GAME_STATE,
       players,
@@ -85,6 +85,7 @@ export const Protocol = {
       zone,
       healingItems,
       mines,
+      firePatches,
       timestamp: Date.now()
     };
   },

@@ -154,6 +154,7 @@ export class Renderer {
     if (gameState.cover && gameState.cover.length) this._drawCover(ctx, camera, cw, ch, gameState.cover);
     if (gameState.healingItems && gameState.healingItems.length) this._drawHealingItems(ctx, camera, cw, ch, gameState.healingItems, nowTime);
     if (gameState.mines && gameState.mines.length) this._drawMines(ctx, camera, cw, ch, gameState.mines, localPlayerId, nowTime);
+    if (gameState.firePatches && gameState.firePatches.length) this._drawFirePatches(ctx, camera, cw, ch, gameState.firePatches, nowTime);
 
     // Draw Active Attack Visual Effects
     if (activeEffects.length) {
@@ -170,6 +171,8 @@ export class Renderer {
       this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects, mapWidth, mapHeight, visualSettings);
       // Orbiting guardian blades (deterministic from time; suppressed while launched).
       this._drawGuardianOrbits(ctx, camera, cw, ch, gameState.players, gameState.projectiles, nowTime);
+      // Flamethrower cones for anyone actively spraying.
+      this._drawFlameCones(ctx, camera, cw, ch, gameState.players, nowTime);
     }
 
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
@@ -575,6 +578,53 @@ export class Renderer {
         ctx.fillRect(Math.round(s.x - c / 2), Math.round(s.y - c / 2), c, c);
         ctx.globalAlpha = 1;
       }
+    }
+    ctx.restore();
+  }
+
+  /** Flame cone in front of every player currently spraying the flamethrower. */
+  _drawFlameCones(ctx, camera, cw, ch, players, now) {
+    const cfg = Weapons.flamethrower;
+    const z = camera.zoom || 1;
+    for (const id of Object.keys(players)) {
+      const p = players[id];
+      if (!p || p.isDead || p.weapon !== 'flamethrower' || !p.flameSpraying) continue;
+      const scr = camera.toScreen(p.x, p.y, cw, ch);
+      const half = (cfg.angle * Math.PI) / 360;
+      const reach = cfg.range * z;
+      ctx.save();
+      ctx.translate(scr.x, scr.y);
+      ctx.rotate(p.angle);
+      // Layered flickering cone: outer orange, inner yellow.
+      const flick = 0.85 + 0.15 * Math.sin(now / 40 + (p.x + p.y));
+      for (const [frac, color] of [[1, 'rgba(251,146,60,0.32)'], [0.7, 'rgba(253,224,71,0.4)'], [0.4, 'rgba(255,255,255,0.45)']]) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, reach * frac * flick, -half, half);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Burning ground patches (flamethrower F), flickering flame discs. */
+  _drawFirePatches(ctx, camera, cw, ch, patches, now) {
+    const cfg = Weapons.flamethrower;
+    const z = camera.zoom || 1;
+    const r = (cfg && SkillConfig.flamethrower ? SkillConfig.flamethrower.patchRadius : 55) * z;
+    ctx.save();
+    for (const fp of patches) {
+      if (!fp || !Number.isFinite(fp.x)) continue;
+      const scr = camera.toScreen(fp.x, fp.y, cw, ch);
+      const flick = 0.8 + 0.2 * Math.sin(now / 60 + fp.id);
+      ctx.shadowColor = '#fb923c';
+      ctx.shadowBlur = this._glow ? 16 : 0;
+      ctx.fillStyle = `rgba(251,146,60,${0.28 * flick})`;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, r * flick, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(253,224,71,${0.32 * flick})`;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, r * 0.6 * flick, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
   }

@@ -55,6 +55,10 @@ export class Player {
     this.spearThrown = false; // true while the javelin skill is airborne
     this.chakramOut = false;  // true while a thrown chakram hasn't returned (disarmed)
     this.slowTimeLeft = 0;    // seconds of a movement slow (harpoon pull) — can still attack
+    // Flamethrower fuel state (host-driven; flameSpraying is synced for visuals).
+    this.flameFuel = (Weapons.flamethrower?.fuelMs) || 3000;
+    this.flameEmpty = false;
+    this.flameSpraying = false;
     this.hammerSkillUntil = 0; // host-ms timestamp: no basic attacks until the hammer skill fully ends
     this.pendingIcicles = 0;   // magic staff: ice shards loaded, waiting for F to fire
     this.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };
@@ -171,7 +175,10 @@ export class Player {
       const length = Math.sqrt(dx * dx + dy * dy);
       const weaponConfig = Weapons[this.weapon] || Weapons.sword;
       const slowMul = this.slowTimeLeft > 0 ? 0.35 : 1; // harpoon pull drag
-      const moveSpeed = this.speed * (weaponConfig.moveSpeed ?? 1) * slowMul;
+      // Flamethrower is dragged down while actively spraying.
+      let baseMul = weaponConfig.moveSpeed ?? 1;
+      if (this.weapon === 'flamethrower' && this.flameSpraying) baseMul = weaponConfig.sprayMoveSpeed ?? baseMul;
+      const moveSpeed = this.speed * baseMul * slowMul;
       this.x += (dx / length) * moveSpeed * deltaTime;
       this.y += (dy / length) * moveSpeed * deltaTime;
     }
@@ -221,6 +228,9 @@ export class Player {
     this.spearThrown = false;
     this.chakramOut = false;
     this.slowTimeLeft = 0;
+    this.flameFuel = (Weapons.flamethrower?.fuelMs) || 3000;
+    this.flameEmpty = false;
+    this.flameSpraying = false;
     this.hammerSkillUntil = 0;
     this.pendingIcicles = 0;
     this.magicCooldowns = { fireball: 0, iceShard: 0, lifebound: 0 };
@@ -303,6 +313,7 @@ export class Player {
       dashCdMs: Math.round(this.dashCdLeft * 1000),
       stunMs: Math.round(this.stunTimeLeft * 1000),
       spearThrown: this.spearThrown,
+      flameSpraying: this.flameSpraying,
       arrowStacks: this.arrowStacks || 0,
       greatswordChargeMs: this.greatswordChargeStart > 0 ? Math.max(0, Date.now() - this.greatswordChargeStart) : 0,
       katanaChargeMs: this.katanaChargeStart > 0 ? Math.max(0, Date.now() - this.katanaChargeStart) : 0,

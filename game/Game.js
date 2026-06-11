@@ -57,6 +57,9 @@ export class Game {
     // Mines (mine-bag weapon): host owns/explodes them, synced via GAME_STATE.
     this.mines = [];
     this._mineSeq = 0;
+    // Fire patches (flamethrower F): timed ground burn, synced via GAME_STATE.
+    this.firePatches = [];
+    this._patchSeq = 0;
     // Storm zone (Task 5): cycle-based safe circle. Host simulates, syncs state.
     this.zone = (this.roomConfig.storm)
       ? new Zone(this.mapWidth, this.mapHeight, this.roomConfig.arenaSize)
@@ -449,6 +452,8 @@ export class Game {
     this._updateHealingItems(now);
     this._updateGuardianBlades(now);
     this._updateMines(now);
+    this._updateFlamethrower(now, deltaTime);
+    this._updateFirePatches(now);
 
     // 2.5 Advance skill buffs & cooldowns authoritatively.
     Object.keys(this.players).forEach(id => {
@@ -1698,6 +1703,7 @@ export class Game {
       case 'guardian': this._launchGuardianBlades(player, now); break;
       case 'harpoon': this._harpoonPull(player, now); break;
       case 'minebag': this._placeMine(player, now); break;
+      case 'flamethrower': this._throwFirePatch(player, now); break;
       default: break;
     }
   }
@@ -3286,6 +3292,82 @@ export class Game {
     this.mines = survivors;
   }
 
+  // --- 화염방사기 (flamethrower): continuous cone spray + fuel ---------------
+  _updateFlamethrower(now, deltaTime) {
+    const cfg = Weapons.flamethrower;
+    Object.values(this.players).forEach(player => {
+      if (player.weapon !== 'flamethrower' || player.isDead || player.isDummy) return;
+      if (player.flameFuel === undefined) player.flameFuel = cfg.fuelMs;
+
+      const canSpray = !player.flameEmpty && player.flameFuel > 0 && player.stunTimeLeft <= 0;
+      if (canSpray) {
+        player.flameSpraying = true;
+        player.flameFuel = Math.max(0, player.flameFuel - deltaTime * 1000);
+        if (player.flameFuel <= 0) player.flameEmpty = true; // forced recharge
+
+        const halfAng = (cfg.angle * Math.PI) / 360;
+        if (!player._flameHits) player._flameHits = {};
+        Object.values(this.players).forEach(t => {
+          if (t.id === player.id || t.isDead || t.isInvincible?.()) return;
+          const dx = t.x - player.x, dy = t.y - player.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > cfg.range + (t.radius || 14)) return;
+          let ad = Math.atan2(dy, dx) - player.angle;
+          while (ad > Math.PI) ad -= Math.PI * 2;
+          while (ad < -Math.PI) ad += Math.PI * 2;
+          if (Math.abs(ad) > halfAng) return;
+          if (this.cover.length && coverBlocksSegment(this.cover, player.x, player.y, t.x, t.y)) return;
+          const last = player._flameHits[t.id] || 0;
+          if (now - last < (cfg.tickMs || 200)) return;
+          player._flameHits[t.id] = now;
+          const died = t.takeDamage(cfg.damage, '화염방사기');
+          if (died) this._creditKill(player.id, t, '화염방사기로');
+        });
+      } else {
+        player.flameSpraying = false;
+        // Refill while not spraying; clear the empty lock once full.
+        const rate = cfg.fuelMs / (cfg.rechargeMs || 2000);
+        player.flameFuel = Math.min(cfg.fuelMs, player.flameFuel + deltaTime * 1000 * rate);
+        if (player.flameFuel >= cfg.fuelMs) player.flameEmpty = false;
+      }
+    });
+  }
+
+  _throwFirePatch(player, now) {
+    const sk = SkillConfig.flamethrower;
+    player.skillCdLeft = (sk.cooldownMs || 7000) / 1000;
+    let x = player.x + Math.cos(player.angle) * (sk.patchRange || 76);
+    let y = player.y + Math.sin(player.angle) * (sk.patchRange || 76);
+    x = Math.max(10, Math.min(this.mapWidth - 10, x));
+    y = Math.max(10, Math.min(this.mapHeight - 10, y));
+    this.firePatches.push({
+      id: ++this._patchSeq, ownerId: player.id, x, y,
+      expireAt: now + (sk.patchMs || 2000), nextTickAt: now
+    });
+  }
+
+  _updateFirePatches(now) {
+    if (!this.firePatches.length) return;
+    const sk = SkillConfig.flamethrower;
+    const survivors = [];
+    for (const patch of this.firePatches) {
+      if (now >= patch.expireAt) continue;
+      if (now >= patch.nextTickAt) {
+        patch.nextTickAt = now + (sk.patchTickMs || 250);
+        const r = sk.patchRadius || 55;
+        for (const t of Object.values(this.players)) {
+          if (t.id === patch.ownerId || t.isDead || t.isInvincible?.()) continue;
+          if ((t.x - patch.x) ** 2 + (t.y - patch.y) ** 2 <= (r + (t.radius || 14)) ** 2) {
+            const died = t.takeDamage(sk.patchDamage || 2.5, '화염 장판');
+            if (died) this._creditKill(patch.ownerId, t, '화염 장판으로');
+          }
+        }
+      }
+      survivors.push(patch);
+    }
+    this.firePatches = survivors;
+  }
+
   // --- 작살 (harpoon): F yanks the player toward the aimed enemy/wall ---------
   _harpoonPull(player, now) {
     const sk = SkillConfig.harpoon;
@@ -3566,6 +3648,7 @@ export class Game {
       cover: this.cover,
       healingItems: this.healingItems,
       mines: this.mines,
+      firePatches: this.firePatches,
       storm,
       zoneOutside,
       // In mobile joystick mode, the cursor is only flashed for actual target casts.
@@ -3688,7 +3771,8 @@ export class Game {
       this.remainingPlayersCount,
       this.zone ? this.zone.serialize() : null,
       this.roomConfig.healing ? this.healingItems : null,
-      this.mines.length ? this.mines : null
+      this.mines.length ? this.mines : null,
+      this.firePatches.length ? this.firePatches : null
     );
 
     this.networkManager.broadcast(payload);
@@ -4287,6 +4371,7 @@ export class Game {
             p.dashCdLeft = (snap.dashCdMs || 0) / 1000;
             p.stunTimeLeft = (snap.stunMs || 0) / 1000;
             p.spearThrown = Boolean(snap.spearThrown);
+            p.flameSpraying = Boolean(snap.flameSpraying);
             p.arrowStacks = Math.max(0, Math.floor(snap.arrowStacks || 0));
             p.greatswordChargeStart = snap.greatswordChargeMs > 0 ? Date.now() - snap.greatswordChargeMs : 0;
             p.katanaChargeStart = snap.katanaChargeMs > 0 ? Date.now() - snap.katanaChargeMs : 0;
@@ -4343,6 +4428,7 @@ export class Game {
           this.zone = data.zone || null;
           this.healingItems = Array.isArray(data.healingItems) ? data.healingItems : [];
           this.mines = Array.isArray(data.mines) ? data.mines : [];
+          this.firePatches = Array.isArray(data.firePatches) ? data.firePatches : [];
 
           // 2. Synchronize projectiles: recreate Projectile instances
           this.projectiles = data.projectiles.map(snap => {

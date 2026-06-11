@@ -283,6 +283,24 @@ export const Weapons = {
     description: '평타는 약한 근접 베기지만, F로 지뢰를 깔아 길목을 장악하는 두뇌형 무기입니다. 정면 교전이 가장 약하니 설치할 틈을 만들며 싸워야 합니다.',
     skill: 'F 스킬: 발밑에 지뢰 설치(1초 후 활성화, 폭발 38·반경 60, 최대 3개) · 설치 쿨타임 2.5초',
     color: '#f59e0b'
+  },
+  flamethrower: {
+    name: '화염방사기',
+    damage: 6,              // per tick (5 ticks/s → DPS 30)
+    maxHp: 130,
+    cooldown: 200,          // tick reference (no manual swing)
+    automaticAttack: false, // sprays continuously via its own updater
+    moveSpeed: 0.95,        // while recharging / not spraying
+    sprayMoveSpeed: 0.55,   // dragged down while spraying
+    range: 90,
+    angle: 60,              // cone width (degrees)
+    type: 'cone',
+    tickMs: 200,
+    fuelMs: 3000,           // 3s of continuous spray
+    rechargeMs: 2000,       // 2s to refill once fully spent
+    description: '전방 부채꼴에 불을 지속 분사하는 근접 무기입니다. 조준이 후해 모바일에 강하지만 사거리가 짧고 분사 중에는 굼떠지며, 연료가 바닥나면 재충전 동안 무장 해제됩니다.',
+    skill: 'F 스킬: 전방에 2초간 타오르는 화염 장판을 던집니다(초당 10 피해) · 쿨타임 7초',
+    color: '#fb923c'
   }
 };
 
@@ -373,6 +391,14 @@ export const SkillConfig = {
     triggerRadius: 46,     // enemy proximity that detonates an armed mine
     damage: 38,
     maxMines: 3            // per player; placing a 4th removes the oldest
+  },
+  flamethrower: {
+    cooldownMs: 7000,
+    patchRange: 76,        // how far in front the patch lands
+    patchRadius: 55,
+    patchMs: 2000,         // burn duration
+    patchTickMs: 250,      // damage cadence
+    patchDamage: 2.5       // per tick (≈10/s)
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends
