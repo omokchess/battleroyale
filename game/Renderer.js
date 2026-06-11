@@ -23,6 +23,10 @@ const WEAPON_SPRITE_META = {
 };
 const WEAPON_ASSET_VERSION = '20260609a';
 
+// The low-res "pixel filter" (Task 4) is disabled by user request — the world
+// renders crisp at full resolution. Flip to true to bring the chunky look back.
+const PIXEL_ART_ENABLED = false;
+
 // Only greatsword uses an idle angle offset; other idle weapons point at aim.
 const WEAPON_IDLE_POSE = {
   greatsword: -0.7
@@ -105,7 +109,7 @@ export class Renderer {
     const oh = Math.max(1, Math.round(ch / S));
     let ctx;
     let usingBuffer = false;
-    if (this.offCtx) {
+    if (this.offCtx && PIXEL_ART_ENABLED) {
       if (this.offscreen.width !== ow || this.offscreen.height !== oh) {
         this.offscreen.width = ow;
         this.offscreen.height = oh;
@@ -3405,7 +3409,10 @@ export class Renderer {
         y: scr.y + motion.bodyY
       };
 
-      if (isLocal || !visualSettings.hideEnemyAttackPreviews) {
+      // Mobile ranged players always show their aim beam (the instant-fire tell),
+      // even to viewers who hid enemy previews — it's the counterplay window.
+      const mobileRangedTell = p.isMobile && getEffectiveWeapon(p.weapon, p.buffType)?.type === 'projectile';
+      if (isLocal || !visualSettings.hideEnemyAttackPreviews || mobileRangedTell) {
         this._drawPlayerAttackRange(ctx, camera, cw, ch, scr, p, isLocal, Boolean(activeAttack), mapWidth, mapHeight, activeAttack);
       }
 
@@ -4245,6 +4252,89 @@ export class Renderer {
       ctx.arc(24, 0, 2, 0, Math.PI * 2);             // muzzle
       ctx.fill();
     }
+    else if (weaponType === 'chakram') {
+      // 차크람: a held spinning ring with four blade spikes.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle + (Date.now() / 120) % (Math.PI * 2));
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(6, 0, 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#bae6fd';
+      for (let i = 0; i < 4; i++) {
+        ctx.save(); ctx.translate(6, 0); ctx.rotate(i * Math.PI / 2);
+        ctx.beginPath(); ctx.moveTo(5, -2); ctx.lineTo(10, 0); ctx.lineTo(5, 2); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
+    else if (weaponType === 'pistols') {
+      // 쌍권총: a compact pistol silhouette.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.fillStyle = '#9ca3af';
+      ctx.fillRect(-2, -2, 16, 4);                   // barrel
+      ctx.fillStyle = '#fb7185';
+      ctx.fillRect(-4, 0, 5, 8);                     // grip
+      ctx.shadowBlur = this._glow * (active ? 6 : 0);
+      ctx.shadowColor = '#fb7185';
+      ctx.fillStyle = '#fecdd3';
+      ctx.fillRect(13, -1.5, 3, 3);                  // muzzle
+    }
+    else if (weaponType === 'guardian') {
+      // 수호 블레이드: a short emitter blade (orbit shown separately).
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.shadowBlur = this._glow * (active ? 8 : 4);
+      ctx.shadowColor = '#2dd4bf';
+      ctx.fillStyle = '#2dd4bf';
+      ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(14, 0); ctx.lineTo(0, 3); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#0f766e';
+      ctx.fillRect(-5, -2.2, 6, 4.4);                // hilt
+    }
+    else if (weaponType === 'harpoon') {
+      // 작살: a launcher with a barbed bolt.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(-9, -3, 6, 6);                    // launcher body
+      ctx.strokeStyle = '#60a5fa';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(16, 0); ctx.stroke(); // shaft
+      ctx.fillStyle = '#bfdbfe';
+      ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(14, -5); ctx.lineTo(16, 0); ctx.lineTo(14, 5); ctx.closePath(); ctx.fill(); // barbed head
+    }
+    else if (weaponType === 'minebag') {
+      // 지뢰 가방: a satchel with a spiked mine.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.fillStyle = '#92400e';
+      ctx.fillRect(-6, -5, 11, 10);                  // bag
+      ctx.fillStyle = '#3a2a08';
+      ctx.fillRect(-6, -5, 11, 2);                   // flap
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath(); ctx.arc(9, 0, 4, 0, Math.PI * 2); ctx.fill(); // mine
+      ctx.fillStyle = '#7c2d12';
+      for (const a of [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]) {
+        ctx.fillRect(9 + Math.cos(a) * 4 - 0.8, Math.sin(a) * 4 - 0.8, 1.6, 1.6);
+      }
+    }
+    else if (weaponType === 'flamethrower') {
+      // 화염방사기: a tank + nozzle with a pilot flame.
+      ctx.translate(wX, wY);
+      ctx.rotate(weaponAngle);
+      ctx.fillStyle = '#6b7280';
+      ctx.fillRect(-9, -3.5, 11, 7);                 // tank/body
+      ctx.strokeStyle = '#9ca3af';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(2, 0); ctx.lineTo(16, 0); ctx.stroke(); // nozzle
+      ctx.shadowBlur = this._glow * 8;
+      ctx.shadowColor = '#fb923c';
+      ctx.fillStyle = '#fb923c';
+      ctx.beginPath(); ctx.arc(18, 0, 3, 0, Math.PI * 2); ctx.fill(); // pilot flame
+      if (active) {
+        ctx.fillStyle = 'rgba(253,224,71,0.85)';
+        ctx.beginPath(); ctx.arc(22, 0, 2.6, 0, Math.PI * 2); ctx.fill();
+      }
+    }
 
     ctx.restore();
   }
@@ -4494,10 +4584,11 @@ export class Renderer {
       const startScr = camera.toScreen(startWorldX, startWorldY, cw, ch);
       const endScr = camera.toScreen(endWorldX, endWorldY, cw, ch);
 
-      if (isLocal) {
-        // Always-on aim preview for the local ranged weapon: a glowing
-        // weapon-colored beam so the shot is easy to pre-aim — important on
-        // mobile where sniper/matchlock fire instantly (no telegraph window).
+      if (player.isMobile) {
+        // Mobile shooters fire instantly (no telegraph window), so their aim
+        // beam glows in the weapon color and is visible to EVERYONE — it stands
+        // in for the telegraph so enemies can read and dodge the instant shot.
+        // Desktop shooters keep the faint guide (they still get the telegraph).
         ctx.save();
         ctx.setLineDash([]);
         ctx.shadowColor = weapon.color;

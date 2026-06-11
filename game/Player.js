@@ -9,6 +9,7 @@ export class Player {
   constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
     this.id = id;
     this.nickname = nickname || 'Gladiator';
+    this.isMobile = false;   // touch player → instant sniper/matchlock + visible aim tell
     this.weapon = weaponType in Weapons ? weaponType : 'sword';
     const weaponConfig = Weapons[this.weapon] || Weapons.sword;
     this.x = x;
@@ -314,6 +315,7 @@ export class Player {
       stunMs: Math.round(this.stunTimeLeft * 1000),
       spearThrown: this.spearThrown,
       flameSpraying: this.flameSpraying,
+      isMobile: this.isMobile,
       arrowStacks: this.arrowStacks || 0,
       greatswordChargeMs: this.greatswordChargeStart > 0 ? Math.max(0, Date.now() - this.greatswordChargeStart) : 0,
       katanaChargeMs: this.katanaChargeStart > 0 ? Math.max(0, Date.now() - this.katanaChargeStart) : 0,

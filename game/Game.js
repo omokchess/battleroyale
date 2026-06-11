@@ -4372,6 +4372,7 @@ export class Game {
             p.stunTimeLeft = (snap.stunMs || 0) / 1000;
             p.spearThrown = Boolean(snap.spearThrown);
             p.flameSpraying = Boolean(snap.flameSpraying);
+            p.isMobile = Boolean(snap.isMobile);
             p.arrowStacks = Math.max(0, Math.floor(snap.arrowStacks || 0));
             p.greatswordChargeStart = snap.greatswordChargeMs > 0 ? Date.now() - snap.greatswordChargeMs : 0;
             p.katanaChargeStart = snap.katanaChargeMs > 0 ? Date.now() - snap.katanaChargeMs : 0;
