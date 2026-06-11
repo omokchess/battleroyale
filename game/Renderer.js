@@ -153,6 +153,7 @@ export class Renderer {
     // Cover obstacles + healing items sit on the floor, under players.
     if (gameState.cover && gameState.cover.length) this._drawCover(ctx, camera, cw, ch, gameState.cover);
     if (gameState.healingItems && gameState.healingItems.length) this._drawHealingItems(ctx, camera, cw, ch, gameState.healingItems, nowTime);
+    if (gameState.mines && gameState.mines.length) this._drawMines(ctx, camera, cw, ch, gameState.mines, localPlayerId, nowTime);
 
     // Draw Active Attack Visual Effects
     if (activeEffects.length) {
@@ -538,6 +539,43 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Mines. The placer sees their own mines clearly; enemies only get a faint
+   * blinking pixel (intentional — fully invisible mines feel unfair).
+   */
+  _drawMines(ctx, camera, cw, ch, mines, localPlayerId, now) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    const blink = (Math.sin(now / 220) + 1) / 2; // 0..1
+    for (const m of mines) {
+      if (!m || !Number.isFinite(m.x)) continue;
+      const s = camera.toScreen(m.x, m.y, cw, ch);
+      const armed = now >= (m.armAt || 0);
+      const mine = m.ownerId === localPlayerId;
+      if (mine) {
+        // Owner: clear pixel mine with a pulsing light.
+        const r = 6 * z;
+        ctx.fillStyle = '#7c5410';
+        ctx.fillRect(Math.round(s.x - r), Math.round(s.y - r), Math.round(r * 2), Math.round(r * 2));
+        ctx.fillStyle = armed ? `rgba(255,80,80,${0.5 + 0.5 * blink})` : '#fbbf24';
+        const c = Math.max(2, Math.round(2.4 * z));
+        ctx.fillRect(Math.round(s.x - c / 2), Math.round(s.y - c / 2), c, c);
+        ctx.strokeStyle = '#3a2a08';
+        ctx.lineWidth = Math.max(1, z);
+        ctx.strokeRect(Math.round(s.x - r) - 0.5, Math.round(s.y - r) - 0.5, Math.round(r * 2) + 1, Math.round(r * 2) + 1);
+      } else if (armed) {
+        // Enemy: just a faint 1–2px blink, so it's barely perceptible.
+        ctx.globalAlpha = 0.25 + 0.35 * blink;
+        ctx.fillStyle = '#ff6b6b';
+        const c = Math.max(2, Math.round(2 * z));
+        ctx.fillRect(Math.round(s.x - c / 2), Math.round(s.y - c / 2), c, c);
+        ctx.globalAlpha = 1;
+      }
+    }
     ctx.restore();
   }
 
@@ -1653,9 +1691,31 @@ export class Renderer {
         this._drawIcicleLoad(ctx, scr, e, alpha, zoom);
       } else if (e.type === 'sniper_teleport') {
         this._drawSniperTeleport(ctx, scr, e, alpha, zoom);
+      } else if (e.type === 'mine_blast') {
+        this._drawMineBlast(ctx, scr, e, alpha, zoom);
       }
     });
 
+    ctx.restore();
+  }
+
+  // Expanding orange shockwave for a mine detonation.
+  _drawMineBlast(ctx, scr, e, alpha, zoom) {
+    const p = clamp01(e.progress);
+    const r = (e.range || 60) * zoom * (0.3 + 0.7 * easeOutCubic(p));
+    ctx.save();
+    ctx.globalAlpha = alpha * (1 - p);
+    ctx.shadowColor = '#f59e0b';
+    ctx.shadowBlur = this._glow ? 14 : 0;
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 3 + 3 * (1 - p);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(245,158,11,${0.25 * (1 - p)})`;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r * 0.85, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 

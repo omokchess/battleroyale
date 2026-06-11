@@ -270,6 +270,19 @@ export const Weapons = {
     description: '중거리로 작살을 던져 명중한 적을 자신 앞으로 끌어옵니다. 끌어온 직후 짧은 경직을 주지만 본인 평타가 약해, 마무리할 다음 수가 필요한 시동기입니다.',
     skill: 'F 스킬: 조준 방향의 적 또는 벽으로 자신이 끌려가는 이동기(피해 없음) · 쿨타임 5초',
     color: '#60a5fa'
+  },
+  minebag: {
+    name: '지뢰 가방',
+    damage: 12,
+    maxHp: 115,
+    cooldown: 500,
+    moveSpeed: 1.15,
+    range: 55,
+    angle: 90,
+    type: 'melee_arc',
+    description: '평타는 약한 근접 베기지만, F로 지뢰를 깔아 길목을 장악하는 두뇌형 무기입니다. 정면 교전이 가장 약하니 설치할 틈을 만들며 싸워야 합니다.',
+    skill: 'F 스킬: 발밑에 지뢰 설치(1초 후 활성화, 폭발 38·반경 60, 최대 3개) · 설치 쿨타임 2.5초',
+    color: '#f59e0b'
   }
 };
 
@@ -352,6 +365,14 @@ export const SkillConfig = {
     stopGap: 32,           // stop short of the contact point
     pullToFront: 50,       // basic-attack pulls the target this far in front
     slowMs: 300            // brief drag on a hooked target (not a stun)
+  },
+  minebag: {
+    cooldownMs: 2500,      // place cooldown
+    armMs: 1000,           // delay before a mine becomes live
+    blastRadius: 60,
+    triggerRadius: 46,     // enemy proximity that detonates an armed mine
+    damage: 38,
+    maxMines: 3            // per player; placing a 4th removes the oldest
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends

@@ -54,6 +54,9 @@ export class Game {
     this.healingItems = [];
     this._healingSeq = 0;
     this._nextHealAt = 0;
+    // Mines (mine-bag weapon): host owns/explodes them, synced via GAME_STATE.
+    this.mines = [];
+    this._mineSeq = 0;
     // Storm zone (Task 5): cycle-based safe circle. Host simulates, syncs state.
     this.zone = (this.roomConfig.storm)
       ? new Zone(this.mapWidth, this.mapHeight, this.roomConfig.arenaSize)
@@ -445,6 +448,7 @@ export class Game {
     this._updateZone(now, deltaTime);
     this._updateHealingItems(now);
     this._updateGuardianBlades(now);
+    this._updateMines(now);
 
     // 2.5 Advance skill buffs & cooldowns authoritatively.
     Object.keys(this.players).forEach(id => {
@@ -1693,6 +1697,7 @@ export class Game {
       case 'pistols': this._firePistolBarrage(player, now); break;
       case 'guardian': this._launchGuardianBlades(player, now); break;
       case 'harpoon': this._harpoonPull(player, now); break;
+      case 'minebag': this._placeMine(player, now); break;
       default: break;
     }
   }
@@ -3227,6 +3232,60 @@ export class Game {
     damageLeg(proj.hitBack, 'back');
   }
 
+  // --- 지뢰 가방 (mine bag): F places a proximity mine -----------------------
+  _placeMine(player, now) {
+    const sk = SkillConfig.minebag;
+    player.skillCdLeft = (sk.cooldownMs || 2500) / 1000;
+    // Cap mines per player — placing over the cap drops the oldest.
+    const mine = {
+      id: ++this._mineSeq,
+      ownerId: player.id,
+      x: player.x, y: player.y,
+      armAt: now + (sk.armMs || 1000)
+    };
+    this.mines.push(mine);
+    const own = this.mines.filter(m => m.ownerId === player.id);
+    const max = sk.maxMines || 3;
+    if (own.length > max) {
+      const oldest = own[0];
+      this.mines = this.mines.filter(m => m !== oldest);
+    }
+  }
+
+  _updateMines(now) {
+    if (!this.mines.length) return;
+    const sk = SkillConfig.minebag;
+    const survivors = [];
+    for (const mine of this.mines) {
+      const owner = this.players[mine.ownerId];
+      if (!owner || owner.isDead) continue; // placer gone → mine removed
+      if (now < mine.armAt) { survivors.push(mine); continue; }
+      // Armed: detonate if a non-owner steps within the trigger radius.
+      const trig = sk.triggerRadius || 46;
+      let triggered = false;
+      for (const t of Object.values(this.players)) {
+        if (t.id === mine.ownerId || t.isDead || t.isInvincible?.()) continue;
+        if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 <= (trig + (t.radius || 14)) ** 2) { triggered = true; break; }
+      }
+      if (!triggered) { survivors.push(mine); continue; }
+      // Explode: damage every non-owner in the blast radius.
+      const blast = sk.blastRadius || 60;
+      for (const t of Object.values(this.players)) {
+        if (t.id === mine.ownerId || t.isDead || t.isInvincible?.()) continue;
+        if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 <= (blast + (t.radius || 14)) ** 2) {
+          const died = t.takeDamage(sk.damage, '지뢰');
+          if (died) this._creditKill(mine.ownerId, t, '지뢰로');
+        }
+      }
+      this.effects.push({
+        attackerId: mine.ownerId, x: mine.x, y: mine.y,
+        weapon: 'minebag', type: 'mine_blast', range: blast,
+        progress: 0, timestamp: now, lifetime: 360
+      });
+    }
+    this.mines = survivors;
+  }
+
   // --- 작살 (harpoon): F yanks the player toward the aimed enemy/wall ---------
   _harpoonPull(player, now) {
     const sk = SkillConfig.harpoon;
@@ -3506,6 +3565,7 @@ export class Game {
       killFeed: this._killFeed,
       cover: this.cover,
       healingItems: this.healingItems,
+      mines: this.mines,
       storm,
       zoneOutside,
       // In mobile joystick mode, the cursor is only flashed for actual target casts.
@@ -3627,7 +3687,8 @@ export class Game {
       this.effects,
       this.remainingPlayersCount,
       this.zone ? this.zone.serialize() : null,
-      this.roomConfig.healing ? this.healingItems : null
+      this.roomConfig.healing ? this.healingItems : null,
+      this.mines.length ? this.mines : null
     );
 
     this.networkManager.broadcast(payload);
@@ -4278,9 +4339,10 @@ export class Game {
             }
           });
 
-          // Storm zone + healing items are host-owned; clients just store them.
+          // Storm zone + healing items + mines are host-owned; clients just store them.
           this.zone = data.zone || null;
           this.healingItems = Array.isArray(data.healingItems) ? data.healingItems : [];
+          this.mines = Array.isArray(data.mines) ? data.mines : [];
 
           // 2. Synchronize projectiles: recreate Projectile instances
           this.projectiles = data.projectiles.map(snap => {
