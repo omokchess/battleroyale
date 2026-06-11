@@ -61,7 +61,8 @@ export const Weapons = {
   },
   gauntlet: {
     name: '건틀릿',
-    damage: 19,
+    damage: 16,            // balance: 19→16 (DPS 79→67) — was a clear outlier (+40%
+                           // over the next cluster) and overlapped guardian's niche
     maxHp: 110,
     cooldown: 240,
     moveSpeed: 1.3,
