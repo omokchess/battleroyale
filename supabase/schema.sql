@@ -319,3 +319,155 @@ on conflict (id) do nothing;
 insert into public.user_costumes (user_id, costume_id)
 select id, 'default' from public.profiles
 on conflict do nothing;
+
+-- ============================================================================
+-- 7. 범용 아이템 카탈로그 (상점 확장) — 코스튬 외 5개 카테고리 추가
+--    기존 costumes / user_costumes / equip_costume 흐름은 그대로 보존하고,
+--    그 위에 category 기반 범용 카탈로그를 얹는다. 여러 번 실행해도 안전.
+--    치장 전용: 어떤 값도 전투 수치에 영향을 주지 않는다.
+-- ----------------------------------------------------------------------------
+
+-- 카테고리별 착용 슬롯 (코스튬은 기존 equipped_costume 사용).
+alter table public.profiles add column if not exists equipped_weaponskin text not null default 'none';
+alter table public.profiles add column if not exists equipped_killfx     text not null default 'none';
+alter table public.profiles add column if not exists equipped_dashtrail  text not null default 'none';
+alter table public.profiles add column if not exists equipped_respawnfx  text not null default 'none';
+alter table public.profiles add column if not exists equipped_title      text not null default 'none';
+
+-- 범용 카탈로그. data(jsonb)에 카테고리별 표현 값(색/트레일 등)을 담는다.
+--   unlock_type: 'coin'(구매) | 'achievement'(누적 킬 등으로 해금)
+create table if not exists public.items (
+  id            text primary key,
+  category      text not null,   -- costume|weaponskin|killfx|dashtrail|respawnfx|title
+  name          text not null,
+  price         integer not null default 0,
+  data          jsonb not null default '{}'::jsonb,
+  unlock_type   text not null default 'coin',
+  unlock_threshold integer not null default 0,   -- achievement 해금 기준(누적 킬)
+  sort_order    integer not null default 0
+);
+
+create table if not exists public.user_items (
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  item_id     text not null references public.items(id) on delete cascade,
+  acquired_at timestamptz not null default now(),
+  primary key (user_id, item_id)
+);
+
+alter table public.items      enable row level security;
+alter table public.user_items enable row level security;
+
+drop policy if exists "items_read_all" on public.items;
+create policy "items_read_all" on public.items for select using (true);
+drop policy if exists "user_items_read_self" on public.user_items;
+create policy "user_items_read_self" on public.user_items
+  for select using (auth.uid() = user_id);
+
+-- 기존 코스튬을 범용 카탈로그로 미러링(보유 데이터 보존).
+insert into public.items (id, category, name, price, data, sort_order)
+select 'costume:' || id, 'costume', name, price,
+       jsonb_build_object('color', color, 'accentColor', accent_color), sort_order
+from public.costumes
+on conflict (id) do update
+  set name = excluded.name, price = excluded.price, data = excluded.data, sort_order = excluded.sort_order;
+
+insert into public.user_items (user_id, item_id, acquired_at)
+select user_id, 'costume:' || costume_id, acquired_at from public.user_costumes
+on conflict do nothing;
+
+-- 범용 구매: coin 아이템만 구매 대상. achievement 아이템은 해금형이라 구매 불가.
+create or replace function public.purchase_item(p_item text)
+returns public.profiles
+language plpgsql security definer set search_path = public
+as $$
+declare it public.items; row public.profiles;
+begin
+  if auth.uid() is null then raise exception '로그인이 필요합니다'; end if;
+  select * into it from public.items where id = p_item;
+  if it.id is null then raise exception '존재하지 않는 아이템입니다'; end if;
+  if it.unlock_type <> 'coin' then raise exception '구매할 수 없는 아이템입니다'; end if;
+  if exists (select 1 from public.user_items where user_id = auth.uid() and item_id = p_item) then
+    raise exception '이미 보유한 아이템입니다';
+  end if;
+
+  update public.profiles set coins = coins - it.price
+   where id = auth.uid() and coins >= it.price
+  returning * into row;
+  if not found then raise exception '코인이 부족합니다'; end if;
+
+  insert into public.user_items (user_id, item_id) values (auth.uid(), p_item);
+
+  -- 코스튬은 기존 보유 테이블에도 반영(하위호환).
+  if it.category = 'costume' then
+    insert into public.user_costumes (user_id, costume_id)
+    values (auth.uid(), regexp_replace(p_item, '^costume:', ''))
+    on conflict do nothing;
+  end if;
+  return row;
+end;
+$$;
+
+-- 범용 착용: 카테고리 슬롯에 기록. '<category>:none'은 항상 착용 가능(해제).
+--   coin 아이템은 보유해야, achievement 아이템은 기준 충족해야 착용 가능.
+create or replace function public.equip_item(p_item text)
+returns public.profiles
+language plpgsql security definer set search_path = public
+as $$
+declare it public.items; row public.profiles; cat text;
+begin
+  if auth.uid() is null then raise exception '로그인이 필요합니다'; end if;
+
+  if p_item like '%:none' then
+    cat := split_part(p_item, ':', 1);
+  else
+    select * into it from public.items where id = p_item;
+    if it.id is null then raise exception '존재하지 않는 아이템입니다'; end if;
+    cat := it.category;
+    if it.unlock_type = 'achievement' then
+      if (select total_kills from public.profiles where id = auth.uid()) < it.unlock_threshold then
+        raise exception '아직 해금하지 않은 아이템입니다';
+      end if;
+    elsif not exists (select 1 from public.user_items where user_id = auth.uid() and item_id = p_item) then
+      raise exception '보유하지 않은 아이템입니다';
+    end if;
+  end if;
+
+  update public.profiles set
+    equipped_costume    = case when cat = 'costume'    then regexp_replace(p_item, '^costume:', '') else equipped_costume end,
+    equipped_weaponskin = case when cat = 'weaponskin' then p_item else equipped_weaponskin end,
+    equipped_killfx     = case when cat = 'killfx'     then p_item else equipped_killfx end,
+    equipped_dashtrail  = case when cat = 'dashtrail'  then p_item else equipped_dashtrail end,
+    equipped_respawnfx  = case when cat = 'respawnfx'  then p_item else equipped_respawnfx end,
+    equipped_title      = case when cat = 'title'      then p_item else equipped_title end
+  where id = auth.uid()
+  returning * into row;
+  return row;
+end;
+$$;
+
+-- 신규 카테고리 시드 (치장 전용 — 전투 무관).
+insert into public.items (id, category, name, price, data, unlock_type, unlock_threshold, sort_order) values
+  ('weaponskin:none',   'weaponskin', '기본',         0,   '{}'::jsonb,                                      'coin', 0, 0),
+  ('weaponskin:ember',  'weaponskin', '잿불',         180, '{"tint":"#ff6b3d"}'::jsonb,                      'coin', 0, 1),
+  ('weaponskin:frost',  'weaponskin', '서리',         180, '{"tint":"#5fd3ff"}'::jsonb,                      'coin', 0, 2),
+  ('weaponskin:void',   'weaponskin', '보이드',       400, '{"tint":"#b14bff"}'::jsonb,                      'coin', 0, 3),
+  ('killfx:none',       'killfx',     '기본',         0,   '{}'::jsonb,                                      'coin', 0, 0),
+  ('killfx:firework',   'killfx',     '폭죽',         300, '{"style":"firework","color":"#ffd24a"}'::jsonb,  'coin', 0, 1),
+  ('killfx:skull',      'killfx',     '픽셀 해골',    450, '{"style":"skull","color":"#e5e7eb"}'::jsonb,     'coin', 0, 2),
+  ('killfx:coins',      'killfx',     '코인 분수',    600, '{"style":"coins","color":"#fbbf24"}'::jsonb,     'coin', 0, 3),
+  ('dashtrail:none',    'dashtrail',  '기본',         0,   '{}'::jsonb,                                      'coin', 0, 0),
+  ('dashtrail:flame',   'dashtrail',  '불꽃',         200, '{"color":"#ff7a3d"}'::jsonb,                     'coin', 0, 1),
+  ('dashtrail:spark',   'dashtrail',  '번개',         200, '{"color":"#7dd3fc"}'::jsonb,                     'coin', 0, 2),
+  ('dashtrail:star',    'dashtrail',  '픽셀 별',      400, '{"color":"#fde047"}'::jsonb,                     'coin', 0, 3),
+  ('respawnfx:none',    'respawnfx',  '기본',         0,   '{}'::jsonb,                                      'coin', 0, 0),
+  ('respawnfx:warp',    'respawnfx',  '워프',         250, '{"color":"#67e8f9"}'::jsonb,                     'coin', 0, 1),
+  ('respawnfx:phoenix', 'respawnfx',  '불사조',       500, '{"color":"#ff8a3d"}'::jsonb,                     'coin', 0, 2),
+  ('title:none',        'title',      '없음',         0,   '{"text":""}'::jsonb,                             'coin', 0, 0),
+  ('title:rookie',      'title',      '루키',         100, '{"text":"루키","color":"#9ca3af"}'::jsonb,        'coin', 0, 1),
+  ('title:gladiator',   'title',      '글래디에이터', 300, '{"text":"글래디에이터","color":"#facc15"}'::jsonb, 'coin', 0, 2),
+  ('title:slayer',      'title',      '학살자',       0,   '{"text":"학살자","color":"#f87171"}'::jsonb,      'achievement', 100, 3),
+  ('title:legend',      'title',      '전설',         0,   '{"text":"전설","color":"#a855f7"}'::jsonb,        'achievement', 500, 4)
+on conflict (id) do update
+  set category = excluded.category, name = excluded.name, price = excluded.price,
+      data = excluded.data, unlock_type = excluded.unlock_type,
+      unlock_threshold = excluded.unlock_threshold, sort_order = excluded.sort_order;

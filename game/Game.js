@@ -12,6 +12,10 @@ import { Renderer } from './Renderer.js';
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig, ComboConfig, MagicConfig, AuxSkillConfig } from './Weapons.js';
 import { isMobileDevice } from './Device.js';
 import { MsgType, Protocol } from '../multiplayer/Protocol.js';
+import { normalizeRoomConfig, arenaDimensions, HEAL_RATES } from './RoomConfig.js';
+import { Sound } from './Sound.js';
+import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, coverClearOfPoint, coverBlocksCircle } from './Cover.js';
+import { Zone } from './Zone.js';
 
 // Time a dead player waits before respawning.
 const RESPAWN_MS = 500;
@@ -27,14 +31,45 @@ export class Game {
     this.dummyRoom = !!options.dummyRoom;
     this.dummyCount = Number.isFinite(options.dummyCount) ? options.dummyCount : 3;
 
+    // Room custom settings (arena size / storm / cover / healing). The host owns
+    // these; clients overwrite them from the ROOM_JOINED handshake. Defaults match
+    // current behavior so an untouched config plays identically to before.
+    this.roomConfig = normalizeRoomConfig(options.roomConfig);
+
     // Floating damage numbers (local render-only, derived from HP deltas so they
     // work the same on host and clients without any extra netcode).
     this._dmgPopups = [];
     this._prevHpById = {};
 
-    // Arena Boundaries
-    this.mapWidth = 700;
-    this.mapHeight = 700;
+    // Hit feedback (Task 8) — all local render-only, never touches simulation.
+    this._hitstopUntil = 0;     // freeze the displayed frame until this time
+    this._hitFlashUntil = 0;    // local-player damage vignette end time
+    this._hitFlashStrength = 0; // 0..1 vignette intensity
+    this._killFeed = [];        // recent kill notices (synced via Protocol)
+
+    // Cover tiles (Task 9): static obstacles. Host generates + syncs via
+    // ROOM_JOINED; clients adopt the received list.
+    this.cover = [];
+    // Healing items (Task 9): host spawns on a timer, syncs via GAME_STATE.
+    this.healingItems = [];
+    this._healingSeq = 0;
+    this._nextHealAt = 0;
+    // Mines (mine-bag weapon): host owns/explodes them, synced via GAME_STATE.
+    this.mines = [];
+    this._mineSeq = 0;
+    // Fire patches (flamethrower F): timed ground burn, synced via GAME_STATE.
+    this.firePatches = [];
+    this._patchSeq = 0;
+    // Storm zone (Task 5): cycle-based safe circle. Host simulates, syncs state.
+    this.zone = (this.roomConfig.storm)
+      ? new Zone(this.mapWidth, this.mapHeight, this.roomConfig.arenaSize)
+      : null;
+
+    // Arena Boundaries — derived from the room's arena-size preset (tiny=700
+    // keeps the legacy default). Clients re-derive this from ROOM_JOINED.
+    const dims = arenaDimensions(this.roomConfig);
+    this.mapWidth = dims.mapWidth;
+    this.mapHeight = dims.mapHeight;
 
     this.renderer = new Renderer(canvas);
     this.camera = new Camera();
@@ -115,9 +150,13 @@ export class Game {
     const localWeapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
 
     if (this.networkManager.isHost) {
+      // Host builds the cover layout once; it ships to clients via ROOM_JOINED.
+      this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight);
+
       // Host adds themselves directly
       const spawnP = this._getRandomSpawnPoint();
       const hostPlayer = new Player(this.localPlayerId, localNick, localWeapon, spawnP.x, spawnP.y, this.localCostume);
+      hostPlayer.isMobile = isMobileDevice(); // touch players fire instantly
       this.players[this.localPlayerId] = hostPlayer;
 
       // Dummy room: drop a few stationary practice targets into the arena.
@@ -162,10 +201,18 @@ export class Game {
     window.addEventListener('resize', this._resizeBound);
     window.visualViewport?.addEventListener('resize', this._resizeBound);
     window.visualViewport?.addEventListener('scroll', this._resizeBound);
+    // Mouse wheel = camera zoom (and don't let the page scroll underneath).
+    this.canvas.addEventListener('wheel', this._wheelBound, { passive: false });
   }
 
   // Bind resize context
   _resizeBound = () => this._resizeCanvas();
+
+  // Mouse wheel zooms the camera. Wheel up (deltaY < 0) zooms in.
+  _wheelBound = (e) => {
+    e.preventDefault();
+    if (this.camera) this.camera.adjustZoom(e.deltaY < 0 ? 1 : -1);
+  };
 
   _resizeCanvas() {
     // Render at the device's true pixel density so phones/retina screens look
@@ -284,6 +331,7 @@ export class Game {
             this._tryDash(hp, dx, dy);
           }
           if (this.input.consumeSkillDown()) {
+            Sound.play('skill');
             this._handleSkillPressed(hp, now);
           }
           if (this.input.consumeSkillUp()) {
@@ -327,10 +375,11 @@ export class Game {
         const dash = this.input.consumeDash();
         if (dash) {
           const { dx, dy } = this._resolveInputDashVector(dash);
-          localPlayer.startDash(dx, dy);
+          if (localPlayer.startDash(dx, dy)) Sound.play('dash');
           this.networkManager.sendToHost(Protocol.clientAction('dash', dx, dy));
         }
         if (this.input.consumeSkillDown()) {
+          Sound.play('skill');
           this.networkManager.sendToHost(Protocol.clientAction('skillDown'));
         }
         if (this.input.consumeSkillUp()) {
@@ -351,6 +400,7 @@ export class Game {
         localPlayer.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
         localPlayer.angle = this.input.aimAngle;
         Collision.clampToMap(localPlayer, this.mapWidth, this.mapHeight);
+        if (this.cover.length) resolveCover(this.cover, localPlayer, localPlayer.radius || 14);
 
         this._sendLocalInput(now);
       }
@@ -371,6 +421,11 @@ export class Game {
       const p = this.players[id];
       if (p.isDead) return;
 
+      // Snapshot this tick's start position BEFORE movement so melee hit tests
+      // can sweep the target's path (prev → current) this frame.
+      p.prevX = p.x;
+      p.prevY = p.y;
+
       if (id === this.localPlayerId) {
         // Local host input updates
         p.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
@@ -380,10 +435,25 @@ export class Game {
         p.updatePosition(deltaTime, p.keys || {}, this.mapWidth, this.mapHeight);
       }
       Collision.clampToMap(p, this.mapWidth, this.mapHeight);
+      if (this.cover.length) resolveCover(this.cover, p, p.radius || 14);
     });
 
     // 2. Resolve Player collisions to avoid clipping
     Collision.resolvePlayerCollisions(this.players);
+    // Re-eject from cover after player-vs-player pushes.
+    if (this.cover.length) {
+      Object.values(this.players).forEach(p => {
+        if (!p.isDead) resolveCover(this.cover, p, p.radius || 14);
+      });
+    }
+
+    // Storm zone tick + healing spawns/pickups (host authoritative).
+    this._updateZone(now, deltaTime);
+    this._updateHealingItems(now);
+    this._updateGuardianBlades(now);
+    this._updateMines(now);
+    this._updateFlamethrower(now, deltaTime);
+    this._updateFirePatches(now);
 
     // 2.5 Advance skill buffs & cooldowns authoritatively.
     Object.keys(this.players).forEach(id => {
@@ -421,6 +491,7 @@ export class Game {
     this._processKatanaCharges(now);
     this._processDaggerQtes(now);
     this._processHammerSlams(now);
+    this._processPistolBursts(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -448,8 +519,29 @@ export class Game {
         this._updateThrownSpear(proj, deltaTime, now);
         return;
       }
+      // Chakram + launched guardian blades boomerang out then back.
+      if (proj.kind === 'chakram' || proj.kind === 'guardianblade') {
+        this._updateChakram(proj, deltaTime, now);
+        return;
+      }
 
       proj.update(deltaTime);
+
+      // Cover blocks projectiles just like the arena wall.
+      if (this.cover.length && coverBlocksCircle(this.cover, proj.x, proj.y, proj.radius || 4)) {
+        proj.isDead = true;
+        if (proj.kind === 'swordwave') {
+          this._explodeSwordWave(proj, now);
+        } else {
+          this.effects.push({
+            attackerId: proj.ownerId, x: proj.x, y: proj.y,
+            angle: Math.atan2(proj.vy, proj.vx),
+            weapon: proj.weapon || 'bow', type: 'projectile_burst',
+            progress: 0, timestamp: now, lifetime: 320
+          });
+        }
+        return;
+      }
 
       if (proj.checkWallCollision(this.mapWidth, this.mapHeight)) {
         if (proj.kind === 'swordwave') {
@@ -496,6 +588,33 @@ export class Game {
             proj.isDead = true;
             const died = target.takeDamage(proj.damage, '아이스 샤드');
             if (died) this._creditKill(proj.ownerId, target, '아이스 샤드로');
+            return;
+          }
+
+          if (proj.kind === 'pistol') {
+            proj.isDead = true;
+            const died = target.takeDamage(proj.damage, '쌍권총');
+            if (died) this._creditKill(proj.ownerId, target, '쌍권총으로');
+            return;
+          }
+
+          if (proj.kind === 'harpoon') {
+            proj.isDead = true;
+            const hk = SkillConfig.harpoon;
+            const died = target.takeDamage(proj.damage, '작살');
+            const attacker = this.players[proj.ownerId];
+            if (!died && attacker) {
+              // Yank the target to just in front of the attacker along the line.
+              const a = proj.angle;
+              target.x = attacker.x + Math.cos(a) * (hk.pullToFront || 50);
+              target.y = attacker.y + Math.sin(a) * (hk.pullToFront || 50);
+              Collision.clampToMap(target, this.mapWidth, this.mapHeight);
+              if (this.cover.length) resolveCover(this.cover, target, target.radius || 14);
+              target.slowTimeLeft = (hk.slowMs || 300) / 1000;
+              target.prevX = target.x; // discontinuous move — don't let melee sweep it
+              target.prevY = target.y;
+            }
+            if (died) this._creditKill(proj.ownerId, target, '작살로');
             return;
           }
 
@@ -580,6 +699,10 @@ export class Game {
   _performAutomaticAttack(player, weaponConfig, now) {
     if (player.weapon === 'magicstaff') {
       this._castMagicStaff(player, now);
+      return;
+    }
+    if (player.weapon === 'chakram') {
+      this._throwChakram(player, weaponConfig, now);
       return;
     }
     const combo = this._resolveComboAttack(player, weaponConfig, now);
@@ -672,12 +795,17 @@ export class Game {
         };
     this.effects.push(shotEffect);
 
+    // Optional per-shot spread (pistols) so accuracy drops at max range.
+    const spread = attackConfig.spreadDeg
+      ? ((Math.random() - 0.5) * 2 * attackConfig.spreadDeg * Math.PI) / 180
+      : 0;
+    const fireAngle = player.angle + spread;
     const proj = new Projectile(
       arrowId,
       player.id,
-      player.x + Math.cos(player.angle) * spawnDist,
-      player.y + Math.sin(player.angle) * spawnDist,
-      player.angle,
+      player.x + Math.cos(fireAngle) * spawnDist,
+      player.y + Math.sin(fireAngle) * spawnDist,
+      fireAngle,
       attackConfig.speed,
       attackConfig.range,
       attackConfig.damage,
@@ -782,12 +910,23 @@ export class Game {
       if (died) this._creditKill(attacker.id, target);
     });
 
+    // Landing a hit on someone gives the local attacker a tiny hitstop (juice).
+    // Host-authoritative, so this fires for the host player; guests still get
+    // the synced damage numbers / kill feed.
+    if (hitCount > 0 && attacker.id === this.localPlayerId) {
+      this._triggerHitstop(now, 42);
+    }
+
     return hitCount;
   }
 
   _resolveMeleeHitResult(attacker, target, weapon) {
     if (!target || target.isInvincible?.()) return null;
     if (!Collision.checkMeleeHit(attacker, target, weapon)) return null;
+    // A cover tile between attacker and target blocks the strike.
+    if (this.cover?.length && coverBlocksSegment(this.cover, attacker.x, attacker.y, target.x, target.y)) {
+      return null;
+    }
 
     const dx = target.x - attacker.x;
     const dy = target.y - attacker.y;
@@ -979,7 +1118,8 @@ export class Game {
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
     const maxDist = Number.isFinite(cfg.range) ? Math.min(cfg.range, wallDist) : wallDist;
-    let hitDist = Number.isFinite(maxDist) ? maxDist : Math.max(this.mapWidth, this.mapHeight);
+    const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+    let hitDist = Math.min(Number.isFinite(maxDist) ? maxDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     let hitTarget = null;
 
     Object.keys(this.players).forEach(tid => {
@@ -1145,9 +1285,194 @@ export class Game {
       killer.kills++;
       const via = viaLabel ? `${viaLabel} ` : '';
       this._announce(`${killer.nickname}님이 ${via}${target.nickname}님을 처치했습니다!`);
+
+      // Kill feed: broadcast so every peer shows it, and add locally (host).
+      const evt = Protocol.killEvent(
+        killer.id, killer.nickname, target.id, target.nickname,
+        killer.weapon, viaLabel
+      );
+      if (this.networkManager?.isHost) this.networkManager.broadcast(evt);
+      this._pushKillFeed(evt);
     } else {
       this._announce(`${target.nickname}님이 전사했습니다.`);
     }
+  }
+
+  /**
+   * Append a kill-feed notice (used by the host on a kill and by clients when
+   * they receive a KILL_EVENT). Render-only; expires in the renderer/HUD.
+   */
+  /**
+   * Derive sound cues from synced state (effects + projectiles), so attack/
+   * warning sounds play identically on the host and every client with no extra
+   * netcode — the same trick the damage popups use.
+   */
+  _trackSoundCues() {
+    if (!this._seenSfxIds) this._seenSfxIds = new Set();
+    const seen = this._seenSfxIds;
+    const local = this.localPlayerId;
+
+    for (const e of this.effects) {
+      const key = 'fx:' + (e.id || `${e.attackerId}-${e.timestamp}-${e.type}`);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const type = e.type || '';
+      if (type === 'sniper_telegraph' || type === 'matchlock_telegraph') {
+        // Warning beep for the targets/bystanders — gives a chance to dodge.
+        if (e.attackerId !== local) Sound.play('warn');
+      } else if (type.startsWith('melee_')) {
+        if (e.attackerId === local) {
+          const fam = type.includes('slam') ? 'slam' : type.includes('line') ? 'thrust' : 'slash';
+          Sound.play(fam);
+        }
+      }
+    }
+
+    for (const p of this.projectiles) {
+      const key = 'pj:' + p.id;
+      if (!p.id || seen.has(key)) continue;
+      seen.add(key);
+      if (p.ownerId === local) Sound.play('shoot');
+    }
+
+    if (seen.size > 500) this._seenSfxIds = new Set([...seen].slice(-200));
+
+    // Storm warning beep when the zone enters its warning / shrinking phases.
+    if (this.zone) {
+      const phase = this.zone.phase;
+      if (this._prevZonePhase && this._prevZonePhase !== phase &&
+          (phase === 'warning' || phase === 'shrinking')) {
+        Sound.play('warn');
+      }
+      this._prevZonePhase = phase;
+    }
+  }
+
+  // --- Storm zone (Task 5) --------------------------------------------------
+  _updateZone(now, deltaTime) {
+    if (!this.zone || typeof this.zone.update !== 'function') return; // host only
+    this.zone.update(now);
+    if (!this.zone.isDamaging()) return;
+    Object.values(this.players).forEach(p => {
+      if (p.isDead || p.isDummy) return;
+      if (p.isInvincible && p.isInvincible()) return; // respawn i-frames are safe
+      if (!this.zone.isOutside(p.x, p.y)) { p._zoneDmgAcc = 0; return; }
+      p._zoneDmgAcc = (p._zoneDmgAcc || 0) + this.zone.dps * deltaTime;
+      if (p._zoneDmgAcc >= 1) {
+        const dmg = Math.floor(p._zoneDmgAcc);
+        p._zoneDmgAcc -= dmg;
+        const died = p.takeDamage(dmg, '자기장');
+        if (died) this._creditKill(null, p, '자기장에');
+      }
+    });
+  }
+
+  // --- Healing items (Task 9) -----------------------------------------------
+  _healInterval() {
+    return HEAL_RATES[this.roomConfig.healingRate] || HEAL_RATES.normal;
+  }
+  _maxHealingItems() {
+    return Math.max(2, Math.round((this.mapWidth * this.mapHeight) / (700 * 700) * 3));
+  }
+  _findEmptyPosition() {
+    const margin = 90;
+    for (let i = 0; i < 24; i++) {
+      const x = margin + Math.random() * (this.mapWidth - margin * 2);
+      const y = margin + Math.random() * (this.mapHeight - margin * 2);
+      if (this.cover.length && !coverClearOfPoint(this.cover, x, y, 28)) continue;
+      let tooClose = false;
+      for (const p of Object.values(this.players)) {
+        if (p.isDead) continue;
+        if ((p.x - x) ** 2 + (p.y - y) ** 2 < 120 * 120) { tooClose = true; break; }
+      }
+      if (tooClose) continue;
+      if (this.healingItems.some(it => (it.x - x) ** 2 + (it.y - y) ** 2 < 100 * 100)) continue;
+      return { x, y };
+    }
+    return null;
+  }
+  _updateHealingItems(now) {
+    if (typeof this.zone === 'undefined') return; // guard for partial mocks
+    if (!this.roomConfig.healing || !this.networkManager?.isHost) return;
+
+    // Pickups: any live player overlapping an item heals 25% and consumes it.
+    if (this.healingItems.length) {
+      for (const item of this.healingItems) {
+        if (item.taken) continue;
+        for (const p of Object.values(this.players)) {
+          if (p.isDead || p.isDummy) continue;
+          const rr = (p.radius || 14) + 12;
+          if ((p.x - item.x) ** 2 + (p.y - item.y) ** 2 <= rr * rr) {
+            item.taken = true;
+            p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.25));
+            break;
+          }
+        }
+      }
+      this.healingItems = this.healingItems.filter(i => !i.taken);
+    }
+
+    // Spawn on the configured cadence, up to a small cap.
+    if (!this._nextHealAt) this._nextHealAt = now + this._healInterval();
+    if (now >= this._nextHealAt) {
+      if (this.healingItems.length < this._maxHealingItems()) {
+        const pos = this._findEmptyPosition();
+        if (pos) this.healingItems.push({ id: ++this._healingSeq, x: pos.x, y: pos.y });
+      }
+      this._nextHealAt = now + this._healInterval();
+    }
+  }
+
+  _pushKillFeed(evt) {
+    if (!this._killFeed) this._killFeed = [];
+    const involvesLocal = evt.killerId === this.localPlayerId || evt.victimId === this.localPlayerId;
+    if (evt.killerId === this.localPlayerId) Sound.play('kill');
+    this._killFeed.push({
+      killerName: evt.killerName,
+      victimName: evt.victimName,
+      weapon: evt.weapon,
+      via: evt.via || '',
+      involvesLocal,
+      isLocalKill: evt.killerId === this.localPlayerId,
+      born: Date.now()
+    });
+    if (this._killFeed.length > 6) this._killFeed.shift();
+  }
+
+  /**
+   * Rebuild the top-right kill-feed DOM. Entries live ~3.5s and fade out near
+   * the end. Lines involving the local player are highlighted.
+   */
+  _renderKillFeed(now) {
+    const el = document.getElementById('killFeed');
+    if (!el) return;
+    const LIFE = 3500;
+    this._killFeed = this._killFeed.filter(e => now - e.born < LIFE);
+    if (!this._killFeed.length) {
+      if (el.childElementCount) el.replaceChildren();
+      return;
+    }
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const rows = this._killFeed.map(e => {
+      const age = (now - e.born) / LIFE;
+      const opacity = age > 0.8 ? Math.max(0, (1 - age) / 0.2) : 1;
+      const wName = (Weapons[e.weapon]?.name) || e.weapon || '';
+      const wColor = Weapons[e.weapon]?.color || '#9ca3af';
+      const border = e.involvesLocal ? '#facc15' : '#2b3540';
+      const killerColor = e.isLocalKill ? '#66fcf1' : '#e5e7eb';
+      const victimColor = (e.involvesLocal && !e.isLocalKill) ? '#ff6b6b' : '#9ca3af';
+      const via = e.via ? `<span class="text-gray-500">${esc(e.via)}</span> ` : '';
+      return `<div class="bg-[#1f2833]/85 border-2 px-2 py-1 text-[11px] leading-tight drop-shadow"
+        style="opacity:${opacity.toFixed(2)};border-color:${border}">
+        <span style="color:${killerColor}" class="font-bold">${esc(e.killerName)}</span>
+        <span class="text-gray-500 mx-1">${via}»</span>
+        <span style="color:${wColor}" class="font-bold">${esc(wName)}</span>
+        <span class="text-gray-500 mx-1">»</span>
+        <span style="color:${victimColor}">${esc(e.victimName)}</span>
+      </div>`;
+    });
+    el.innerHTML = rows.join('');
   }
 
   /**
@@ -1220,7 +1545,7 @@ export class Game {
   _tryDash(player, dirX, dirY) {
     if (!player || player.isDead) return;
     if (player.daggerQte) return;
-    player.startDash(dirX, dirY);
+    if (player.startDash(dirX, dirY) && player.id === this.localPlayerId) Sound.play('dash');
   }
 
   _resolveInputDashVector(dash) {
@@ -1373,6 +1698,12 @@ export class Game {
       case 'matchlock': this._fireMatchlock(player, now); break;
       case 'katana': this._castKatanaSkill(player, now); break;
       case 'sniper': this._fireSniperShot(player, now); break;
+      case 'chakram': this._throwChakramFan(player, now); break;
+      case 'pistols': this._firePistolBarrage(player, now); break;
+      case 'guardian': this._launchGuardianBlades(player, now); break;
+      case 'harpoon': this._harpoonPull(player, now); break;
+      case 'minebag': this._placeMine(player, now); break;
+      case 'flamethrower': this._throwFirePatch(player, now); break;
       default: break;
     }
   }
@@ -1922,7 +2253,8 @@ export class Game {
   _fireMatchlock(player, now) {
     const sk = SkillConfig.matchlock;
     player.skillCdLeft = sk.cooldownMs / 1000;
-    const telegraphMs = Math.max(0, sk.telegraphMs ?? 500);
+    // Touch players fire instantly (no telegraph window) for usability on mobile.
+    const telegraphMs = player.isMobile ? 0 : Math.max(0, sk.telegraphMs ?? 500);
     const beamDist = Math.max(this.mapWidth, this.mapHeight);
 
     if (!this.pendingMatchlockShots) this.pendingMatchlockShots = [];
@@ -1957,7 +2289,8 @@ export class Game {
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
-    let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+    let hitDist = Math.min(Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     let hitTarget = null;
     Object.keys(this.players).forEach(tid => {
       const target = this.players[tid];
@@ -2370,7 +2703,8 @@ export class Game {
   _fireSniperShot(player, now) {
     const sk = SkillConfig.sniper || {};
     player.skillCdLeft = (sk.cooldownMs || 4000) / 1000;
-    const telegraphMs = Math.max(0, sk.telegraphMs ?? 500);
+    // Touch players fire instantly (no telegraph window) for usability on mobile.
+    const telegraphMs = player.isMobile ? 0 : Math.max(0, sk.telegraphMs ?? 500);
     const beamDist = Math.max(this.mapWidth, this.mapHeight);
 
     if (!this.pendingSniperShots) this.pendingSniperShots = [];
@@ -2410,7 +2744,9 @@ export class Game {
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(originX, originY, dirX, dirY, this.mapWidth, this.mapHeight);
-    let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    // Cover stops the beam (and shields anyone behind it).
+    const coverDist = this.cover?.length ? coverRayDistance(this.cover, originX, originY, dirX, dirY) : Infinity;
+    let hitDist = Math.min(Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     let hitTarget = null;
     Object.keys(this.players).forEach(tid => {
       const target = this.players[tid];
@@ -2464,6 +2800,11 @@ export class Game {
     }
     player.x = Math.max(margin, Math.min(this.mapWidth - margin, fromX + dx));
     player.y = Math.max(margin, Math.min(this.mapHeight - margin, fromY + dy));
+    // Never blink inside cover; eject if the landing overlaps a tile.
+    if (this.cover?.length) resolveCover(this.cover, player, player.radius || 14);
+    // Teleport is discontinuous — don't let the next melee test sweep the jump.
+    player.prevX = player.x;
+    player.prevY = player.y;
     player.sniperTeleportTargetUntil = 0;
     player.teleportReadyAt = now + (sk?.teleportCooldownMs || 4000);
     // Poof at the vacated spot and the arrival spot (world-anchored so they stay put).
@@ -2515,8 +2856,9 @@ export class Game {
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+    const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
 
-    let hitDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    let hitDist = Math.min(Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     let hitTarget = null;
     Object.keys(this.players).forEach(tid => {
       const target = this.players[tid];
@@ -2664,7 +3006,8 @@ export class Game {
 
     // Hitscan from player's CURRENT position in the locked direction.
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
-    const travelDist = Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight);
+    const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+    const travelDist = Math.min(Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     const endX = Math.max(5, Math.min(this.mapWidth - 5, player.x + dirX * travelDist));
     const endY = Math.max(5, Math.min(this.mapHeight - 5, player.y + dirY * travelDist));
 
@@ -2782,6 +3125,406 @@ export class Game {
     });
   }
 
+  // --- 차크람 (chakram): boomerang disc, basic attack + 3-way fan skill -------
+
+  // Spawn one chakram disc travelling at `angle`. `isSkill` discs don't lock the
+  // owner's primary throw (the F fan fires multiple at once).
+  _spawnChakram(player, angle, damage, outRange, speed, now, tag, isSkill) {
+    const spawnDist = (player.radius || 14) + 3;
+    const proj = new Projectile(
+      `${player.id}-chakram-${tag}`,
+      player.id,
+      player.x + Math.cos(angle) * spawnDist,
+      player.y + Math.sin(angle) * spawnDist,
+      angle, speed, Infinity, damage, 'chakram'
+    );
+    proj.weapon = 'chakram';
+    proj.radius = 13;
+    proj.phase = 'out';
+    proj.bornAt = now;
+    proj.outRange = outRange;
+    proj.locksOwner = !isSkill;     // only the basic throw disarms until return
+    proj.deathName = '차크람';
+    proj.hitLabel = '차크람으로';
+    proj.hitOut = new Set();
+    proj.hitBack = new Set();
+    this.projectiles.push(proj);
+    return proj;
+  }
+
+  _throwChakram(player, cfg, now) {
+    player.lastAttackTime = now;    // re-stamped on return so the 900ms cd starts then
+    player.chakramOut = true;
+    this._spawnChakram(player, player.angle, cfg.damage, cfg.range, cfg.speed, now, `${now}`, false);
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+      weapon: 'chakram', type: 'projectile_shot', projectileKind: 'chakram',
+      progress: 0, timestamp: now, lifetime: 200
+    });
+  }
+
+  // F skill: three discs in a fan. These don't disarm the player (the basic disc
+  // may still be out); they simply expire on return without re-stamping cooldown.
+  _throwChakramFan(player, now) {
+    const sk = SkillConfig.chakram;
+    player.skillCdLeft = (sk.cooldownMs || 6000) / 1000;
+    const n = sk.fanCount || 3;
+    const spread = ((sk.fanSpreadDeg || 34) * Math.PI) / 180;
+    for (let i = 0; i < n; i++) {
+      const off = n === 1 ? 0 : (i - (n - 1) / 2) * (spread / (n - 1));
+      this._spawnChakram(player, player.angle + off, sk.damage, sk.range, sk.speed, now, `fan-${now}-${i}`, true);
+    }
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+      weapon: 'chakram', type: 'projectile_shot', projectileKind: 'chakram',
+      progress: 0, timestamp: now, lifetime: 240
+    });
+  }
+
+  _updateChakram(proj, deltaTime, now) {
+    const owner = this.players[proj.ownerId];
+    if (!owner || owner.isDead) {
+      proj.isDead = true;
+      if (owner && proj.locksOwner) owner.chakramOut = false;
+      return;
+    }
+
+    const damageLeg = (hitSet, label) => {
+      Object.keys(this.players).forEach(tid => {
+        const target = this.players[tid];
+        if (target.id === proj.ownerId || target.isDead || target.isInvincible() || hitSet.has(target.id)) return;
+        if (Collision.checkProjectileHit(proj, target)) {
+          hitSet.add(target.id);
+          const died = target.takeDamage(proj.damage, proj.deathName || '차크람');
+          if (died) this._creditKill(proj.ownerId, target, proj.hitLabel || '차크람으로');
+        }
+      });
+    };
+
+    if (proj.phase === 'out') {
+      proj.x += proj.vx * deltaTime;
+      proj.y += proj.vy * deltaTime;
+      damageLeg(proj.hitOut, 'out');
+      const flew = Math.hypot(proj.x - proj.startX, proj.y - proj.startY);
+      const hitWall = proj.x <= proj.radius || proj.x >= this.mapWidth - proj.radius ||
+                      proj.y <= proj.radius || proj.y >= this.mapHeight - proj.radius;
+      const hitCover = this.cover.length && coverBlocksCircle(this.cover, proj.x, proj.y, proj.radius);
+      if (flew >= proj.outRange || hitWall || hitCover) {
+        proj.x = Math.max(proj.radius, Math.min(this.mapWidth - proj.radius, proj.x));
+        proj.y = Math.max(proj.radius, Math.min(this.mapHeight - proj.radius, proj.y));
+        proj.phase = 'return';
+      }
+      return;
+    }
+
+    // Return leg: home toward the owner; re-hit anyone not struck on the way back.
+    const dx = owner.x - proj.x;
+    const dy = owner.y - proj.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 22) {
+      proj.isDead = true;
+      if (proj.locksOwner) {
+        owner.chakramOut = false;
+        owner.lastAttackTime = now; // cooldown starts once the disc is back in hand
+      }
+      return;
+    }
+    const sp = Math.max(SkillConfig.chakram.returnSpeed || 720, proj.speed * 0.95);
+    const ux = dx / dist, uy = dy / dist;
+    proj.vx = ux * sp; proj.vy = uy * sp;
+    proj.angle = Math.atan2(uy, ux);
+    proj.x += proj.vx * deltaTime;
+    proj.y += proj.vy * deltaTime;
+    damageLeg(proj.hitBack, 'back');
+  }
+
+  // --- 지뢰 가방 (mine bag): F places a proximity mine -----------------------
+  _placeMine(player, now) {
+    const sk = SkillConfig.minebag;
+    player.skillCdLeft = (sk.cooldownMs || 2500) / 1000;
+    // Cap mines per player — placing over the cap drops the oldest.
+    const mine = {
+      id: ++this._mineSeq,
+      ownerId: player.id,
+      x: player.x, y: player.y,
+      armAt: now + (sk.armMs || 1000)
+    };
+    this.mines.push(mine);
+    const own = this.mines.filter(m => m.ownerId === player.id);
+    const max = sk.maxMines || 3;
+    if (own.length > max) {
+      const oldest = own[0];
+      this.mines = this.mines.filter(m => m !== oldest);
+    }
+  }
+
+  _updateMines(now) {
+    if (!this.mines.length) return;
+    const sk = SkillConfig.minebag;
+    const survivors = [];
+    for (const mine of this.mines) {
+      const owner = this.players[mine.ownerId];
+      if (!owner || owner.isDead) continue; // placer gone → mine removed
+      if (now < mine.armAt) { survivors.push(mine); continue; }
+      // Armed: detonate if a non-owner steps within the trigger radius.
+      const trig = sk.triggerRadius || 46;
+      let triggered = false;
+      for (const t of Object.values(this.players)) {
+        if (t.id === mine.ownerId || t.isDead || t.isInvincible?.()) continue;
+        if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 <= (trig + (t.radius || 14)) ** 2) { triggered = true; break; }
+      }
+      if (!triggered) { survivors.push(mine); continue; }
+      // Explode: damage every non-owner in the blast radius.
+      const blast = sk.blastRadius || 60;
+      for (const t of Object.values(this.players)) {
+        if (t.id === mine.ownerId || t.isDead || t.isInvincible?.()) continue;
+        if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 <= (blast + (t.radius || 14)) ** 2) {
+          const died = t.takeDamage(sk.damage, '지뢰');
+          if (died) this._creditKill(mine.ownerId, t, '지뢰로');
+        }
+      }
+      this.effects.push({
+        attackerId: mine.ownerId, x: mine.x, y: mine.y,
+        weapon: 'minebag', type: 'mine_blast', range: blast,
+        progress: 0, timestamp: now, lifetime: 360
+      });
+    }
+    this.mines = survivors;
+  }
+
+  // --- 화염방사기 (flamethrower): continuous cone spray + fuel ---------------
+  _updateFlamethrower(now, deltaTime) {
+    const cfg = Weapons.flamethrower;
+    Object.values(this.players).forEach(player => {
+      if (player.weapon !== 'flamethrower' || player.isDead || player.isDummy) return;
+      if (player.flameFuel === undefined) player.flameFuel = cfg.fuelMs;
+
+      const canSpray = !player.flameEmpty && player.flameFuel > 0 && player.stunTimeLeft <= 0;
+      if (canSpray) {
+        player.flameSpraying = true;
+        player.flameFuel = Math.max(0, player.flameFuel - deltaTime * 1000);
+        if (player.flameFuel <= 0) player.flameEmpty = true; // forced recharge
+
+        const halfAng = (cfg.angle * Math.PI) / 360;
+        if (!player._flameHits) player._flameHits = {};
+        Object.values(this.players).forEach(t => {
+          if (t.id === player.id || t.isDead || t.isInvincible?.()) return;
+          const dx = t.x - player.x, dy = t.y - player.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > cfg.range + (t.radius || 14)) return;
+          let ad = Math.atan2(dy, dx) - player.angle;
+          while (ad > Math.PI) ad -= Math.PI * 2;
+          while (ad < -Math.PI) ad += Math.PI * 2;
+          if (Math.abs(ad) > halfAng) return;
+          if (this.cover.length && coverBlocksSegment(this.cover, player.x, player.y, t.x, t.y)) return;
+          const last = player._flameHits[t.id] || 0;
+          if (now - last < (cfg.tickMs || 200)) return;
+          player._flameHits[t.id] = now;
+          const died = t.takeDamage(cfg.damage, '화염방사기');
+          if (died) this._creditKill(player.id, t, '화염방사기로');
+        });
+      } else {
+        player.flameSpraying = false;
+        // Refill while not spraying; clear the empty lock once full.
+        const rate = cfg.fuelMs / (cfg.rechargeMs || 2000);
+        player.flameFuel = Math.min(cfg.fuelMs, player.flameFuel + deltaTime * 1000 * rate);
+        if (player.flameFuel >= cfg.fuelMs) player.flameEmpty = false;
+      }
+    });
+  }
+
+  _throwFirePatch(player, now) {
+    const sk = SkillConfig.flamethrower;
+    player.skillCdLeft = (sk.cooldownMs || 7000) / 1000;
+    let x = player.x + Math.cos(player.angle) * (sk.patchRange || 76);
+    let y = player.y + Math.sin(player.angle) * (sk.patchRange || 76);
+    x = Math.max(10, Math.min(this.mapWidth - 10, x));
+    y = Math.max(10, Math.min(this.mapHeight - 10, y));
+    this.firePatches.push({
+      id: ++this._patchSeq, ownerId: player.id, x, y,
+      expireAt: now + (sk.patchMs || 2000), nextTickAt: now
+    });
+  }
+
+  _updateFirePatches(now) {
+    if (!this.firePatches.length) return;
+    const sk = SkillConfig.flamethrower;
+    const survivors = [];
+    for (const patch of this.firePatches) {
+      if (now >= patch.expireAt) continue;
+      if (now >= patch.nextTickAt) {
+        patch.nextTickAt = now + (sk.patchTickMs || 250);
+        const r = sk.patchRadius || 55;
+        for (const t of Object.values(this.players)) {
+          if (t.id === patch.ownerId || t.isDead || t.isInvincible?.()) continue;
+          if ((t.x - patch.x) ** 2 + (t.y - patch.y) ** 2 <= (r + (t.radius || 14)) ** 2) {
+            const died = t.takeDamage(sk.patchDamage || 2.5, '화염 장판');
+            if (died) this._creditKill(patch.ownerId, t, '화염 장판으로');
+          }
+        }
+      }
+      survivors.push(patch);
+    }
+    this.firePatches = survivors;
+  }
+
+  // --- 작살 (harpoon): F yanks the player toward the aimed enemy/wall ---------
+  _harpoonPull(player, now) {
+    const sk = SkillConfig.harpoon;
+    player.skillCdLeft = (sk.cooldownMs || 5000) / 1000;
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
+    const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+    let dist = Math.min(sk.pullRange || 360, Number.isFinite(wallDist) ? wallDist : (sk.pullRange || 360));
+    if (this.cover.length) dist = Math.min(dist, coverRayDistance(this.cover, player.x, player.y, dirX, dirY));
+    Object.keys(this.players).forEach(tid => {
+      const t = this.players[tid];
+      if (t.id === player.id || t.isDead) return;
+      const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, t.x, t.y, (t.radius || 14) + 5);
+      if (d !== null && d < dist) dist = d;
+    });
+    const travel = Math.max(0, dist - (sk.stopGap || 32));
+    const fromX = player.x, fromY = player.y;
+    player.x += dirX * travel;
+    player.y += dirY * travel;
+    Collision.clampToMap(player, this.mapWidth, this.mapHeight);
+    if (this.cover.length) resolveCover(this.cover, player, player.radius || 14);
+    player.prevX = player.x; // discontinuous — avoid melee sweep across the yank
+    player.prevY = player.y;
+    this.effects.push({
+      id: `${player.id}-harpoonpull-${now}`,
+      attackerId: player.id,
+      x: fromX, y: fromY,
+      x2: player.x, y2: player.y,
+      angle: player.angle, weapon: 'harpoon', type: 'railbeam',
+      progress: 0, timestamp: now, lifetime: 260
+    });
+  }
+
+  // --- 쌍권총 (dual pistols): F barrage of 8 fanned shots, then a back-hop -----
+  _spawnPistolBullet(player, angle, damage, speed, range, now, tag) {
+    const spawnDist = (player.radius || 14) + 3;
+    const proj = new Projectile(
+      `${player.id}-pistol-${tag}`,
+      player.id,
+      player.x + Math.cos(angle) * spawnDist,
+      player.y + Math.sin(angle) * spawnDist,
+      angle, speed, range, damage, 'pistol'
+    );
+    proj.weapon = 'pistols';
+    proj.radius = 5;
+    this.projectiles.push(proj);
+  }
+
+  _firePistolBarrage(player, now) {
+    const sk = SkillConfig.pistols;
+    player.skillCdLeft = (sk.cooldownMs || 6000) / 1000;
+    const count = sk.burstCount || 8;
+    if (!this.pendingPistolBursts) this.pendingPistolBursts = [];
+    this.pendingPistolBursts.push({
+      playerId: player.id,
+      shotsLeft: count,
+      total: count,
+      interval: (sk.burstMs || 600) / count,
+      nextAt: now,
+      hopped: false
+    });
+  }
+
+  // --- 수호 블레이드 (guardian): orbiting blades + F launch/recall ----------
+
+  // Deterministic blade positions for a guardian player at host time `now`.
+  _guardianBladePositions(player, now) {
+    const cfg = Weapons.guardian;
+    const base = (now / (cfg.orbitPeriodMs || 1100)) * Math.PI * 2;
+    const n = cfg.orbitCount || 2;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const a = base + (i / n) * Math.PI * 2;
+      out.push({ x: player.x + Math.cos(a) * cfg.orbitRadius, y: player.y + Math.sin(a) * cfg.orbitRadius, angle: a });
+    }
+    return out;
+  }
+
+  _updateGuardianBlades(now) {
+    const cfg = Weapons.guardian;
+    Object.values(this.players).forEach(player => {
+      if (player.weapon !== 'guardian' || player.isDead) return;
+      // Disarmed while the blades are launched (F skill) — orbit does no damage.
+      if (this.projectiles.some(p => p.kind === 'guardianblade' && p.ownerId === player.id)) return;
+
+      if (!player._guardianHits) player._guardianHits = {};
+      const blades = this._guardianBladePositions(player, now);
+      Object.values(this.players).forEach(target => {
+        if (target.id === player.id || target.isDead || target.isInvincible()) return;
+        const last = player._guardianHits[target.id] || 0;
+        if (now - last < (cfg.rehitMs || 500)) return;
+        const rr = (target.radius || 14) + (cfg.bladeRadius || 9);
+        const hit = blades.some(b => (b.x - target.x) ** 2 + (b.y - target.y) ** 2 <= rr * rr);
+        if (hit) {
+          player._guardianHits[target.id] = now;
+          const died = target.takeDamage(cfg.damage, '수호 블레이드');
+          if (died) this._creditKill(player.id, target, '수호 블레이드로');
+        }
+      });
+    });
+  }
+
+  _launchGuardianBlades(player, now) {
+    const sk = SkillConfig.guardian;
+    player.skillCdLeft = (sk.cooldownMs || 5000) / 1000;
+    const blades = this._guardianBladePositions(player, now);
+    blades.forEach((b, i) => {
+      const proj = new Projectile(
+        `${player.id}-gblade-${now}-${i}`,
+        player.id, b.x, b.y, b.angle,
+        sk.launchSpeed, Infinity, sk.launchDamage, 'guardianblade'
+      );
+      proj.weapon = 'guardian';
+      proj.radius = 11;
+      proj.phase = 'out';
+      proj.bornAt = now;
+      proj.outRange = sk.launchRange;
+      proj.locksOwner = false;       // disarm is implied by the projectiles existing
+      proj.deathName = '수호 블레이드';
+      proj.hitLabel = '수호 블레이드로';
+      proj.hitOut = new Set();
+      proj.hitBack = new Set();
+      this.projectiles.push(proj);
+    });
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+      weapon: 'guardian', type: 'projectile_shot', projectileKind: 'guardianblade',
+      progress: 0, timestamp: now, lifetime: 220
+    });
+  }
+
+  _processPistolBursts(now) {
+    if (!this.pendingPistolBursts?.length) return;
+    const sk = SkillConfig.pistols;
+    const fan = ((sk.fanSpreadDeg || 70) * Math.PI) / 180;
+    const waiting = [];
+    for (const b of this.pendingPistolBursts) {
+      const player = this.players[b.playerId];
+      if (!player || player.isDead || player.weapon !== 'pistols') continue; // drop
+      while (b.shotsLeft > 0 && now >= b.nextAt) {
+        const idx = b.total - b.shotsLeft;
+        const t = b.total <= 1 ? 0.5 : idx / (b.total - 1);
+        const off = (t - 0.5) * fan;
+        this._spawnPistolBullet(player, player.angle + off, sk.damage, sk.speed, sk.range, now, `barrage-${b.nextAt}-${idx}`);
+        b.shotsLeft--;
+        b.nextAt += b.interval;
+      }
+      if (b.shotsLeft > 0) {
+        waiting.push(b);
+      } else if (!b.hopped) {
+        this._lungePlayer(player, -(sk.hopDistance || 90)); // backward escape hop
+        b.hopped = true;
+      }
+    }
+    this.pendingPistolBursts = waiting;
+  }
+
   _sendLocalInput(now) {
     const keys = sanitizeInputKeys(this.input.keys);
     const aimAngle = Number.isFinite(this.input.aimAngle) ? this.input.aimAngle : 0;
@@ -2847,6 +3590,9 @@ export class Game {
     this.projectiles.forEach(p => {
       p.update(deltaTime);
       p.checkWallCollision(this.mapWidth, this.mapHeight);
+      // Cover stops projectiles client-side too (host is authoritative, this
+      // just avoids a visible pass-through before the next snapshot).
+      if (this.cover.length && coverBlocksCircle(this.cover, p.x, p.y, p.radius || 4)) p.isDead = true;
     });
     this.projectiles = this.projectiles.filter(p => !p.isDead);
 
@@ -2864,7 +3610,32 @@ export class Game {
    * Render composite scene
    */
   _renderFrame() {
-    this._trackDamagePopups(Date.now());
+    const now = Date.now();
+    // Always track HP deltas, even during hitstop, so no damage number is lost.
+    this._trackDamagePopups(now);
+    this._trackSoundCues();
+
+    // Hitstop: hold the previously drawn frame (skip re-render). Simulation has
+    // already advanced above/around this — only the picture pauses.
+    if (now < this._hitstopUntil) return;
+
+    // Local-player damage vignette intensity (fades out over its window).
+    const flashLeft = this._hitFlashUntil - now;
+    const hitFlash = flashLeft > 0
+      ? this._hitFlashStrength * Math.min(1, flashLeft / 220)
+      : 0;
+
+    // Storm zone: host (Zone instance) and client (plain synced object) share
+    // the same field names, so this works for both.
+    const z = this.zone;
+    const storm = z ? {
+      x: z.cx, y: z.cy, radius: z.radius,
+      nextX: z.nextCx, nextY: z.nextCy, nextRadius: z.nextRadius, phase: z.phase
+    } : null;
+    const localP = this.players[this.localPlayerId];
+    const zoneOutside = !!(z && localP && !localP.isDead &&
+      (z.phase === 'shrinking' || z.phase === 'hold') &&
+      ((localP.x - z.cx) ** 2 + (localP.y - z.cy) ** 2 > z.radius * z.radius));
 
     // Generate simple state packet to supply to standard renderer
     const state = {
@@ -2872,6 +3643,14 @@ export class Game {
       projectiles: this.projectiles,
       effects: this.effects,
       damagePopups: this._dmgPopups,
+      hitFlash,
+      killFeed: this._killFeed,
+      cover: this.cover,
+      healingItems: this.healingItems,
+      mines: this.mines,
+      firePatches: this.firePatches,
+      storm,
+      zoneOutside,
       // In mobile joystick mode, the cursor is only flashed for actual target casts.
       cursorPos: this.input ? this.input.getCursorPos() : null
     };
@@ -2901,6 +3680,7 @@ export class Game {
       if (prev !== undefined && cur < prev - 0.5) {
         const dmg = Math.round(prev - cur);
         if (dmg > 0) {
+          const isLocal = id === this.localPlayerId;
           // Merge rapid hits / DoT ticks on the same target into one number.
           const recent = this._dmgPopups.find(d => d.targetId === id && now - d.born < 140);
           if (recent) {
@@ -2908,21 +3688,68 @@ export class Game {
             recent.born = now;
             recent.x = p.x;
             recent.y = p.y;
+            recent.tier = damageTier(recent.amount);
           } else {
             this._dmgPopups.push({
               targetId: id, amount: dmg, x: p.x, y: p.y,
-              born: now, isLocal: id === this.localPlayerId
+              born: now, isLocal,
+              tier: damageTier(dmg),
+              // Random horizontal drift so stacked numbers fan out instead of
+              // overlapping into an unreadable blob.
+              vx: (Math.random() - 0.5) * 2
             });
             if (this._dmgPopups.length > 60) this._dmgPopups.shift();
           }
+          // Local player took damage → screen-edge vignette + camera shake,
+          // scaled by how hard the hit was (instakills hit hardest).
+          if (isLocal) this._onLocalDamaged(dmg, now);
+          // Impact sound for any non-dummy hit you can see (throttled in Sound).
+          if (!p.isDummy || isLocal) Sound.play('hit');
         }
+      } else if (prev !== undefined && cur > prev + 0.5 && id === this.localPlayerId
+                 && (cur - prev) < p.maxHp * 0.4) {
+        // Modest HP rise on the local player = healing item pickup (not respawn).
+        Sound.play('ready');
       }
+
+      // Death / respawn cues for the local player (isDead transitions).
+      const wasDead = this._prevDeadById?.[id];
+      if (wasDead !== undefined && wasDead !== p.isDead && id === this.localPlayerId) {
+        Sound.play(p.isDead ? 'death' : 'respawn');
+      }
+      if (!this._prevDeadById) this._prevDeadById = {};
+      this._prevDeadById[id] = p.isDead;
+
       this._prevHpById[id] = cur;
     });
 
     // Drop tracking for players who left, and expire popups after ~900ms.
     Object.keys(this._prevHpById).forEach(id => { if (!players[id]) delete this._prevHpById[id]; });
     this._dmgPopups = this._dmgPopups.filter(d => now - d.born < 900);
+  }
+
+  /**
+   * Local player got hit — fire the screen-edge vignette and a camera shake,
+   * scaled by the hit size. Pure local feedback; simulation is untouched.
+   */
+  _onLocalDamaged(dmg, now) {
+    const strength = clamp01(dmg / 70); // ~full at a 70+ blow (instakills max out)
+    this._hitFlashStrength = Math.max(this._hitFlashStrength, 0.4 + strength * 0.6);
+    this._hitFlashUntil = now + 260;
+    if (this.camera && typeof this.camera.startShake === 'function') {
+      this.camera.startShake(5 + strength * 9, 180 + strength * 160);
+    }
+    this._vibrateDevice(dmg >= 60 ? [60, 30, 60] : [30]);
+  }
+
+  /**
+   * Freeze the *displayed* frame for a few ms on a landed hit (juice). The
+   * simulation keeps running — only rendering pauses. Capped + non-extending so
+   * rapid-fire weapons can't stack it into a stutter.
+   */
+  _triggerHitstop(now, ms = 40) {
+    if (now < this._hitstopUntil) return; // already stopping → don't accumulate
+    this._hitstopUntil = now + Math.min(50, Math.max(20, ms));
   }
 
   /**
@@ -2941,7 +3768,11 @@ export class Game {
       playerSnapshots,
       projectileSnapshots,
       this.effects,
-      this.remainingPlayersCount
+      this.remainingPlayersCount,
+      this.zone ? this.zone.serialize() : null,
+      this.roomConfig.healing ? this.healingItems : null,
+      this.mines.length ? this.mines : null,
+      this.firePatches.length ? this.firePatches : null
     );
 
     this.networkManager.broadcast(payload);
@@ -2951,9 +3782,16 @@ export class Game {
    * Sync stats to overlay HUD displays
    */
   _updateHUD() {
+    this._renderKillFeed(Date.now());
+
     const local = this.players[this.localPlayerId];
     if (!local) return;
     this.input?.setLocalWeapon?.(local.weapon);
+
+    // Subtle chime when the main skill cooldown finishes (transition >0 → 0).
+    const skillReady = (local.skillCdLeft || 0) <= 0 && !local.isDead;
+    if (this._prevSkillReady === false && skillReady) Sound.play('ready');
+    this._prevSkillReady = skillReady;
 
     // Weapon switch panel: mark the equipped weapon and the queued (pending) one.
     const wsp = document.getElementById('weaponSwitchPanel');
@@ -3302,25 +4140,24 @@ export class Game {
     let chosenX = Math.random() * (xMax - xMin) + xMin;
     let chosenY = Math.random() * (yMax - yMin) + yMin;
 
-    // If other players exist, try up to 8 times to get a point at least 250px away
-    for (let attempts = 0; attempts < 8; attempts++) {
-      let isTooClose = false;
-      
+    // If other players exist, try up to 12 times to get a point at least 250px
+    // away from everyone AND clear of cover tiles.
+    for (let attempts = 0; attempts < 12; attempts++) {
+      let bad = false;
+
       for (const id in this.players) {
         const other = this.players[id];
         if (other.isDead) continue;
-        
+
         const dx = other.x - chosenX;
         const dy = other.y - chosenY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        if (dist < 250) {
-          isTooClose = true;
-          break;
-        }
+        if (dx * dx + dy * dy < 250 * 250) { bad = true; break; }
+      }
+      if (!bad && this.cover?.length && !coverClearOfPoint(this.cover, chosenX, chosenY, radius + 10)) {
+        bad = true;
       }
 
-      if (!isTooClose) break;
+      if (!bad) break;
 
       chosenX = Math.random() * (xMax - xMin) + xMin;
       chosenY = Math.random() * (yMax - yMin) + yMin;
@@ -3354,6 +4191,7 @@ export class Game {
     window.removeEventListener('resize', this._resizeBound);
     window.visualViewport?.removeEventListener('resize', this._resizeBound);
     window.visualViewport?.removeEventListener('scroll', this._resizeBound);
+    this.canvas.removeEventListener('wheel', this._wheelBound);
     this._cleanupVisualSettingsPanel();
     
     // Clear background tab active preservation loops
@@ -3382,10 +4220,6 @@ export class Game {
       this.networkManager.stop();
     }
 
-    // Hide result overlay
-    const overlay = document.getElementById('resultOverlay');
-    if (overlay) overlay.classList.add('hidden');
-
     if (this.onQuitCallback) {
       this.onQuitCallback(matchStats);
     }
@@ -3408,6 +4242,7 @@ export class Game {
       const weapon = Weapons[joinPayload.weapon] ? joinPayload.weapon : 'sword';
       const costume = sanitizeCostume(joinPayload.costume);
       const guestPlayer = new Player(remoteId, nickname, weapon, spawnP.x, spawnP.y, costume);
+      guestPlayer.isMobile = !!joinPayload.isMobile; // touch players fire instantly
       this.players[remoteId] = guestPlayer;
 
       this._announce(`${guestPlayer.nickname}님이 전장에 입장했습니다!`);
@@ -3418,12 +4253,15 @@ export class Game {
         existingPlayers[id] = this.players[id].serialize();
       });
 
-      // 4. Send hand-shake ROOM_JOINED acceptance packed specifically to the guest
+      // 4. Send hand-shake ROOM_JOINED acceptance packed specifically to the guest.
+      //    roomConfig rides along so late-joiners get the exact same arena/rules.
       this.networkManager.sendTo(remoteId, Protocol.roomJoined(
-        remoteId, 
-        existingPlayers, 
-        this.mapWidth, 
-        this.mapHeight
+        remoteId,
+        existingPlayers,
+        this.mapWidth,
+        this.mapHeight,
+        this.roomConfig,
+        this.cover
       ));
 
       // 5. Broadcast to everyone else that a new player entered
@@ -3470,9 +4308,15 @@ export class Game {
         // --- CLIENT HANDLERS ---
         if (data.type === MsgType.ROOM_JOINED) {
           this.localPlayerId = data.id;
-          this.mapWidth = data.mapWidth;
-          this.mapHeight = data.mapHeight;
-          
+          // Adopt the host's room settings, then trust the explicit map dims it
+          // sent (falling back to the size derived from the config).
+          this.roomConfig = normalizeRoomConfig(data.roomConfig);
+          const dims = arenaDimensions(this.roomConfig);
+          this.mapWidth = Number.isFinite(data.mapWidth) ? data.mapWidth : dims.mapWidth;
+          this.mapHeight = Number.isFinite(data.mapHeight) ? data.mapHeight : dims.mapHeight;
+          // Adopt the host's cover layout (static obstacles).
+          this.cover = Array.isArray(data.cover) ? data.cover : [];
+
           // Reconstitute players list
           this.players = {};
           Object.keys(data.initialPlayers).forEach(id => {
@@ -3495,6 +4339,10 @@ export class Game {
           }
         } 
         
+        else if (data.type === MsgType.KILL_EVENT) {
+          this._pushKillFeed(data);
+        }
+
         else if (data.type === MsgType.GAME_STATE) {
           // Reconcile and snap correct positions
           this.remainingPlayersCount = data.remainingPlayersCount;
@@ -3523,6 +4371,7 @@ export class Game {
             p.dashCdLeft = (snap.dashCdMs || 0) / 1000;
             p.stunTimeLeft = (snap.stunMs || 0) / 1000;
             p.spearThrown = Boolean(snap.spearThrown);
+            p.flameSpraying = Boolean(snap.flameSpraying);
             p.arrowStacks = Math.max(0, Math.floor(snap.arrowStacks || 0));
             p.greatswordChargeStart = snap.greatswordChargeMs > 0 ? Date.now() - snap.greatswordChargeMs : 0;
             p.katanaChargeStart = snap.katanaChargeMs > 0 ? Date.now() - snap.katanaChargeMs : 0;
@@ -3574,6 +4423,12 @@ export class Game {
               delete this.players[id];
             }
           });
+
+          // Storm zone + healing items + mines are host-owned; clients just store them.
+          this.zone = data.zone || null;
+          this.healingItems = Array.isArray(data.healingItems) ? data.healingItems : [];
+          this.mines = Array.isArray(data.mines) ? data.mines : [];
+          this.firePatches = Array.isArray(data.firePatches) ? data.firePatches : [];
 
           // 2. Synchronize projectiles: recreate Projectile instances
           this.projectiles = data.projectiles.map(snap => {
@@ -3768,4 +4623,12 @@ function deserializeMagicCooldowns(cooldowns = {}) {
 function clamp01(value) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
+}
+
+// Damage number styling tier (drives color + size in the renderer). Derived
+// from the amount alone so it needs no extra netcode.
+function damageTier(amount) {
+  if (amount >= 80) return 'lethal'; // instakills / charged finishers
+  if (amount >= 38) return 'big';    // skills, heavy hits
+  return 'normal';
 }

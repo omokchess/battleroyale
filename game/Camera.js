@@ -3,6 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// Reference arena edge (the "tiny" preset). The tracking zoom is the zoom that
+// fits a REF-sized arena on screen, so larger maps are viewed through a
+// tiny-arena-sized window around the player. Keeping this equal to the tiny
+// preset makes the tiny arena render identically to the legacy full-map view.
+const REF_ARENA = 700;
+const VIEW_PADDING = 60;
+
 export class Camera {
   constructor() {
     this.x = 0;
@@ -15,18 +22,48 @@ export class Camera {
     this.shakeOffsetY = 0;
     this.screenOffsetY = 0;
 
+    // True when the map is too large to fit, so we follow the local player.
+    // Minimap / off-screen indicators only render in this mode.
+    this.tracking = false;
+
+    // User zoom multiplier (mouse wheel). Multiplies the auto-computed base zoom
+    // WITHOUT affecting the full-view-vs-tracking decision, so wheeling in never
+    // makes the minimap appear/disappear.
+    this.userZoom = 1.0;
+    this.minUserZoom = 0.55;
+    this.maxUserZoom = 2.6;
+
     // Lerping inertia (0.1 means 10% movement per frame leading to very smooth chase)
     this.lerpSpeed = 0.12;
   }
 
   /**
-   * Smoothly move camera towards map center with scaling zoom so the entire map is visible
+   * Step the wheel zoom. `dir > 0` zooms in, `dir < 0` zooms out. Multiplicative
+   * steps feel even across the range. Clamped to [minUserZoom, maxUserZoom].
+   */
+  adjustZoom(dir, step = 0.12) {
+    const factor = dir > 0 ? (1 + step) : 1 / (1 + step);
+    this.userZoom = Math.max(this.minUserZoom, Math.min(this.maxUserZoom, this.userZoom * factor));
+  }
+
+  resetZoom() {
+    this.userZoom = 1.0;
+  }
+
+  /**
+   * Move the camera toward its focus with smooth inertia.
+   *
+   * Auto mode:
+   *  - If the whole map fits at >= the tracking zoom, keep the legacy centered
+   *    full-map view (focus = map center). The tiny arena lands here exactly,
+   *    so it renders identically to before.
+   *  - Otherwise track the local player (targetX/targetY), clamped so the
+   *    viewport never reveals past the map edges.
+   *
+   * During death the caller keeps passing the (frozen) death position, so the
+   * camera naturally holds there and lerps back on respawn.
    */
   update(targetX, targetY, viewportWidth, viewportHeight, mapWidth, mapHeight) {
-    // Keep camera centered at the map's absolute midpoint
-    const focusX = mapWidth / 2;
-    const focusY = mapHeight / 2;
-
     const isMobilePortrait = (() => {
       if (typeof window === 'undefined') return false;
       const cssWidth = window.visualViewport?.width || window.innerWidth || viewportWidth;
@@ -35,15 +72,38 @@ export class Camera {
     const topReserve = isMobilePortrait ? Math.min(viewportHeight * 0.12, viewportWidth * 0.3) : 0;
     const bottomReserve = isMobilePortrait ? Math.min(viewportHeight * 0.24, viewportWidth * 0.46) : 0;
     const usableHeight = Math.max(1, viewportHeight - topReserve - bottomReserve);
-
-    // Calculate dynamic zoom to fit the entire map into the usable play area.
-    const padding = 60;
-    this.zoom = Math.min(viewportWidth / (mapWidth + padding), usableHeight / (mapHeight + padding));
-    // Clamp zoom factor between sensible boundaries to prevent extreme rendering dimensions on tiny screens
-    this.zoom = Math.max(0.1, Math.min(2.5, this.zoom));
     this.screenOffsetY = isMobilePortrait ? (topReserve - bottomReserve) / 2 : 0;
 
-    // Apply linear interpolation
+    const clampZoom = (z) => Math.max(0.1, Math.min(2.5, z));
+    // Zoom that fits the entire map into the usable play area (legacy view).
+    const fitZoom = clampZoom(Math.min(
+      viewportWidth / (mapWidth + VIEW_PADDING),
+      usableHeight / (mapHeight + VIEW_PADDING)
+    ));
+    // Zoom that fits a reference (tiny) arena — the tracking window size.
+    const trackZoom = clampZoom(
+      Math.min(viewportWidth, usableHeight) / (REF_ARENA + VIEW_PADDING)
+    );
+
+    this.tracking = fitZoom < trackZoom - 1e-3;
+    const baseZoom = this.tracking ? trackZoom : fitZoom;
+    // Apply the wheel zoom on top of the auto base, clamped wider than the
+    // auto-fit range so the multiplier isn't crushed.
+    this.zoom = Math.max(0.06, Math.min(4, baseZoom * this.userZoom));
+
+    let focusX = mapWidth / 2;
+    let focusY = mapHeight / 2;
+    if (this.tracking) {
+      // Half-extents of the viewport in world units (Y accounts for the mobile
+      // reserve offset so reserved bands never expose out-of-map area).
+      const halfW = viewportWidth / (2 * this.zoom);
+      const halfTop = (viewportHeight / 2 + this.screenOffsetY) / this.zoom;
+      const halfBot = (viewportHeight / 2 - this.screenOffsetY) / this.zoom;
+      focusX = clampRange(targetX, halfW, mapWidth - halfW, mapWidth / 2);
+      focusY = clampRange(targetY, halfTop, mapHeight - halfBot, mapHeight / 2);
+    }
+
+    // Apply linear interpolation (preserves the existing chase inertia).
     this.x += (focusX - this.x) * this.lerpSpeed;
     this.y += (focusY - this.y) * this.lerpSpeed;
   }
@@ -90,4 +150,11 @@ export class Camera {
       y: (screenY - viewportHeight / 2 - this.screenOffsetY) / this.zoom + this.y
     };
   }
+}
+
+// Clamp v into [lo, hi]; if the range is inverted (map smaller than the
+// viewport on that axis) fall back to the centered value instead.
+function clampRange(v, lo, hi, mid) {
+  if (lo > hi) return mid;
+  return Math.max(lo, Math.min(hi, v));
 }

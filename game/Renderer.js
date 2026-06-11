@@ -50,6 +50,17 @@ export class Renderer {
     this.weaponSprites = {};
     this._glow = 1;     // shadowBlur multiplier — set to 0 by performance mode
     this._perf = false; // performance mode: glows + particles disabled
+
+    // --- Pixel-art pipeline -------------------------------------------------
+    // The world is drawn to a low-resolution offscreen buffer, then scaled up to
+    // the main canvas with smoothing OFF so every pixel becomes a chunky square.
+    // Drawing uses the SAME logical coordinates (camera.toScreen output), so the
+    // camera/input/coordinate system is completely unchanged — only the internal
+    // raster resolution drops. HUD overlays are drawn afterward at full res.
+    this._pixelScale = 2;        // world raster ≈ 1/2 res (3 in performance mode)
+    this.offscreen = (typeof document !== 'undefined') ? document.createElement('canvas') : null;
+    this.offCtx = this.offscreen ? this.offscreen.getContext('2d') : null;
+
     this._initWeaponSprites();
   }
 
@@ -70,7 +81,6 @@ export class Renderer {
    * Main render call
    */
   render(gameState, localPlayerId, camera, mapWidth, mapHeight, visualSettings = {}) {
-    const ctx = this.ctx;
     const cw = this.canvas.width;
     const ch = this.canvas.height;
 
@@ -80,10 +90,35 @@ export class Renderer {
     const activeEffects = gameState.effects || [];
 
     // Performance mode kills the two heaviest canvas costs: glows (every
-    // shadowBlur is multiplied by _glow) and particles. Everything else still
-    // renders normally.
+    // shadowBlur is multiplied by _glow) and particles. In performance mode the
+    // pixel raster also drops further (bigger pixels = fewer of them = cheaper).
     this._perf = !!visualSettings.performanceMode;
     this._glow = this._perf ? 0 : 1;
+    this._pixelScale = this._perf ? 3 : 2;
+
+    // --- Set up the low-res world buffer. All world drawing below targets this
+    // offscreen context via `ctx`; it shares the SAME logical coordinate space
+    // as the main canvas (a base scale transform maps [0,cw]x[0,ch] onto the
+    // smaller buffer), so camera math and the _draw* helpers are unchanged.
+    const S = this._pixelScale;
+    const ow = Math.max(1, Math.round(cw / S));
+    const oh = Math.max(1, Math.round(ch / S));
+    let ctx;
+    let usingBuffer = false;
+    if (this.offCtx) {
+      if (this.offscreen.width !== ow || this.offscreen.height !== oh) {
+        this.offscreen.width = ow;
+        this.offscreen.height = oh;
+      }
+      ctx = this.offCtx;
+      usingBuffer = true;
+      // Map logical [0,cw]x[0,ch] coords onto the smaller buffer: scale by
+      // ow/cw (= 1/S), NOT cw/ow. The blit below scales back up by S.
+      ctx.setTransform(ow / cw, 0, 0, oh / ch, 0, 0);
+      ctx.imageSmoothingEnabled = false;               // crisp sprite pixels
+    } else {
+      ctx = this.ctx; // SSR / no document: draw straight to the main canvas
+    }
 
     // Particle logic updates & triggers
     if (this._perf) {
@@ -112,6 +147,15 @@ export class Renderer {
     // Draw Map Borders
     this._drawBorders(ctx, camera, cw, ch, mapWidth, mapHeight);
 
+    // Storm zone boundary (under entities so players read on top of it).
+    if (gameState.storm) this._drawZone(ctx, camera, cw, ch, gameState.storm, nowTime);
+
+    // Cover obstacles + healing items sit on the floor, under players.
+    if (gameState.cover && gameState.cover.length) this._drawCover(ctx, camera, cw, ch, gameState.cover);
+    if (gameState.healingItems && gameState.healingItems.length) this._drawHealingItems(ctx, camera, cw, ch, gameState.healingItems, nowTime);
+    if (gameState.mines && gameState.mines.length) this._drawMines(ctx, camera, cw, ch, gameState.mines, localPlayerId, nowTime);
+    if (gameState.firePatches && gameState.firePatches.length) this._drawFirePatches(ctx, camera, cw, ch, gameState.firePatches, nowTime);
+
     // Draw Active Attack Visual Effects
     if (activeEffects.length) {
       this._drawEffects(ctx, camera, cw, ch, activeEffects, gameState.players, localPlayerId, visualSettings);
@@ -125,6 +169,10 @@ export class Renderer {
     // Draw All Connected Players
     if (gameState.players) {
       this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects, mapWidth, mapHeight, visualSettings);
+      // Orbiting guardian blades (deterministic from time; suppressed while launched).
+      this._drawGuardianOrbits(ctx, camera, cw, ch, gameState.players, gameState.projectiles, nowTime);
+      // Flamethrower cones for anyone actively spraying.
+      this._drawFlameCones(ctx, camera, cw, ch, gameState.players, nowTime);
     }
 
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
@@ -142,33 +190,254 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    // Blit the low-res world buffer onto the main canvas with smoothing OFF, so
+    // every rendered pixel becomes a chunky upscaled square (the pixel-art look).
+    if (usingBuffer) {
+      const main = this.ctx;
+      main.setTransform(1, 0, 0, 1, 0, 0);
+      main.imageSmoothingEnabled = false;
+      main.clearRect(0, 0, cw, ch);
+      main.drawImage(this.offscreen, 0, 0, ow, oh, 0, 0, cw, ch);
+    }
+
+    // Tracking-mode HUD overlays: screen-space, drawn after the shake restore so
+    // they stay rock-steady. Only shown when the camera is following the player
+    // (i.e. the map is larger than the viewport); the legacy full-map view needs
+    // neither a minimap nor off-screen arrows.
+    if (camera.tracking && gameState.players) {
+      // HUD overlays render on the MAIN canvas at full resolution (crisp), not
+      // in the low-res world buffer.
+      this._drawOffscreenEnemyArrows(this.ctx, camera, cw, ch, gameState.players, localPlayerId);
+      this._drawMinimap(this.ctx, cw, ch, gameState.players, localPlayerId, mapWidth, mapHeight, gameState);
+    }
+
+    // Local-player damage vignette (full-res, on top of everything else).
+    if (gameState.hitFlash) {
+      this._drawHitVignette(this.ctx, cw, ch, gameState.hitFlash);
+    }
+    // Out-of-zone warning: pulsing purple screen edge while taking storm damage.
+    if (gameState.zoneOutside) {
+      const pulse = 0.45 + 0.25 * Math.sin(nowTime / 140);
+      this._drawZoneWarning(this.ctx, cw, ch, pulse);
+    }
+  }
+
+  // Device-pixel ratio used by the backing store, so HUD strokes/sizes stay
+  // crisp and consistent in CSS terms across desktop/retina/mobile.
+  _dpr() {
+    const cssW = this.canvas.clientWidth || parseFloat(this.canvas.style.width) || this.canvas.width;
+    return Math.max(1, Math.min(3, this.canvas.width / (cssW || this.canvas.width)));
+  }
+
+  /**
+   * Corner minimap (tracking mode only). Angular pixel-theme panel showing the
+   * arena outline, the local player (bright cyan), enemies (red), practice
+   * dummies (gray), plus optional storm zone (Task 5) and healing items (Task 9).
+   */
+  _drawMinimap(ctx, cw, ch, players, localPlayerId, mapWidth, mapHeight, gameState = {}) {
+    const dpr = this._dpr();
+    const portrait = ch > cw * 1.1;
+    const pad = Math.round(10 * dpr);
+    // Smaller on phones; sits in the reserved top band (portrait) or the free
+    // bottom-right corner (landscape/desktop) to dodge the existing HUD panels.
+    const size = Math.round(Math.min(cw, ch) * (portrait ? 0.19 : 0.16));
+    const px = portrait ? Math.round((cw - size) / 2) : (cw - size - pad);
+    const py = portrait ? pad : (ch - size - pad);
+
+    // Map area inside the panel, aspect-preserved (arena is square today).
+    const inset = Math.round(5 * dpr);
+    const innerW = size - inset * 2;
+    const innerH = size - inset * 2;
+    const aspect = mapWidth / mapHeight;
+    let mw = innerW, mh = innerW / aspect;
+    if (mh > innerH) { mh = innerH; mw = innerH * aspect; }
+    const ox = px + inset + (innerW - mw) / 2;
+    const oy = py + inset + (innerH - mh) / 2;
+    const w2m = (wx, wy) => ({ x: ox + (wx / mapWidth) * mw, y: oy + (wy / mapHeight) * mh });
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // Panel + border (angular, no glow).
+    ctx.fillStyle = 'rgba(11, 12, 16, 0.74)';
+    ctx.fillRect(px, py, size, size);
+    ctx.lineWidth = Math.max(1, 2 * dpr);
+    ctx.strokeStyle = '#2b6f72';
+    ctx.strokeRect(px + 0.5, py + 0.5, size - 1, size - 1);
+    // Inner arena outline.
+    ctx.strokeStyle = 'rgba(69, 243, 255, 0.55)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.strokeRect(Math.round(ox), Math.round(oy), Math.round(mw), Math.round(mh));
+
+    // Storm zone (Task 5): safe circle + incoming target ring. Inert until then.
+    // Cover tiles (Task 9): faint gray blocks for navigation.
+    const cover = gameState.cover;
+    if (Array.isArray(cover) && cover.length) {
+      ctx.fillStyle = 'rgba(120, 132, 150, 0.8)';
+      for (const t of cover) {
+        const a = w2m(t.x, t.y);
+        const w = Math.max(1, (t.w / mapWidth) * mw);
+        const h = Math.max(1, (t.h / mapHeight) * mh);
+        ctx.fillRect(Math.round(a.x), Math.round(a.y), Math.ceil(w), Math.ceil(h));
+      }
+    }
+
+    const storm = gameState.storm;
+    if (storm && Number.isFinite(storm.x) && Number.isFinite(storm.y) && Number.isFinite(storm.radius)) {
+      const c = w2m(storm.x, storm.y);
+      const rr = (storm.radius / mapWidth) * mw;
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.85)';
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.beginPath(); ctx.arc(c.x, c.y, Math.max(1, rr), 0, Math.PI * 2); ctx.stroke();
+      if (Number.isFinite(storm.nextX) && Number.isFinite(storm.nextRadius)) {
+        const nc = w2m(storm.nextX, storm.nextY);
+        const nr = (storm.nextRadius / mapWidth) * mw;
+        ctx.setLineDash([3 * dpr, 3 * dpr]);
+        ctx.strokeStyle = 'rgba(244, 114, 182, 0.8)';
+        ctx.beginPath(); ctx.arc(nc.x, nc.y, Math.max(1, nr), 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // Healing items (Task 9): small green squares. Inert until then.
+    const items = gameState.healingItems;
+    if (Array.isArray(items)) {
+      const s = Math.max(2, Math.round(2 * dpr));
+      ctx.fillStyle = '#34d399';
+      for (const it of items) {
+        if (!it || !Number.isFinite(it.x)) continue;
+        const m = w2m(it.x, it.y);
+        ctx.fillRect(Math.round(m.x - s / 2), Math.round(m.y - s / 2), s, s);
+      }
+    }
+
+    // Players: dummies gray, enemies red, local bright cyan (drawn last/on top).
+    const dot = Math.max(2, Math.round(3 * dpr));
+    const ids = Object.keys(players);
+    for (const id of ids) {
+      const p = players[id];
+      if (!p || p.isDead || id === localPlayerId) continue;
+      const m = w2m(p.x, p.y);
+      ctx.fillStyle = p.isDummy ? '#9ca3af' : '#ff4d4d';
+      ctx.fillRect(Math.round(m.x - dot / 2), Math.round(m.y - dot / 2), dot, dot);
+    }
+    const local = players[localPlayerId];
+    if (local && !local.isDead) {
+      const m = w2m(local.x, local.y);
+      const ld = dot + Math.round(dpr);
+      ctx.fillStyle = '#5ffbf1';
+      ctx.fillRect(Math.round(m.x - ld / 2), Math.round(m.y - ld / 2), ld, ld);
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(m.x - ld / 2) - 0.5, Math.round(m.y - ld / 2) - 0.5, ld + 1, ld + 1);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Edge arrows pointing toward off-screen enemies (tracking mode only).
+   * Capped to the nearest few so a crowded match stays readable; closer enemies
+   * draw more opaque.
+   */
+  _drawOffscreenEnemyArrows(ctx, camera, cw, ch, players, localPlayerId) {
+    const local = players[localPlayerId];
+    if (!local || local.isDead) return;
+    const dpr = this._dpr();
+    const margin = Math.round(24 * dpr);
+    const localScr = camera.toScreen(local.x, local.y, cw, ch);
+
+    const offscreen = [];
+    for (const id of Object.keys(players)) {
+      if (id === localPlayerId) continue;
+      const p = players[id];
+      if (!p || p.isDead || p.isDummy) continue;
+      const s = camera.toScreen(p.x, p.y, cw, ch);
+      if (s.x >= 0 && s.x <= cw && s.y >= 0 && s.y <= ch) continue; // on screen → no arrow
+      offscreen.push({ p, s, d: Math.hypot(p.x - local.x, p.y - local.y) });
+    }
+    if (!offscreen.length) return;
+    offscreen.sort((a, b) => a.d - b.d);
+    const MAX_ARROWS = 4;
+
+    const left = margin, right = cw - margin, top = margin, bot = ch - margin;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (let i = 0; i < Math.min(MAX_ARROWS, offscreen.length); i++) {
+      const { s, d } = offscreen[i];
+      const dx = s.x - localScr.x;
+      const dy = s.y - localScr.y;
+      if (dx === 0 && dy === 0) continue;
+      // Intersect the ray from the local player toward the enemy with the inset
+      // rectangle to find where to pin the arrow.
+      let t = Infinity;
+      if (dx > 0) t = Math.min(t, (right - localScr.x) / dx);
+      else if (dx < 0) t = Math.min(t, (left - localScr.x) / dx);
+      if (dy > 0) t = Math.min(t, (bot - localScr.y) / dy);
+      else if (dy < 0) t = Math.min(t, (top - localScr.y) / dy);
+      if (!Number.isFinite(t) || t < 0) continue;
+      const ax = Math.max(left, Math.min(right, localScr.x + dx * t));
+      const ay = Math.max(top, Math.min(bot, localScr.y + dy * t));
+      const ang = Math.atan2(dy, dx);
+      const alpha = Math.max(0.35, Math.min(0.95, 1 - d / 2200));
+      const r = 9 * dpr;
+
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(ang);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#ff4d4d';
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(-r * 0.7, r * 0.7);
+      ctx.lineTo(-r * 0.7, -r * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   /**
    * Floating pixel-font damage numbers that rise and fade above a character.
-   * Local player's damage is red; dummies/enemies are gold for contrast.
+   * Color/size encode the hit tier; your own damage is always red so you can
+   * tell at a glance that YOU got hit. Each number drifts on its own random
+   * horizontal vector so stacked hits fan out instead of overlapping.
    */
   _drawDamagePopups(ctx, camera, cw, ch, popups, now) {
     const z = camera.zoom || 1;
     // Readable on phones but still scales modestly with zoom (clamped — this is
     // UI feedback, not a hitbox, so it keeps a legibility floor).
-    const size = Math.round(15 * Math.max(0.85, Math.min(1.5, z)));
+    const baseSize = 15 * Math.max(0.85, Math.min(1.5, z));
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `${size}px "Galmuri11", monospace`;
     ctx.lineJoin = 'round';
     for (const d of popups) {
       const life = (now - d.born) / 900; // 0..1
       if (life >= 1) continue;
+
+      // Tier → palette + size bump. Your own hits override to red.
+      const tier = d.tier || 'normal';
+      const sizeMul = tier === 'lethal' ? 1.55 : tier === 'big' ? 1.25 : 1;
+      const size = Math.round(baseSize * sizeMul);
+      let fill = '#ffe27a';
+      if (tier === 'big') fill = '#ff9d3a';
+      if (tier === 'lethal') fill = '#ff5d5d';
+      if (d.isLocal) fill = '#ff5555';
+
       const anchor = camera.toScreen(d.x, d.y, cw, ch);
       const rise = 14 + life * 30;                    // drift upward (screen px)
-      const x = anchor.x;
+      const x = anchor.x + (d.vx || 0) * (10 + life * 22) * z * 0.4;
       const y = anchor.y - 22 * z - rise;
       const alpha = life < 0.7 ? 1 : Math.max(0, 1 - (life - 0.7) / 0.3);
       const pop = life < 0.12 ? 1 + (0.12 - life) * 2.2 : 1; // brief scale-in punch
       const text = String(d.amount);
-      const fill = d.isLocal ? '#ff5555' : '#ffe27a';
+      ctx.font = `${size}px "Galmuri11", monospace`;
       ctx.globalAlpha = alpha;
       ctx.save();
       ctx.translate(x, y);
@@ -178,8 +447,228 @@ export class Renderer {
       ctx.strokeText(text, 0, 0);
       ctx.fillStyle = fill;
       ctx.fillText(text, 0, 0);
+      // Lethal hits get a tiny white core for extra pop.
+      if (tier === 'lethal') {
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, 0, 0);
+      }
       ctx.restore();
     }
+    ctx.restore();
+  }
+
+  /**
+   * Local-player damage vignette: a soft red glow hugging the screen edges.
+   * Drawn on the MAIN canvas at full res (after the world blit) so it stays
+   * crisp and never tints the pixel buffer. `strength` is 0..1.
+   */
+  _drawHitVignette(ctx, cw, ch, strength) {
+    if (!(strength > 0)) return;
+    const s = Math.min(1, strength);
+    ctx.save();
+    // Radial gradient: transparent center → red at the corners.
+    const cx = cw / 2, cy = ch / 2;
+    const inner = Math.min(cw, ch) * 0.28;
+    const outer = Math.hypot(cw, cy) * 0.62;
+    const grad = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    grad.addColorStop(0, 'rgba(255,0,0,0)');
+    grad.addColorStop(1, `rgba(190,12,12,${0.55 * s})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.restore();
+  }
+
+  // Purple screen-edge glow while the local player stands outside the storm.
+  _drawZoneWarning(ctx, cw, ch, strength) {
+    const s = Math.max(0, Math.min(1, strength));
+    ctx.save();
+    const cx = cw / 2, cy = ch / 2;
+    const inner = Math.min(cw, ch) * 0.30;
+    const outer = Math.hypot(cw, cy) * 0.62;
+    const grad = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    grad.addColorStop(0, 'rgba(168,85,247,0)');
+    grad.addColorStop(1, `rgba(147,51,234,${0.5 * s})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.restore();
+  }
+
+  /** Solid cover tiles — pixel blocks with a lighter top bevel. */
+  _drawCover(ctx, camera, cw, ch, cover) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (const t of cover) {
+      const a = camera.toScreen(t.x, t.y, cw, ch);
+      const w = t.w * z, h = t.h * z;
+      // Cull off-screen tiles.
+      if (a.x + w < -20 || a.x > cw + 20 || a.y + h < -20 || a.y > ch + 20) continue;
+      const x = Math.round(a.x), y = Math.round(a.y);
+      ctx.fillStyle = '#3a4250';
+      ctx.fillRect(x, y, Math.ceil(w), Math.ceil(h));
+      ctx.fillStyle = '#4b5566';                 // top bevel
+      ctx.fillRect(x, y, Math.ceil(w), Math.max(2, Math.round(h * 0.18)));
+      ctx.strokeStyle = '#222831';
+      ctx.lineWidth = Math.max(1, z);
+      ctx.strokeRect(x + 0.5, y + 0.5, Math.ceil(w) - 1, Math.ceil(h) - 1);
+    }
+    ctx.restore();
+  }
+
+  /** Storm zone: solid safe-circle ring + dashed incoming next circle. */
+  _drawZone(ctx, camera, cw, ch, storm, now) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    // Incoming circle (during warning/shrinking the next target is shown dashed).
+    if (Number.isFinite(storm.nextRadius) && storm.phase !== 'safe' &&
+        (storm.nextRadius !== storm.radius || storm.nextX !== storm.x)) {
+      const nc = camera.toScreen(storm.nextX, storm.nextY, cw, ch);
+      ctx.setLineDash([6 * z, 5 * z]);
+      ctx.lineWidth = Math.max(1, 2 * z);
+      ctx.strokeStyle = 'rgba(244,114,182,0.85)';
+      ctx.beginPath();
+      ctx.arc(nc.x, nc.y, Math.max(2, storm.nextRadius * z), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Current safe-circle boundary.
+    const c = camera.toScreen(storm.x, storm.y, cw, ch);
+    const r = Math.max(2, storm.radius * z);
+    ctx.lineWidth = Math.max(2, 3 * z);
+    ctx.strokeStyle = 'rgba(168,85,247,0.9)';
+    ctx.shadowColor = 'rgba(168,85,247,0.8)';
+    ctx.shadowBlur = this._glow ? 10 * z : 0;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Mines. The placer sees their own mines clearly; enemies only get a faint
+   * blinking pixel (intentional — fully invisible mines feel unfair).
+   */
+  _drawMines(ctx, camera, cw, ch, mines, localPlayerId, now) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    const blink = (Math.sin(now / 220) + 1) / 2; // 0..1
+    for (const m of mines) {
+      if (!m || !Number.isFinite(m.x)) continue;
+      const s = camera.toScreen(m.x, m.y, cw, ch);
+      const armed = now >= (m.armAt || 0);
+      const mine = m.ownerId === localPlayerId;
+      if (mine) {
+        // Owner: clear pixel mine with a pulsing light.
+        const r = 6 * z;
+        ctx.fillStyle = '#7c5410';
+        ctx.fillRect(Math.round(s.x - r), Math.round(s.y - r), Math.round(r * 2), Math.round(r * 2));
+        ctx.fillStyle = armed ? `rgba(255,80,80,${0.5 + 0.5 * blink})` : '#fbbf24';
+        const c = Math.max(2, Math.round(2.4 * z));
+        ctx.fillRect(Math.round(s.x - c / 2), Math.round(s.y - c / 2), c, c);
+        ctx.strokeStyle = '#3a2a08';
+        ctx.lineWidth = Math.max(1, z);
+        ctx.strokeRect(Math.round(s.x - r) - 0.5, Math.round(s.y - r) - 0.5, Math.round(r * 2) + 1, Math.round(r * 2) + 1);
+      } else if (armed) {
+        // Enemy: just a faint 1–2px blink, so it's barely perceptible.
+        ctx.globalAlpha = 0.25 + 0.35 * blink;
+        ctx.fillStyle = '#ff6b6b';
+        const c = Math.max(2, Math.round(2 * z));
+        ctx.fillRect(Math.round(s.x - c / 2), Math.round(s.y - c / 2), c, c);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Flame cone in front of every player currently spraying the flamethrower. */
+  _drawFlameCones(ctx, camera, cw, ch, players, now) {
+    const cfg = Weapons.flamethrower;
+    const z = camera.zoom || 1;
+    for (const id of Object.keys(players)) {
+      const p = players[id];
+      if (!p || p.isDead || p.weapon !== 'flamethrower' || !p.flameSpraying) continue;
+      const scr = camera.toScreen(p.x, p.y, cw, ch);
+      const half = (cfg.angle * Math.PI) / 360;
+      const reach = cfg.range * z;
+      ctx.save();
+      ctx.translate(scr.x, scr.y);
+      ctx.rotate(p.angle);
+      // Layered flickering cone: outer orange, inner yellow.
+      const flick = 0.85 + 0.15 * Math.sin(now / 40 + (p.x + p.y));
+      for (const [frac, color] of [[1, 'rgba(251,146,60,0.32)'], [0.7, 'rgba(253,224,71,0.4)'], [0.4, 'rgba(255,255,255,0.45)']]) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, reach * frac * flick, -half, half);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Burning ground patches (flamethrower F), flickering flame discs. */
+  _drawFirePatches(ctx, camera, cw, ch, patches, now) {
+    const cfg = Weapons.flamethrower;
+    const z = camera.zoom || 1;
+    const r = (cfg && SkillConfig.flamethrower ? SkillConfig.flamethrower.patchRadius : 55) * z;
+    ctx.save();
+    for (const fp of patches) {
+      if (!fp || !Number.isFinite(fp.x)) continue;
+      const scr = camera.toScreen(fp.x, fp.y, cw, ch);
+      const flick = 0.8 + 0.2 * Math.sin(now / 60 + fp.id);
+      ctx.shadowColor = '#fb923c';
+      ctx.shadowBlur = this._glow ? 16 : 0;
+      ctx.fillStyle = `rgba(251,146,60,${0.28 * flick})`;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, r * flick, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(253,224,71,${0.32 * flick})`;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, r * 0.6 * flick, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Pixel hearts for healing items, with a gentle bob. */
+  _drawHealingItems(ctx, camera, cw, ch, items, now) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (const it of items) {
+      if (!it || !Number.isFinite(it.x)) continue;
+      const bob = Math.sin((now + (it.id || 0) * 320) / 360) * 3 * z;
+      const s = camera.toScreen(it.x, it.y, cw, ch);
+      this._drawPixelHeart(ctx, s.x, s.y + bob, 5 * z);
+    }
+    ctx.restore();
+  }
+
+  // A small chunky heart centered at (cx,cy); `u` is the pixel unit size.
+  _drawPixelHeart(ctx, cx, cy, u) {
+    const px = Math.max(1, Math.round(u));
+    // 7x6 heart bitmap.
+    const rows = [
+      '0110110',
+      '1111111',
+      '1111111',
+      '0111110',
+      '0011100',
+      '0001000'
+    ];
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,80,120,0.8)';
+    ctx.shadowBlur = this._glow ? 6 : 0;
+    const w = 7 * px, h = rows.length * px;
+    const ox = Math.round(cx - w / 2), oy = Math.round(cy - h / 2);
+    ctx.fillStyle = '#ff5d7a';
+    for (let r = 0; r < rows.length; r++) {
+      for (let cI = 0; cI < 7; cI++) {
+        if (rows[r][cI] === '1') ctx.fillRect(ox + cI * px, oy + r * px, px, px);
+      }
+    }
+    // tiny white highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillRect(ox + px, oy + px, px, px);
     ctx.restore();
   }
 
@@ -649,6 +1138,14 @@ export class Renderer {
         this._drawFireball(ctx, scr, angle, zoom);
       } else if (p.kind === 'iceshard') {
         this._drawIceShard(ctx, scr, angle, zoom);
+      } else if (p.kind === 'chakram') {
+        this._drawChakram(ctx, scr, zoom);
+      } else if (p.kind === 'pistol') {
+        this._drawPistolBullet(ctx, scr, angle, zoom);
+      } else if (p.kind === 'guardianblade') {
+        this._drawGuardianBlade(ctx, scr, zoom);
+      } else if (p.kind === 'harpoon') {
+        this._drawHarpoon(ctx, scr, angle, zoom);
       } else {
         this._drawArrow(ctx, scr, angle);
       }
@@ -719,6 +1216,142 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
 
+    ctx.restore();
+  }
+
+  // Harpoon bolt: a barbed head with a trailing rope back along its path.
+  _drawHarpoon(ctx, scr, angle, zoom) {
+    const len = 20 * (0.7 + zoom * 0.3);
+    const tailX = scr.x - Math.cos(angle) * len;
+    const tailY = scr.y - Math.sin(angle) * len;
+    ctx.save();
+    // rope
+    ctx.strokeStyle = 'rgba(96,165,250,0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // head
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(angle);
+    ctx.shadowColor = '#60a5fa';
+    ctx.shadowBlur = this._glow ? 6 : 0;
+    ctx.fillStyle = '#bfdbfe';
+    ctx.beginPath();
+    ctx.moveTo(7, 0); ctx.lineTo(-3, -5); ctx.lineTo(0, 0); ctx.lineTo(-3, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Small fast bullet with a short motion streak (dual pistols).
+  _drawPistolBullet(ctx, scr, angle, zoom) {
+    const len = 9 * (0.7 + zoom * 0.3);
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(251, 113, 133, 0.4)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.lineTo(scr.x - Math.cos(angle) * len, scr.y - Math.sin(angle) * len);
+    ctx.stroke();
+    ctx.shadowColor = '#fb7185';
+    ctx.shadowBlur = this._glow ? 6 : 0;
+    ctx.fillStyle = '#fecdd3';
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // A single teal guardian blade (used for launched blades and the orbit).
+  _drawGuardianBlade(ctx, scr, zoom, spin = null) {
+    const s = 9 * (0.7 + zoom * 0.3);
+    const rot = spin !== null ? spin : (Date.now() / 70) % (Math.PI * 2);
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(rot);
+    ctx.shadowColor = '#2dd4bf';
+    ctx.shadowBlur = this._glow ? 7 : 0;
+    ctx.fillStyle = '#2dd4bf';
+    // A 4-point throwing-star blade.
+    ctx.beginPath();
+    ctx.moveTo(s, 0); ctx.lineTo(0, s * 0.4);
+    ctx.lineTo(-s, 0); ctx.lineTo(0, -s * 0.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, s); ctx.lineTo(s * 0.4, 0);
+    ctx.lineTo(0, -s); ctx.lineTo(-s * 0.4, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#99f6e4';
+    ctx.beginPath();
+    ctx.arc(0, 0, s * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Two blades orbiting each guardian player, unless their blades are launched.
+  _drawGuardianOrbits(ctx, camera, cw, ch, players, projectiles, now) {
+    const cfg = Weapons.guardian;
+    const launched = new Set();
+    if (Array.isArray(projectiles)) {
+      for (const p of projectiles) if (p.kind === 'guardianblade') launched.add(p.ownerId);
+    }
+    const period = cfg.orbitPeriodMs || 1100;
+    const n = cfg.orbitCount || 2;
+    for (const id of Object.keys(players)) {
+      const pl = players[id];
+      if (!pl || pl.isDead || pl.weapon !== 'guardian' || launched.has(id)) continue;
+      const base = (now / period) * Math.PI * 2;
+      for (let i = 0; i < n; i++) {
+        const a = base + (i / n) * Math.PI * 2;
+        const wx = pl.x + Math.cos(a) * cfg.orbitRadius;
+        const wy = pl.y + Math.sin(a) * cfg.orbitRadius;
+        const scr = camera.toScreen(wx, wy, cw, ch);
+        this._drawGuardianBlade(ctx, scr, camera.zoom || 1, a * 2);
+      }
+    }
+  }
+
+  // Spinning chakram disc — a bladed ring that rotates over time.
+  _drawChakram(ctx, scr, zoom) {
+    const r = 13 * (0.7 + zoom * 0.3);
+    const spin = (Date.now() / 90) % (Math.PI * 2);
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(spin);
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = this._glow ? 8 : 0;
+    // Outer ring
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Four blade spikes
+    ctx.fillStyle = '#bae6fd';
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      ctx.save();
+      ctx.rotate(a);
+      ctx.beginPath();
+      ctx.moveTo(r - 2, -3);
+      ctx.lineTo(r + 5, 0);
+      ctx.lineTo(r - 2, 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    // Hub
+    ctx.fillStyle = '#0ea5e9';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -1108,9 +1741,31 @@ export class Renderer {
         this._drawIcicleLoad(ctx, scr, e, alpha, zoom);
       } else if (e.type === 'sniper_teleport') {
         this._drawSniperTeleport(ctx, scr, e, alpha, zoom);
+      } else if (e.type === 'mine_blast') {
+        this._drawMineBlast(ctx, scr, e, alpha, zoom);
       }
     });
 
+    ctx.restore();
+  }
+
+  // Expanding orange shockwave for a mine detonation.
+  _drawMineBlast(ctx, scr, e, alpha, zoom) {
+    const p = clamp01(e.progress);
+    const r = (e.range || 60) * zoom * (0.3 + 0.7 * easeOutCubic(p));
+    ctx.save();
+    ctx.globalAlpha = alpha * (1 - p);
+    ctx.shadowColor = '#f59e0b';
+    ctx.shadowBlur = this._glow ? 14 : 0;
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 3 + 3 * (1 - p);
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(245,158,11,${0.25 * (1 - p)})`;
+    ctx.beginPath();
+    ctx.arc(scr.x, scr.y, r * 0.85, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -3839,10 +4494,32 @@ export class Renderer {
       const startScr = camera.toScreen(startWorldX, startWorldY, cw, ch);
       const endScr = camera.toScreen(endWorldX, endWorldY, cw, ch);
 
-      ctx.beginPath();
-      ctx.moveTo(startScr.x, startScr.y);
-      ctx.lineTo(endScr.x, endScr.y);
-      ctx.stroke();
+      if (isLocal) {
+        // Always-on aim preview for the local ranged weapon: a glowing
+        // weapon-colored beam so the shot is easy to pre-aim — important on
+        // mobile where sniper/matchlock fire instantly (no telegraph window).
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.shadowColor = weapon.color;
+        ctx.shadowBlur = this._glow ? 8 : 0;
+        ctx.strokeStyle = this._hexToRGB(weapon.color, 0.9);
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(startScr.x, startScr.y);
+        ctx.lineTo(endScr.x, endScr.y);
+        ctx.stroke();
+        // bright impact dot at the wall
+        ctx.fillStyle = this._hexToRGB(weapon.color, 0.95);
+        ctx.beginPath();
+        ctx.arc(endScr.x, endScr.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(startScr.x, startScr.y);
+        ctx.lineTo(endScr.x, endScr.y);
+        ctx.stroke();
+      }
 
       ctx.setLineDash([]);
       ctx.fillStyle = this._hexToRGB(guideColor, 0.25);

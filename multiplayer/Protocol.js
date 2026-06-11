@@ -15,8 +15,7 @@ export const MsgType = {
   PLAYER_ACTION: 'PLAYER_ACTION',
   WEAPON_SELECT: 'WEAPON_SELECT',
   GAME_STATE: 'GAME_STATE',
-  PLAYER_DIED: 'PLAYER_DIED',
-  GAME_RESULT: 'GAME_RESULT',
+  KILL_EVENT: 'KILL_EVENT',
   PING: 'PING',
   PONG: 'PONG',
   ERROR: 'ERROR'
@@ -28,13 +27,16 @@ export const MsgType = {
 export const Protocol = {
   // Client registration frame. `costume` (optional) carries the purchased
   // skin colors { color, accentColor } so the host paints this player for everyone.
-  joinRoom(nickname, weapon, costume = null) {
-    return { type: MsgType.JOIN_ROOM, nickname, weapon, costume };
+  // `isMobile` lets the host give touch players the instant-fire sniper/matchlock.
+  joinRoom(nickname, weapon, costume = null, isMobile = false) {
+    return { type: MsgType.JOIN_ROOM, nickname, weapon, costume, isMobile: !!isMobile };
   },
 
-  // Handshake registration acceptance frame
-  roomJoined(id, initialPlayers, mapWidth, mapHeight) {
-    return { type: MsgType.ROOM_JOINED, id, initialPlayers, mapWidth, mapHeight };
+  // Handshake registration acceptance frame. roomConfig carries the arena-size /
+  // storm / cover / healing settings, and cover the generated obstacle tiles, so
+  // late-joiners get the exact same arena/rules.
+  roomJoined(id, initialPlayers, mapWidth, mapHeight, roomConfig = null, cover = []) {
+    return { type: MsgType.ROOM_JOINED, id, initialPlayers, mapWidth, mapHeight, roomConfig, cover };
   },
 
   // Notify clients of a newcomer
@@ -71,15 +73,32 @@ export const Protocol = {
     return { type: MsgType.WEAPON_SELECT, weapon };
   },
 
-  // System snapshot state
-  gameState(players, projectiles, effects, remainingPlayersCount) {
-    return { 
-      type: MsgType.GAME_STATE, 
-      players, 
-      projectiles, 
-      effects, 
+  // System snapshot state. zone (storm) + healingItems are dynamic and ride
+  // along here; cover is static and goes in ROOM_JOINED instead.
+  gameState(players, projectiles, effects, remainingPlayersCount, zone = null, healingItems = null, mines = null, firePatches = null) {
+    return {
+      type: MsgType.GAME_STATE,
+      players,
+      projectiles,
+      effects,
       remainingPlayersCount,
-      timestamp: Date.now() 
+      zone,
+      healingItems,
+      mines,
+      firePatches,
+      timestamp: Date.now()
+    };
+  },
+
+  // Kill feed line, broadcast by the host so every peer shows the same notice.
+  // `weapon` is the killer's weapon key (for the icon/label); `via` is an
+  // optional method label (e.g. '활로'). killerId/victimId let clients highlight
+  // their own kills/deaths.
+  killEvent(killerId, killerName, victimId, victimName, weapon, via = '') {
+    return {
+      type: MsgType.KILL_EVENT,
+      killerId, killerName, victimId, victimName, weapon, via,
+      timestamp: Date.now()
     };
   },
 

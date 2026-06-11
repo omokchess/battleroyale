@@ -128,3 +128,78 @@ export async function equipCostume(costumeId) {
   if (error) throw error;
   return oneRow(data);
 }
+
+// --- 범용 아이템 카탈로그 (상점 확장) -----------------------------------------
+// items 테이블이 아직 없는 구 스키마면 모든 함수가 빈 값/no-op 으로 폴백한다.
+
+function isMissingTableError(error) {
+  if (!error) return false;
+  const code = error.code || '';
+  const msg = `${error.message || ''} ${error.details || ''}`;
+  return code === '42P01' || code === 'PGRST205' || /relation .* does not exist|could not find the table/i.test(msg);
+}
+
+/** 전체 아이템 카탈로그 (모든 카테고리). 구 스키마면 []. */
+export async function fetchItems() {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('items')
+    .select('id, category, name, price, data, unlock_type, unlock_threshold, sort_order')
+    .order('category', { ascending: true })
+    .order('sort_order', { ascending: true });
+  if (error) {
+    if (!isMissingTableError(error)) console.error('[supabase] fetchItems', error);
+    return [];
+  }
+  return data ?? [];
+}
+
+/** 내가 보유한 아이템 id Set. 구 스키마면 빈 Set. */
+export async function fetchMyItemIds() {
+  if (!supabase) return new Set();
+  const { data, error } = await supabase.from('user_items').select('item_id');
+  if (error) {
+    if (!isMissingTableError(error)) console.error('[supabase] fetchMyItemIds', error);
+    return new Set();
+  }
+  return new Set((data ?? []).map((r) => r.item_id));
+}
+
+/** 내 카테고리별 착용 정보 ({costume, weaponskin, killfx, dashtrail, respawnfx, title}). */
+export async function fetchMyEquipped() {
+  const fallback = { costume: 'default', weaponskin: 'none', killfx: 'none', dashtrail: 'none', respawnfx: 'none', title: 'none' };
+  if (!supabase) return fallback;
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData?.user?.id;
+  if (!uid) return fallback;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('equipped_costume, equipped_weaponskin, equipped_killfx, equipped_dashtrail, equipped_respawnfx, equipped_title')
+    .eq('id', uid)
+    .maybeSingle();
+  if (error || !data) return fallback;
+  return {
+    costume: data.equipped_costume || 'default',
+    weaponskin: data.equipped_weaponskin || 'none',
+    killfx: data.equipped_killfx || 'none',
+    dashtrail: data.equipped_dashtrail || 'none',
+    respawnfx: data.equipped_respawnfx || 'none',
+    title: data.equipped_title || 'none'
+  };
+}
+
+/** 아이템 구매(RPC). 갱신된 프로필 반환. 실패 시 throw. */
+export async function purchaseItem(itemId) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('purchase_item', { p_item: itemId });
+  if (error) throw error;
+  return oneRow(data);
+}
+
+/** 아이템 착용(RPC). 갱신된 프로필 반환. 실패 시 throw. */
+export async function equipItem(itemId) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('equip_item', { p_item: itemId });
+  if (error) throw error;
+  return oneRow(data);
+}

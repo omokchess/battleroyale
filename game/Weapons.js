@@ -61,7 +61,8 @@ export const Weapons = {
   },
   gauntlet: {
     name: '건틀릿',
-    damage: 19,
+    damage: 16,            // balance: 19→16 (DPS 79→67) — was a clear outlier (+40%
+                           // over the next cluster) and overlapped guardian's niche
     maxHp: 110,
     cooldown: 240,
     moveSpeed: 1.3,
@@ -129,7 +130,7 @@ export const Weapons = {
     maxHp: 100,
     cooldown: 430,
     moveSpeed: 1.15,
-    range: 87,
+    range: 97,     // +10px so the hit reaches the visible blade tip
     width: 1,
     hitCooldownRefundMs: 120,
     missPenaltyMs: 150,
@@ -209,6 +210,98 @@ export const Weapons = {
     description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 저격총입니다. F로 0.5초간 조준선을 노출한 뒤 직선상 첫 적을 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
     skill: 'F: 0.5초 조준선 노출(텔레그래프) 후 직선상 첫 적 즉사 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)',
     color: '#22c55e'
+  },
+  chakram: {
+    name: '차크람',
+    damage: 22,             // applied once per leg (outbound + return) per target
+    maxHp: 100,
+    cooldown: 900,          // measured from when the disk returns to hand
+    moveSpeed: 1.1,
+    range: 280,             // outbound distance before it boomerangs back
+    speed: 640,             // outbound flight speed (px/s)
+    type: 'projectile',
+    projectileKind: 'chakram',
+    description: '던지면 날아갔다가 부메랑처럼 돌아오는 원반입니다. 나가는 길과 돌아오는 길 양쪽에 피해를 주지만, 원반이 떠 있는 동안은 비무장 상태가 됩니다.',
+    skill: 'F 스킬: 부채꼴 3방향으로 동시에 차크람을 던집니다(각 18 피해) · 쿨타임 6초',
+    color: '#38bdf8'
+  },
+  pistols: {
+    name: '쌍권총',
+    damage: 9,
+    maxHp: 90,
+    cooldown: 200,          // rapid fire
+    moveSpeed: 1.25,        // full speed while shooting (no move penalty)
+    range: 260,             // bullets vanish past this distance
+    speed: 520,             // projectile speed (px/s)
+    spreadDeg: 4,           // slight per-shot spread → weak at max range
+    type: 'projectile',
+    projectileKind: 'pistol',
+    description: '사거리가 제한된 빠른 탄을 연사하는 유일한 일반 총기입니다. 이동 패널티 없이 무빙샷이 가능하지만, 단발 화력이 낮고 탄퍼짐 탓에 최대 사거리에서는 명중률이 떨어집니다.',
+    skill: 'F 스킬: 0.6초간 8발 부채꼴 난사 후 뒤로 짧게 점프(이탈) · 쿨타임 6초',
+    color: '#fb7185'
+  },
+  guardian: {
+    name: '수호 블레이드',
+    damage: 16,             // orbit contact damage (per target, re-hit every 500ms)
+    maxHp: 110,
+    cooldown: 500,          // unused (no manual attack) but kept for the stats card
+    automaticAttack: false, // damage comes from the orbiting blades, not a swing
+    moveSpeed: 1.2,
+    range: 55,              // orbit radius == effective reach
+    type: 'orbit',
+    orbitCount: 2,
+    orbitRadius: 55,
+    orbitPeriodMs: 1100,    // one full revolution
+    rehitMs: 500,           // min gap between hits on the same target
+    bladeRadius: 9,
+    description: '칼날 두 개가 몸 주위를 공전하며 닿는 적을 자동으로 벱니다. 조준이 없어 무빙과 거리 조절이 전부이며, 사거리가 몸 둘레뿐이라 긴 사거리 무기에 접근하기 어렵습니다.',
+    skill: 'F 스킬: 칼날 2개를 바깥으로 발사(각 24 피해)했다가 회수하며, 회수 전까지 비무장 · 쿨타임 5초',
+    color: '#2dd4bf'
+  },
+  harpoon: {
+    name: '작살',
+    damage: 12,
+    maxHp: 105,
+    cooldown: 1100,
+    moveSpeed: 1.0,
+    range: 200,             // throw distance
+    speed: 700,
+    type: 'projectile',
+    projectileKind: 'harpoon',
+    description: '중거리로 작살을 던져 명중한 적을 자신 앞으로 끌어옵니다. 끌어온 직후 짧은 경직을 주지만 본인 평타가 약해, 마무리할 다음 수가 필요한 시동기입니다.',
+    skill: 'F 스킬: 조준 방향의 적 또는 벽으로 자신이 끌려가는 이동기(피해 없음) · 쿨타임 5초',
+    color: '#60a5fa'
+  },
+  minebag: {
+    name: '지뢰 가방',
+    damage: 12,
+    maxHp: 115,
+    cooldown: 500,
+    moveSpeed: 1.15,
+    range: 55,
+    angle: 90,
+    type: 'melee_arc',
+    description: '평타는 약한 근접 베기지만, F로 지뢰를 깔아 길목을 장악하는 두뇌형 무기입니다. 정면 교전이 가장 약하니 설치할 틈을 만들며 싸워야 합니다.',
+    skill: 'F 스킬: 발밑에 지뢰 설치(1초 후 활성화, 폭발 38·반경 60, 최대 3개) · 설치 쿨타임 2.5초',
+    color: '#f59e0b'
+  },
+  flamethrower: {
+    name: '화염방사기',
+    damage: 6,              // per tick (5 ticks/s → DPS 30)
+    maxHp: 130,
+    cooldown: 200,          // tick reference (no manual swing)
+    automaticAttack: false, // sprays continuously via its own updater
+    moveSpeed: 0.95,        // while recharging / not spraying
+    sprayMoveSpeed: 0.55,   // dragged down while spraying
+    range: 90,
+    angle: 60,              // cone width (degrees)
+    type: 'cone',
+    tickMs: 200,
+    fuelMs: 3000,           // 3s of continuous spray
+    rechargeMs: 2000,       // 2s to refill once fully spent
+    description: '전방 부채꼴에 불을 지속 분사하는 근접 무기입니다. 조준이 후해 모바일에 강하지만 사거리가 짧고 분사 중에는 굼떠지며, 연료가 바닥나면 재충전 동안 무장 해제됩니다.',
+    skill: 'F 스킬: 전방에 2초간 타오르는 화염 장판을 던집니다(초당 10 피해) · 쿨타임 7초',
+    color: '#fb923c'
   }
 };
 
@@ -259,6 +352,54 @@ export const SkillConfig = {
     throwSpeed: 50000,     // label only — outbound throw resolves instantly
     returnSpeed: 760,
     returnMs: 1800
+  },
+  chakram: {
+    cooldownMs: 6000,
+    fanCount: 3,           // simultaneous discs
+    fanSpreadDeg: 34,      // total angular spread of the fan
+    damage: 18,            // per disc, per leg
+    range: 280,
+    speed: 640,
+    returnSpeed: 720
+  },
+  pistols: {
+    cooldownMs: 6000,
+    burstCount: 8,
+    burstMs: 600,          // 8 shots spread across 0.6s
+    fanSpreadDeg: 70,      // total fan width of the barrage
+    damage: 11,            // per barrage bullet
+    speed: 560,
+    range: 300,
+    hopDistance: 90        // backward escape hop after the barrage
+  },
+  guardian: {
+    cooldownMs: 5000,
+    launchDamage: 24,      // per launched blade, per leg
+    launchRange: 200,      // outward flight before the blade returns
+    launchSpeed: 560
+  },
+  harpoon: {
+    cooldownMs: 5000,
+    pullRange: 360,        // max self-pull distance toward enemy/wall
+    stopGap: 32,           // stop short of the contact point
+    pullToFront: 50,       // basic-attack pulls the target this far in front
+    slowMs: 300            // brief drag on a hooked target (not a stun)
+  },
+  minebag: {
+    cooldownMs: 2500,      // place cooldown
+    armMs: 1000,           // delay before a mine becomes live
+    blastRadius: 60,
+    triggerRadius: 46,     // enemy proximity that detonates an armed mine
+    damage: 38,
+    maxMines: 3            // per player; placing a 4th removes the oldest
+  },
+  flamethrower: {
+    cooldownMs: 7000,
+    patchRange: 76,        // how far in front the patch lands
+    patchRadius: 55,
+    patchMs: 2000,         // burn duration
+    patchTickMs: 250,      // damage cadence
+    patchDamage: 2.5       // per tick (≈10/s)
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends

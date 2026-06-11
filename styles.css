@@ -162,8 +162,7 @@
    and a cool neon glow (modern), with a faint stone grain. */
 body,
 #authScreen,
-#lobbyMenu,
-#resultOverlay {
+#lobbyMenu {
   background-color: #0c0a12 !important;
   background-image:
     radial-gradient(110% 75% at 10% -8%, rgba(251, 146, 60, 0.14), transparent 55%),
@@ -813,3 +812,27 @@ html.touch-ui #weaponPanelToggle { display: flex !important; }       /* show tog
 html.touch-ui #weaponSwitchPanel { display: none; }                  /* closed by default */
 html.touch-ui #weaponSwitchPanel.open { display: flex; }             /* opened via toggle */
 html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-enable the dimmer */
+
+/* Room-custom modal: pixel-theme segmented option buttons. */
+.cfg-opt {
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.1;
+  text-transform: uppercase;
+  padding: 7px 2px;
+  border: 2px solid #374151;        /* gray-700 */
+  background: #0b0c10;
+  color: #9ca3af;                   /* gray-400 */
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.05s ease, border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
+}
+.cfg-opt:hover { border-color: #45f3ff; color: #e5e7eb; }
+.cfg-opt:active { transform: scale(0.95); }
+.cfg-opt.selected {
+  border-color: #45f3ff;
+  background: rgba(69, 243, 255, 0.12);
+  color: #66fcf1;
+  box-shadow: inset 0 0 0 1px rgba(69, 243, 255, 0.45);
+  font-weight: 700;
+}

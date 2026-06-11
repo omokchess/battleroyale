@@ -133,6 +133,7 @@ export class RoomRegistry {
       weapon: extra.weapon || 'sword',
       players: extra.players || 1,
       dummy: !!extra.dummy,
+      config: extra.config || null,   // roomConfig summary for lobby badges
       ts: Date.now(),
       origin: this.instanceId
     };
