@@ -238,6 +238,24 @@ export const Weapons = {
     description: '사거리가 제한된 빠른 탄을 연사하는 유일한 일반 총기입니다. 이동 패널티 없이 무빙샷이 가능하지만, 단발 화력이 낮고 탄퍼짐 탓에 최대 사거리에서는 명중률이 떨어집니다.',
     skill: 'F 스킬: 0.6초간 8발 부채꼴 난사 후 뒤로 짧게 점프(이탈) · 쿨타임 6초',
     color: '#fb7185'
+  },
+  guardian: {
+    name: '수호 블레이드',
+    damage: 16,             // orbit contact damage (per target, re-hit every 500ms)
+    maxHp: 110,
+    cooldown: 500,          // unused (no manual attack) but kept for the stats card
+    automaticAttack: false, // damage comes from the orbiting blades, not a swing
+    moveSpeed: 1.2,
+    range: 55,              // orbit radius == effective reach
+    type: 'orbit',
+    orbitCount: 2,
+    orbitRadius: 55,
+    orbitPeriodMs: 1100,    // one full revolution
+    rehitMs: 500,           // min gap between hits on the same target
+    bladeRadius: 9,
+    description: '칼날 두 개가 몸 주위를 공전하며 닿는 적을 자동으로 벱니다. 조준이 없어 무빙과 거리 조절이 전부이며, 사거리가 몸 둘레뿐이라 긴 사거리 무기에 접근하기 어렵습니다.',
+    skill: 'F 스킬: 칼날 2개를 바깥으로 발사(각 24 피해)했다가 회수하며, 회수 전까지 비무장 · 쿨타임 5초',
+    color: '#2dd4bf'
   }
 };
 
@@ -307,6 +325,12 @@ export const SkillConfig = {
     speed: 560,
     range: 300,
     hopDistance: 90        // backward escape hop after the barrage
+  },
+  guardian: {
+    cooldownMs: 5000,
+    launchDamage: 24,      // per launched blade, per leg
+    launchRange: 200,      // outward flight before the blade returns
+    launchSpeed: 560
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends

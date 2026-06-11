@@ -167,6 +167,8 @@ export class Renderer {
     // Draw All Connected Players
     if (gameState.players) {
       this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects, mapWidth, mapHeight, visualSettings);
+      // Orbiting guardian blades (deterministic from time; suppressed while launched).
+      this._drawGuardianOrbits(ctx, camera, cw, ch, gameState.players, gameState.projectiles, nowTime);
     }
 
     // Top particles rendering (Hurt splatters, death grave explosions, weapon arcs)
@@ -1052,6 +1054,8 @@ export class Renderer {
         this._drawChakram(ctx, scr, zoom);
       } else if (p.kind === 'pistol') {
         this._drawPistolBullet(ctx, scr, angle, zoom);
+      } else if (p.kind === 'guardianblade') {
+        this._drawGuardianBlade(ctx, scr, zoom);
       } else {
         this._drawArrow(ctx, scr, angle);
       }
@@ -1143,6 +1147,57 @@ export class Renderer {
     ctx.arc(scr.x, scr.y, 2.6, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+
+  // A single teal guardian blade (used for launched blades and the orbit).
+  _drawGuardianBlade(ctx, scr, zoom, spin = null) {
+    const s = 9 * (0.7 + zoom * 0.3);
+    const rot = spin !== null ? spin : (Date.now() / 70) % (Math.PI * 2);
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.rotate(rot);
+    ctx.shadowColor = '#2dd4bf';
+    ctx.shadowBlur = this._glow ? 7 : 0;
+    ctx.fillStyle = '#2dd4bf';
+    // A 4-point throwing-star blade.
+    ctx.beginPath();
+    ctx.moveTo(s, 0); ctx.lineTo(0, s * 0.4);
+    ctx.lineTo(-s, 0); ctx.lineTo(0, -s * 0.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, s); ctx.lineTo(s * 0.4, 0);
+    ctx.lineTo(0, -s); ctx.lineTo(-s * 0.4, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#99f6e4';
+    ctx.beginPath();
+    ctx.arc(0, 0, s * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Two blades orbiting each guardian player, unless their blades are launched.
+  _drawGuardianOrbits(ctx, camera, cw, ch, players, projectiles, now) {
+    const cfg = Weapons.guardian;
+    const launched = new Set();
+    if (Array.isArray(projectiles)) {
+      for (const p of projectiles) if (p.kind === 'guardianblade') launched.add(p.ownerId);
+    }
+    const period = cfg.orbitPeriodMs || 1100;
+    const n = cfg.orbitCount || 2;
+    for (const id of Object.keys(players)) {
+      const pl = players[id];
+      if (!pl || pl.isDead || pl.weapon !== 'guardian' || launched.has(id)) continue;
+      const base = (now / period) * Math.PI * 2;
+      for (let i = 0; i < n; i++) {
+        const a = base + (i / n) * Math.PI * 2;
+        const wx = pl.x + Math.cos(a) * cfg.orbitRadius;
+        const wy = pl.y + Math.sin(a) * cfg.orbitRadius;
+        const scr = camera.toScreen(wx, wy, cw, ch);
+        this._drawGuardianBlade(ctx, scr, camera.zoom || 1, a * 2);
+      }
+    }
   }
 
   // Spinning chakram disc — a bladed ring that rotates over time.

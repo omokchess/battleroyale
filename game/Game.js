@@ -444,6 +444,7 @@ export class Game {
     // Storm zone tick + healing spawns/pickups (host authoritative).
     this._updateZone(now, deltaTime);
     this._updateHealingItems(now);
+    this._updateGuardianBlades(now);
 
     // 2.5 Advance skill buffs & cooldowns authoritatively.
     Object.keys(this.players).forEach(id => {
@@ -509,8 +510,8 @@ export class Game {
         this._updateThrownSpear(proj, deltaTime, now);
         return;
       }
-      // Chakram boomerangs out then back, hitting on both legs.
-      if (proj.kind === 'chakram') {
+      // Chakram + launched guardian blades boomerang out then back.
+      if (proj.kind === 'chakram' || proj.kind === 'guardianblade') {
         this._updateChakram(proj, deltaTime, now);
         return;
       }
@@ -1670,6 +1671,7 @@ export class Game {
       case 'sniper': this._fireSniperShot(player, now); break;
       case 'chakram': this._throwChakramFan(player, now); break;
       case 'pistols': this._firePistolBarrage(player, now); break;
+      case 'guardian': this._launchGuardianBlades(player, now); break;
       default: break;
     }
   }
@@ -3110,6 +3112,8 @@ export class Game {
     proj.bornAt = now;
     proj.outRange = outRange;
     proj.locksOwner = !isSkill;     // only the basic throw disarms until return
+    proj.deathName = '차크람';
+    proj.hitLabel = '차크람으로';
     proj.hitOut = new Set();
     proj.hitBack = new Set();
     this.projectiles.push(proj);
@@ -3159,8 +3163,8 @@ export class Game {
         if (target.id === proj.ownerId || target.isDead || target.isInvincible() || hitSet.has(target.id)) return;
         if (Collision.checkProjectileHit(proj, target)) {
           hitSet.add(target.id);
-          const died = target.takeDamage(proj.damage, '차크람');
-          if (died) this._creditKill(proj.ownerId, target, '차크람으로');
+          const died = target.takeDamage(proj.damage, proj.deathName || '차크람');
+          if (died) this._creditKill(proj.ownerId, target, proj.hitLabel || '차크람으로');
         }
       });
     };
@@ -3229,6 +3233,74 @@ export class Game {
       interval: (sk.burstMs || 600) / count,
       nextAt: now,
       hopped: false
+    });
+  }
+
+  // --- 수호 블레이드 (guardian): orbiting blades + F launch/recall ----------
+
+  // Deterministic blade positions for a guardian player at host time `now`.
+  _guardianBladePositions(player, now) {
+    const cfg = Weapons.guardian;
+    const base = (now / (cfg.orbitPeriodMs || 1100)) * Math.PI * 2;
+    const n = cfg.orbitCount || 2;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const a = base + (i / n) * Math.PI * 2;
+      out.push({ x: player.x + Math.cos(a) * cfg.orbitRadius, y: player.y + Math.sin(a) * cfg.orbitRadius, angle: a });
+    }
+    return out;
+  }
+
+  _updateGuardianBlades(now) {
+    const cfg = Weapons.guardian;
+    Object.values(this.players).forEach(player => {
+      if (player.weapon !== 'guardian' || player.isDead) return;
+      // Disarmed while the blades are launched (F skill) — orbit does no damage.
+      if (this.projectiles.some(p => p.kind === 'guardianblade' && p.ownerId === player.id)) return;
+
+      if (!player._guardianHits) player._guardianHits = {};
+      const blades = this._guardianBladePositions(player, now);
+      Object.values(this.players).forEach(target => {
+        if (target.id === player.id || target.isDead || target.isInvincible()) return;
+        const last = player._guardianHits[target.id] || 0;
+        if (now - last < (cfg.rehitMs || 500)) return;
+        const rr = (target.radius || 14) + (cfg.bladeRadius || 9);
+        const hit = blades.some(b => (b.x - target.x) ** 2 + (b.y - target.y) ** 2 <= rr * rr);
+        if (hit) {
+          player._guardianHits[target.id] = now;
+          const died = target.takeDamage(cfg.damage, '수호 블레이드');
+          if (died) this._creditKill(player.id, target, '수호 블레이드로');
+        }
+      });
+    });
+  }
+
+  _launchGuardianBlades(player, now) {
+    const sk = SkillConfig.guardian;
+    player.skillCdLeft = (sk.cooldownMs || 5000) / 1000;
+    const blades = this._guardianBladePositions(player, now);
+    blades.forEach((b, i) => {
+      const proj = new Projectile(
+        `${player.id}-gblade-${now}-${i}`,
+        player.id, b.x, b.y, b.angle,
+        sk.launchSpeed, Infinity, sk.launchDamage, 'guardianblade'
+      );
+      proj.weapon = 'guardian';
+      proj.radius = 11;
+      proj.phase = 'out';
+      proj.bornAt = now;
+      proj.outRange = sk.launchRange;
+      proj.locksOwner = false;       // disarm is implied by the projectiles existing
+      proj.deathName = '수호 블레이드';
+      proj.hitLabel = '수호 블레이드로';
+      proj.hitOut = new Set();
+      proj.hitBack = new Set();
+      this.projectiles.push(proj);
+    });
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+      weapon: 'guardian', type: 'projectile_shot', projectileKind: 'guardianblade',
+      progress: 0, timestamp: now, lifetime: 220
     });
   }
 
