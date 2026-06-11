@@ -15,9 +15,13 @@ import {
   fetchLeaderboard,
   fetchCostumes,
   fetchMyCostumeIds,
-  purchaseCostume,
-  equipCostume,
   recordMatch,
+  fetchItems,
+  fetchMyItemIds,
+  fetchMyEquipped,
+  equippedFromProfile,
+  purchaseItem,
+  equipItem,
 } from '../supabase/game-api.js';
 
 /**
@@ -28,8 +32,23 @@ import {
 // ── 내부 상태 ───────────────────────────────────────────────
 let profile = null;            // { id, username, coins, total_kills, equipped_costume }
 let costumeCatalog = [];       // [{ id, name, price, color, accent_color }]
-let ownedIds = new Set();      // 보유 코스튬 id
+let ownedIds = new Set();      // 보유 코스튬 id (레거시 — getEquippedCostume 용)
 let callbacks = {};            // { onEnterLobby, onRequireLogin }
+
+// 범용 상점(카테고리 탭) 상태.
+let itemCatalog = [];          // [{ id, category, name, price, data, unlock_type, unlock_threshold }]
+let ownedItemIds = new Set();  // 보유 아이템 id
+let equipped = equippedFromProfile(null); // { costume, weaponskin, killfx, dashtrail, respawnfx, title } (전체 id)
+let activeCategory = 'costume';
+
+const SHOP_CATEGORIES = [
+  { key: 'costume',    label: '코스튬' },
+  { key: 'weaponskin', label: '무기 스킨' },
+  { key: 'killfx',     label: '처치 이펙트' },
+  { key: 'dashtrail',  label: '대시 트레일' },
+  { key: 'respawnfx',  label: '부활 이펙트' },
+  { key: 'title',      label: '칭호' },
+];
 
 // ── DOM 헬퍼 ────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -76,6 +95,25 @@ export function getEquippedCostume() {
 /** 로비 닉네임 입력 기본값 */
 export function getUsername() {
   return profile?.username || '';
+}
+
+/**
+ * 게임에 넘길 착용 코스메틱 전체 세트(치장 전용). 각 카테고리의 표현 데이터를
+ * 풀어서 반환 → P2P 로 다른 플레이어에게 전달해 그대로 그릴 수 있게 한다.
+ */
+export function getEquippedCosmetics() {
+  const resolve = (cat) => {
+    const id = equipped[cat] || (cat + ':none');
+    const item = itemCatalog.find((i) => i.id === id);
+    return { id, data: item?.data || {} };
+  };
+  return {
+    weaponskin: resolve('weaponskin'),
+    killfx: resolve('killfx'),
+    dashtrail: resolve('dashtrail'),
+    respawnfx: resolve('respawnfx'),
+    title: resolve('title'),
+  };
 }
 
 /**
@@ -131,6 +169,10 @@ async function handleSession(session) {
     // 코스튬 카탈로그/보유목록은 한 번만 받아두면 됨(상점 열 때 갱신)
     if (!costumeCatalog.length) costumeCatalog = await fetchCostumes();
     ownedIds = await fetchMyCostumeIds();
+    // 범용 카탈로그 + 보유 + 착용(전체 카테고리)
+    if (!itemCatalog.length) itemCatalog = await fetchItems();
+    ownedItemIds = await fetchMyItemIds();
+    equipped = await fetchMyEquipped();
     renderAccountBar();
     callbacks.onEnterLobby?.(profile);
   } else {
@@ -294,17 +336,74 @@ async function openLeaderboard() {
     </table>`;
 }
 
-// ── 상점 모달 ───────────────────────────────────────────────
+// ── 상점 모달 (카테고리 탭) ─────────────────────────────────
 async function openShop() {
   const modal = $('shopModal');
   const body = $('shopBody');
   if (!modal || !body) return;
   modal.classList.remove('hidden');
 
-  // 최신 데이터로 갱신
-  if (!costumeCatalog.length) costumeCatalog = await fetchCostumes();
-  ownedIds = await fetchMyCostumeIds();
+  // 비로그인(게스트) → 로그인 유도 (플레이는 로그인 없이도 가능).
+  if (!profile) {
+    const coinEl = $('shopCoins');
+    if (coinEl) coinEl.textContent = '0';
+    body.innerHTML = `<div class="col-span-full text-center py-10 font-mono text-sm text-gray-300 leading-relaxed">
+      상점은 <span class="text-[#45f3ff]">로그인</span> 후 이용할 수 있어요.<br>
+      <span class="text-[11px] text-gray-500">게임 플레이는 로그인 없이도 가능합니다.</span></div>`;
+    return;
+  }
+
+  // 최신 데이터로 갱신.
+  if (!itemCatalog.length) itemCatalog = await fetchItems();
+  ownedItemIds = await fetchMyItemIds();
+  equipped = await fetchMyEquipped();
   renderShop();
+}
+
+// 해당 아이템을 착용 가능한 상태로 보유했는지(무료/구매/업적 해금).
+function isOwned(it) {
+  if (it.price === 0 && it.unlock_type === 'coin') return true;        // 무료(없음/기본)
+  if (it.unlock_type === 'achievement') return (profile?.total_kills || 0) >= it.unlock_threshold;
+  return ownedItemIds.has(it.id);
+}
+
+function itemSwatch(it) {
+  const d = it.data || {};
+  if (it.category === 'costume')
+    return `<div class="w-12 h-12 rounded-full mb-2 border-2" style="background:${d.color || '#334155'};border-color:${d.accentColor || '#888'}"></div>`;
+  if (it.category === 'weaponskin')
+    return `<div class="w-12 h-12 mb-2 border-2 border-gray-600" style="background:${d.tint || '#3a4250'}"></div>`;
+  if (it.category === 'title')
+    return `<div class="h-12 flex items-center mb-2 font-mono text-xs font-bold" style="color:${d.color || '#9ca3af'}">${escapeHtml(d.text || '없음')}</div>`;
+  // killfx / dashtrail / respawnfx → 발광 점
+  const col = d.color || '#6b7280';
+  return `<div class="w-12 h-12 mb-2 flex items-center justify-center"><div class="w-6 h-6 rounded-full" style="background:${col};box-shadow:0 0 10px ${col}"></div></div>`;
+}
+
+function renderItemCard(it) {
+  const owned = isOwned(it);
+  const isEq = equipped[it.category] === it.id;
+  const lockedAch = it.unlock_type === 'achievement' && !owned;
+  let btn;
+  if (isEq) {
+    btn = `<button disabled class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-[#45f3ff] text-[#45f3ff] bg-[#0b3038] cursor-default">착용 중</button>`;
+  } else if (owned) {
+    btn = `<button data-equip="${it.id}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-teal-400 text-teal-300 hover:bg-teal-900/40 cursor-pointer active:scale-95 transition-all">착용하기</button>`;
+  } else if (lockedAch) {
+    btn = `<button disabled class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-gray-600 text-gray-500 cursor-default">킬 ${it.unlock_threshold} 해금</button>`;
+  } else {
+    btn = `<button data-buy="${it.id}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-yellow-500 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">${it.price} 코인 구매</button>`;
+  }
+  const priceText = it.price === 0
+    ? (it.unlock_type === 'achievement' ? `누적 킬 ${it.unlock_threshold}` : '무료')
+    : `${it.price} 코인`;
+  return `
+    <div class="bg-[#0b0c10] border-2 border-gray-700 p-3 flex flex-col items-center">
+      ${itemSwatch(it)}
+      <div class="font-mono text-xs text-white font-bold text-center">${escapeHtml(it.name)}</div>
+      <div class="font-mono text-[10px] text-gray-400 mt-0.5">${priceText}</div>
+      ${btn}
+    </div>`;
 }
 
 function renderShop() {
@@ -313,42 +412,45 @@ function renderShop() {
   if (!body) return;
   if (coinEl) coinEl.textContent = profile?.coins ?? 0;
 
-  body.innerHTML = costumeCatalog.map((c) => {
-    const owned = ownedIds.has(c.id);
-    const equipped = profile?.equipped_costume === c.id;
-    const extras = costumeExtras(c.id);
-    let btn;
-    if (equipped) {
-      btn = `<button disabled class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-[#45f3ff] text-[#45f3ff] bg-[#0b3038] cursor-default">착용 중</button>`;
-    } else if (owned) {
-      btn = `<button data-equip="${c.id}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-teal-400 text-teal-300 hover:bg-teal-900/40 cursor-pointer active:scale-95 transition-all">착용하기</button>`;
-    } else {
-      btn = `<button data-buy="${c.id}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-yellow-500 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">${c.price} 코인 구매</button>`;
-    }
-    return `
-      <div class="bg-[#0b0c10] border-2 border-gray-700 p-3 flex flex-col items-center">
-        <div class="w-12 h-12 rounded-full mb-2 border-2" style="background:${c.color}; border-color:${c.accent_color}"></div>
-        <div class="font-mono text-xs text-white font-bold">${escapeHtml(c.name)}</div>
-        <div class="font-mono text-[9px] text-[#66fcf1] mt-1">${escapeHtml(extras.label)}</div>
-        <div class="font-mono text-[10px] text-gray-400">${c.price === 0 ? '무료' : c.price + ' 코인'}</div>
-        ${btn}
-      </div>`;
-  }).join('');
+  // 마이그레이션 전(items 없음)이면 레거시 코스튬 카탈로그로 폴백.
+  const items = itemCatalog.length
+    ? itemCatalog
+    : costumeCatalog.map((c) => ({
+        id: 'costume:' + c.id, category: 'costume', name: c.name, price: c.price,
+        data: { color: c.color, accentColor: c.accent_color }, unlock_type: 'coin',
+        unlock_threshold: 0, sort_order: c.sort_order || 0,
+      }));
 
-  // 구매/착용 배선
-  body.querySelectorAll('[data-buy]').forEach((el) => {
-    el.addEventListener('click', () => handleBuy(el.getAttribute('data-buy')));
-  });
-  body.querySelectorAll('[data-equip]').forEach((el) => {
-    el.addEventListener('click', () => handleEquip(el.getAttribute('data-equip')));
-  });
+  const cats = SHOP_CATEGORIES.filter((c) => items.some((i) => i.category === c.key));
+  const activeCats = cats.length ? cats : SHOP_CATEGORIES.slice(0, 1);
+  if (!activeCats.some((c) => c.key === activeCategory)) activeCategory = activeCats[0].key;
+
+  const tabs = activeCats.map((c) => `
+    <button data-cat="${c.key}" class="px-2.5 py-1 text-[10px] font-mono uppercase border-2 cursor-pointer active:scale-95 transition-all ${c.key === activeCategory ? 'border-[#45f3ff] text-[#45f3ff] bg-[#0b3038]' : 'border-gray-700 text-gray-400 hover:border-gray-500'}">${c.label}</button>`).join('');
+
+  const catItems = items
+    .filter((i) => i.category === activeCategory)
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  const cards = catItems.map(renderItemCard).join('');
+
+  body.innerHTML = `
+    <div class="col-span-full flex flex-wrap gap-1.5 mb-3">${tabs}</div>
+    ${cards || '<div class="col-span-full text-center text-gray-500 text-xs py-6">아이템이 없습니다.</div>'}`;
+
+  body.querySelectorAll('[data-cat]').forEach((el) =>
+    el.addEventListener('click', () => { activeCategory = el.getAttribute('data-cat'); renderShop(); }));
+  body.querySelectorAll('[data-buy]').forEach((el) =>
+    el.addEventListener('click', () => handleBuyItem(el.getAttribute('data-buy'))));
+  body.querySelectorAll('[data-equip]').forEach((el) =>
+    el.addEventListener('click', () => handleEquipItem(el.getAttribute('data-equip'))));
 }
 
-async function handleBuy(id) {
+async function handleBuyItem(id) {
   try {
-    const updated = await purchaseCostume(id);
-    if (updated) profile = updated;
-    ownedIds.add(id);
+    const updated = await purchaseItem(id);
+    if (updated) { profile = updated; equipped = equippedFromProfile(updated); }
+    ownedItemIds.add(id);
+    if (id.startsWith('costume:')) ownedIds.add(id.slice('costume:'.length));
     renderShop();
     renderAccountBar();
   } catch (e) {
@@ -356,10 +458,10 @@ async function handleBuy(id) {
   }
 }
 
-async function handleEquip(id) {
+async function handleEquipItem(id) {
   try {
-    const updated = await equipCostume(id);
-    if (updated) profile = updated;
+    const updated = await equipItem(id);
+    if (updated) { profile = updated; equipped = equippedFromProfile(updated); }
     renderShop();
     renderAccountBar();
   } catch (e) {
