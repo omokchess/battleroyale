@@ -3599,8 +3599,19 @@ export class Renderer {
         this._drawPlayerAttackRange(ctx, camera, cw, ch, scr, p, isLocal, Boolean(activeAttack), mapWidth, mapHeight, activeAttack);
       }
 
+      // Ground/foot shadow: a soft dark ellipse under the player's actual
+      // position (not the lunge offset) so sprites read as standing ON the
+      // grass rather than floating over it.
       ctx.save();
-      
+      ctx.globalAlpha = 0.32;
+      ctx.fillStyle = '#0d0a06';
+      ctx.beginPath();
+      ctx.ellipse(scr.x, scr.y + radius * 0.78, radius * 1.05, radius * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+
       // Glow and Shadow under player
       ctx.shadowBlur = this._glow * (isLocal ? 15 : 4);
       ctx.shadowColor = isLocal ? '#ef4444' : p.color;
@@ -3622,7 +3633,7 @@ export class Renderer {
       // Outline
       ctx.shadowBlur = this._glow *0;
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = isLocal ? '#ef4444' : '#0b0c10';
+      ctx.strokeStyle = isLocal ? '#ef4444' : '#0d0a06';
       ctx.strokeRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
 
       // Magic staff status overlays: fire DoT flames + loaded ice shards orbiting.
