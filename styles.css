@@ -247,22 +247,27 @@ h1 {
    (inputs, account bar, weapon cards) stay dark and have their light text
    restored by the more-specific rules below. */
 .bg-\[\#2c2016\].border-4 {
-  background-color: #e3d6b6 !important;             /* muted aged cream */
+  background-color: #e6d2a0 !important;             /* warm muted parchment */
   background-image: url('/assets/parchment.svg') !important;
   background-repeat: repeat !important;
   background-position: center !important;
   background-size: 96px 96px !important;
-  color: #3a2e1f !important;                        /* default ink */
+  /* Clip the paper fill to the padding box so the torn bites in the border
+     image are NOT backfilled by the parchment — the dark page shows through
+     the gaps, reading as actually-missing paper. */
+  background-clip: padding-box !important;
+  color: #2c2110 !important;                        /* dark ink */
+  text-shadow: 0 1px 0 rgba(255, 249, 230, 0.5) !important;  /* legibility emboss */
   /* Ragged edge: a 9-slice torn-paper rim (random bites + a darkening gradient
      toward the outer edge) so the sheet has a deckled, chewed border instead of
      a clean rectangle. 'round' tiles the bite pattern to fit each side. */
   border-style: solid !important;
-  border-width: 13px !important;
-  border-image: url('/assets/torn-frame.svg') 16 / 13px / 0 round !important;
-  /* Aged darkening: the paper browns toward all four edges. */
+  border-width: 15px !important;
+  border-image: url('/assets/torn-frame.svg') 18 / 15px / 0 round !important;
+  /* Aged scorching: the paper browns well into the sheet from every edge. */
   box-shadow:
-    inset 0 0 46px 14px rgba(120, 88, 44, 0.45),
-    inset 0 0 96px 0 rgba(100, 72, 34, 0.26),
+    inset 0 0 72px 30px rgba(112, 78, 36, 0.50),
+    inset 0 0 140px 0 rgba(88, 60, 26, 0.34),
     0 6px 22px rgba(0, 0, 0, 0.55) !important;
 }
 
@@ -271,21 +276,23 @@ h1 {
 .bg-\[\#2c2016\].border-4 .text-gray-200,
 .bg-\[\#2c2016\].border-4 .text-gray-300,
 .bg-\[\#2c2016\].border-4 .text-gray-400,
-.bg-\[\#2c2016\].border-4 .text-gray-500 { color: #4a3a26 !important; }
-.bg-\[\#2c2016\].border-4 .text-\[\#e8d5a3\] { color: #5a4326 !important; }
-.bg-\[\#2c2016\].border-4 .text-\[\#c9a227\] { color: #8a5a16 !important; }   /* dark-gold headings */
+.bg-\[\#2c2016\].border-4 .text-gray-500 { color: #2e2212 !important; }
+.bg-\[\#2c2016\].border-4 .text-\[\#e8d5a3\] { color: #45320f !important; }
+.bg-\[\#2c2016\].border-4 .text-\[\#c9a227\] { color: #6a3f0c !important; }   /* deep umber headings */
 .bg-\[\#2c2016\].border-4 .text-yellow-300,
-.bg-\[\#2c2016\].border-4 .text-yellow-400 { color: #9a6a14 !important; }
+.bg-\[\#2c2016\].border-4 .text-yellow-400 { color: #7e5210 !important; }
 .bg-\[\#2c2016\].border-4 h1,
-.bg-\[\#2c2016\].border-4 h2 { color: #5a3a14 !important; text-shadow: 0 1px 0 rgba(255,245,220,0.5) !important; }
+.bg-\[\#2c2016\].border-4 h2 { color: #5a3410 !important; text-shadow: 0 1px 0 rgba(255,245,220,0.6) !important; }
 
-/* Nested dark inset boxes stay dark — restore their light text/labels. */
-.bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] { color: #e7dcc4 !important; }
+/* Nested dark inset boxes stay dark — kill the parchment emboss and restore
+   their light text/labels (light glow over dark would smear). */
+.bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] { color: #e7dcc4 !important; text-shadow: none !important; }
+.bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] * { text-shadow: none !important; }
 .bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] .text-white { color: #ffffff !important; }
 .bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] .text-gray-200,
 .bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] .text-gray-300,
 .bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] .text-gray-400,
-.bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] .text-gray-500 { color: #b9a884 !important; }
+.bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] .text-gray-500 { color: #c2b08a !important; }
 .bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] .text-\[\#e8d5a3\] { color: #e8d5a3 !important; }
 .bg-\[\#2c2016\].border-4 .bg-\[\#14100b\] .text-\[\#c9a227\] { color: #d8b24a !important; }
 
