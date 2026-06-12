@@ -27,6 +27,13 @@ const WEAPON_ASSET_VERSION = '20260609a';
 // renders crisp at full resolution. Flip to true to bring the chunky look back.
 const PIXEL_ART_ENABLED = false;
 
+// Fantasy lighting rule (Task 4-4): only arcane casts bloom. Effects of these
+// types keep their glow; every other combat effect (steel arcs, powder shots)
+// renders flat so it reads as physical rather than neon.
+const MAGIC_EFFECT_TYPES = new Set([
+  'explosion', 'lifebound_heal', 'icicle_load',
+]);
+
 // Only greatsword uses an idle angle offset; other idle weapons point at aim.
 const WEAPON_IDLE_POSE = {
   greatsword: -0.7
@@ -949,7 +956,7 @@ export class Renderer {
 
     // 4. Bow arrows trace stardust sparkling trails
     if (gameState.projectiles) {
-      const trailColors = { arrow: '#a3ff45', swordwave: '#45f3ff', thrownspear: '#ffa345' };
+      const trailColors = { arrow: '#a3ff45', swordwave: '#dce4ee', thrownspear: '#ffa345' };
       gameState.projectiles.forEach(proj => {
         if (!proj.isDead && Math.random() < 0.35) {
           this.particles.push({
@@ -1339,7 +1346,7 @@ export class Renderer {
     const tailY = scr.y - Math.sin(angle) * len;
     ctx.save();
     // rope
-    ctx.strokeStyle = 'rgba(96,165,250,0.5)';
+    ctx.strokeStyle = 'rgba(150,130,96,0.55)';
     ctx.lineWidth = 2;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -1350,9 +1357,9 @@ export class Renderer {
     // head
     ctx.translate(scr.x, scr.y);
     ctx.rotate(angle);
-    ctx.shadowColor = '#60a5fa';
-    ctx.shadowBlur = this._glow ? 6 : 0;
-    ctx.fillStyle = '#bfdbfe';
+    ctx.shadowColor = '#9aa2ad';
+    ctx.shadowBlur = this._glow ? 4 : 0;
+    ctx.fillStyle = '#c2cad6';
     ctx.beginPath();
     ctx.moveTo(7, 0); ctx.lineTo(-3, -5); ctx.lineTo(0, 0); ctx.lineTo(-3, 5);
     ctx.closePath();
@@ -1438,10 +1445,10 @@ export class Renderer {
     ctx.save();
     ctx.translate(scr.x, scr.y);
     ctx.rotate(spin);
-    ctx.shadowColor = '#38bdf8';
-    ctx.shadowBlur = this._glow ? 8 : 0;
+    ctx.shadowColor = '#c2cad6';
+    ctx.shadowBlur = this._glow ? 5 : 0;
     // Outer ring
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#c2cad6';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1461,7 +1468,7 @@ export class Renderer {
       ctx.restore();
     }
     // Hub
-    ctx.fillStyle = '#0ea5e9';
+    ctx.fillStyle = '#8d99a8';
     ctx.beginPath();
     ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
     ctx.fill();
@@ -1704,19 +1711,19 @@ export class Renderer {
     ctx.save();
     ctx.translate(scr.x, scr.y);
     ctx.rotate(angle);
-    ctx.shadowBlur = this._glow *14;
-    ctx.shadowColor = '#45f3ff';
+    ctx.shadowBlur = this._glow * 6;
+    ctx.shadowColor = '#e8eef6';
     ctx.lineCap = 'round';
 
     // Pizza-slice blade energy: the projectile sits on the far edge of the sword arc.
-    ctx.fillStyle = 'rgba(69, 243, 255, 0.16)';
+    ctx.fillStyle = 'rgba(220, 228, 238, 0.16)';
     ctx.beginPath();
     ctx.moveTo(apexX, 0);
     ctx.arc(apexX, 0, radius, -halfAngle, halfAngle);
     ctx.closePath();
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(69, 243, 255, 0.72)';
+    ctx.strokeStyle = 'rgba(220, 228, 238, 0.78)';
     ctx.lineWidth = 5.5;
     ctx.beginPath();
     ctx.arc(apexX, 0, radius, -halfAngle, halfAngle);
@@ -1772,7 +1779,11 @@ export class Renderer {
         return;
       }
 
-      ctx.shadowBlur = this._glow *(minimized ? 4 : 14) * alpha;
+      // Fantasy lighting: only magic blooms. Steel (melee) and powder (ranged)
+      // effects read as physical, so the default glow is suppressed for them and
+      // reserved for arcane fire/frost/heal casts.
+      const isMagicFx = MAGIC_EFFECT_TYPES.has(e.type) || baseWeapon.type === 'magic';
+      ctx.shadowBlur = isMagicFx ? (this._glow * (minimized ? 4 : 14) * alpha) : 0;
       ctx.shadowColor = weapon.color;
 
       if (e.type === 'melee_heavy_arc') {
@@ -3845,7 +3856,7 @@ export class Renderer {
     if (!decoration) return;
     const upX = scr.x;
     const upY = scr.y - radius - 4;
-    const accent = player.accentColor || '#66fcf1';
+    const accent = player.accentColor || '#e8d5a3';
 
     ctx.save();
     ctx.shadowBlur = this._glow * 7;
@@ -4462,10 +4473,10 @@ export class Renderer {
       // 차크람: a held spinning ring with four blade spikes.
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle + (Date.now() / 120) % (Math.PI * 2));
-      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeStyle = '#c2cad6';
       ctx.lineWidth = 2.4;
       ctx.beginPath(); ctx.arc(6, 0, 7, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#bae6fd';
+      ctx.fillStyle = '#e8eef6';
       for (let i = 0; i < 4; i++) {
         ctx.save(); ctx.translate(6, 0); ctx.rotate(i * Math.PI / 2);
         ctx.beginPath(); ctx.moveTo(5, -2); ctx.lineTo(10, 0); ctx.lineTo(5, 2); ctx.closePath(); ctx.fill();
@@ -4500,12 +4511,12 @@ export class Renderer {
       // 작살: a launcher with a barbed bolt.
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle);
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#5b4a32';
       ctx.fillRect(-9, -3, 6, 6);                    // launcher body
-      ctx.strokeStyle = '#60a5fa';
+      ctx.strokeStyle = '#9aa2ad';
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(16, 0); ctx.stroke(); // shaft
-      ctx.fillStyle = '#bfdbfe';
+      ctx.fillStyle = '#c2cad6';
       ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(14, -5); ctx.lineTo(16, 0); ctx.lineTo(14, 5); ctx.closePath(); ctx.fill(); // barbed head
     }
     else if (weaponType === 'minebag') {
