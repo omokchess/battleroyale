@@ -36,16 +36,16 @@ test('weapon max hp is applied on spawn and serialization', () => {
   const hammer = new Player('hammer-player', 'Hammer', 'hammer', 0, 0);
 
   assert.equal(sword.maxHp, 120);
-  assert.equal(axe.maxHp, 150);
-  assert.equal(bow.maxHp, 80);
-  assert.equal(spear.maxHp, 100);
+  assert.equal(axe.maxHp, 155);
+  assert.equal(bow.maxHp, 85);
+  assert.equal(spear.maxHp, 105);
   assert.equal(gauntlet.maxHp, 110);
   assert.equal(greatsword.maxHp, 140);
   assert.equal(scythe.maxHp, 115);
   assert.equal(dagger.maxHp, 90);
   assert.equal(rapier.maxHp, 100);
-  assert.equal(hammer.maxHp, 145);
+  assert.equal(hammer.maxHp, 150);
   assert.equal(bow.hp, bow.maxHp);
-  assert.equal(axe.serialize().maxHp, 150);
-  assert.equal(hammer.serialize().maxHp, 145);
+  assert.equal(axe.serialize().maxHp, 155);
+  assert.equal(hammer.serialize().maxHp, 150);
 });

@@ -150,7 +150,7 @@ test('melee combo finishers change weapon shape after the required hits', () => 
   const gauntlet = new Player('gauntlet-combo', 'Knuckle', 'gauntlet', 0, 0);
   gauntlet.comboStep = 6;
   gauntlet.lastAttackTime = 6900;
-  assert.equal(Weapons.gauntlet.cooldown, 240);
+  assert.equal(Weapons.gauntlet.cooldown, 220);
   assert.equal(Weapons.gauntlet.type, 'melee_line');
   const gauntletFinisher = game._resolveComboAttack(gauntlet, Weapons.gauntlet, 7000);
   assert.equal(gauntletFinisher.isFinisher, true);
@@ -180,15 +180,17 @@ test('new melee weapon families expose distinct hit mechanics', () => {
   dagger.angle = 0;
   const daggerTarget = new Player('dagger-target', 'Back', 'sword', 150, 100);
   daggerTarget.angle = 0;
+  // Dagger from the target's rear → backstab damage + bleed (Task 10).
   hit = game._resolveMeleeHitResult(dagger, daggerTarget, Weapons.dagger);
-  assert.equal(hit.damage, Weapons.dagger.critDamage);
+  assert.equal(hit.damage, Weapons.dagger.backstabDamage);
+  assert.equal(hit.bleed, true);
 
   const rapier = new Player('rapier-owner', 'Needle', 'rapier', 100, 100);
   rapier.angle = 0;
   assert.equal(Weapons.rapier.damage, 20);
   const rapierTarget = new Player('rapier-target', 'Line', 'sword', 180, 102);
   hit = game._resolveMeleeHitResult(rapier, rapierTarget, Weapons.rapier);
-  assert.equal(hit.damage, Weapons.rapier.critDamage);
+  assert.equal(hit.damage, Weapons.rapier.damage); // base thrust (no per-hit crit anymore)
 
   const hammer = new Player('hammer-owner', 'Bell', 'hammer', 100, 100);
   const hammerTarget = new Player('hammer-target', 'Outer', 'sword', 170, 100);
@@ -263,9 +265,9 @@ test('greatsword skill charges quickly into a max-damage heavy cleave', () => {
   assert.equal(SkillConfig.greatsword.cooldownMs, 800);
   assert.equal(SkillConfig.greatsword.chargeMaxMs, 1000);
   assert.equal(SkillConfig.greatsword.chargeThreshold, 0.5);
-  assert.equal(SkillConfig.greatsword.minDamage, 1);
-  assert.equal(SkillConfig.greatsword.thresholdDamage, 35);
-  assert.equal(SkillConfig.greatsword.damage, 70);
+  assert.equal(SkillConfig.greatsword.minDamage, 15);
+  assert.equal(SkillConfig.greatsword.thresholdDamage, 38);
+  assert.equal(SkillConfig.greatsword.damage, 75);
   const target = new Player('greatsword-target', 'Dummy', 'sword', 190, 100);
   game.players[owner.id] = owner;
   game.players[target.id] = target;
@@ -336,7 +338,7 @@ test('greatsword charge damage starts scaling only after the midpoint', () => {
   assert.equal(target.hp, target.maxHp - expectedDamage);
 });
 
-test('greatsword release before midpoint still deals one damage', () => {
+test('greatsword release before midpoint still deals minimum damage', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -355,10 +357,10 @@ test('greatsword release before midpoint still deals one damage', () => {
   game._releaseGreatswordCharge(owner, 1000 + SkillConfig.greatsword.chargeMaxMs * 0.49);
   game._processPendingMeleeHits(1000 + SkillConfig.greatsword.chargeMaxMs * 0.49 + SkillConfig.greatsword.delayDamageMs);
 
-  assert.equal(target.hp, target.maxHp - 1);
+  assert.equal(target.hp, target.maxHp - SkillConfig.greatsword.minDamage);
 });
 
-test('greatsword instant release only deals one damage', () => {
+test('greatsword instant release only deals minimum damage', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -378,7 +380,7 @@ test('greatsword instant release only deals one damage', () => {
   game._releaseGreatswordCharge(owner, 1000);
   game._processPendingMeleeHits(1000 + SkillConfig.greatsword.delayDamageMs);
 
-  assert.equal(target.hp, target.maxHp - 1);
+  assert.equal(target.hp, target.maxHp - SkillConfig.greatsword.minDamage);
 });
 
 test('greatsword blade sweep cuts inside the swept arc but not behind/outside it', () => {
@@ -502,7 +504,7 @@ test('rapier skill grants the riposte buff (faster, longer reach, no miss penalt
   assert.equal(game.effects.some(e => e.type === 'buff_activate'), true);
 });
 
-test('rapier 5-hit combo finisher reaches farther and crits harder', () => {
+test('rapier 5-hit combo finisher reaches farther, hits 30 + slow', () => {
   const game = Object.create(Game.prototype);
   const fin = ComboConfig.rapier.finisher;
 
@@ -514,7 +516,8 @@ test('rapier 5-hit combo finisher reaches farther and crits harder', () => {
   assert.equal(combo.step, 5);
   assert.equal(combo.isFinisher, true);
   assert.equal(combo.weaponConfig.range, fin.range);
-  assert.equal(combo.weaponConfig.critDamage, fin.critDamage);
+  assert.equal(combo.weaponConfig.damage, 30);
+  assert.equal(combo.weaponConfig.onHitSlowMs, fin.onHitSlowMs);
   assert.equal(combo.weaponConfig.knockback, fin.knockback);
   assert.ok(combo.weaponConfig.range > Weapons.rapier.range);
 });
@@ -744,7 +747,7 @@ test('katana R iaijutsu charges for one second before cutting a 40px line', () =
   assert.equal(game.effects.some(e => e.type === 'melee_heavy_line' && e.width === SkillConfig.katana.iaijutsuWidth), true);
 });
 
-test('magic staff fireball deals direct damage then a burn that ticks 2/sec for 4s', () => {
+test('magic staff fireball deals direct damage then a burn that ticks 6/sec for 3s', () => {
   const game = Object.create(Game.prototype);
   game.players = {};
   game.effects = [];
@@ -764,17 +767,18 @@ test('magic staff fireball deals direct damage then a burn that ticks 2/sec for 
   const target = new Player('t', 'T', 'sword', 200, 100);
   game.players[target.id] = target;
   const hp0 = target.hp;
-  target.takeDamage(MagicConfig.fireball.damage, '파이어볼');         // direct hit
+  const direct = MagicConfig.fireball.damage;
+  target.takeDamage(direct, '파이어볼');                            // direct hit (32)
   game._applyBurn(target, mage.id, MagicConfig.fireball.burnDps, MagicConfig.fireball.burnDurationMs);
-  assert.equal(target.hp, hp0 - 40);
-  assert.ok(target.burnTimeLeft > 3.9);
+  assert.equal(target.hp, hp0 - direct);
+  assert.ok(target.burnTimeLeft > 2.9);                             // 3s burn
 
   game._tickStatuses(1.0, 2000);
-  assert.equal(target.hp, hp0 - 40 - 2);                            // first tick
+  assert.equal(target.hp, hp0 - direct - 6);                        // first tick (6)
   game._tickStatuses(1.0, 3000);
   game._tickStatuses(1.0, 4000);
   game._tickStatuses(1.0, 5000);
-  assert.equal(target.hp, hp0 - 40 - 8);                            // 4 ticks total = 8
+  assert.equal(target.hp, hp0 - direct - 18);                       // 3 ticks × 6 = 18
   assert.equal(target.burnTimeLeft, 0);
 });
 

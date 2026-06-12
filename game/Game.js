@@ -588,6 +588,7 @@ export class Game {
           if (proj.kind === 'iceshard') {
             proj.isDead = true;
             const died = target.takeDamage(proj.damage, '아이스 샤드');
+            if (!died) this._applySlow(target, MagicConfig.iceShard.slowMs || 1500); // 둔화
             if (died) this._creditKill(proj.ownerId, target, '아이스 샤드로');
             return;
           }
@@ -620,10 +621,17 @@ export class Game {
           }
 
           proj.isDead = true;
+          let arrowDmg = proj.damage;
           if (proj.kind === 'arrow') {
             this._awardBowArrowStack(this.players[proj.ownerId]);
+            // Close-range falloff: a bow that lets you fight at melee is too safe.
+            const bow = Weapons.bow;
+            if (bow.closeRange) {
+              const flew = Math.hypot(proj.x - proj.startX, proj.y - proj.startY);
+              if (flew < bow.closeRange) arrowDmg = bow.closeDamage ?? arrowDmg;
+            }
           }
-          const died = target.takeDamage(proj.damage, proj.kind === 'greatswordwave' ? 'greatswordwave' : 'arrow');
+          const died = target.takeDamage(arrowDmg, proj.kind === 'greatswordwave' ? 'greatswordwave' : 'arrow');
           if (died) this._creditKill(proj.ownerId, target, '활로');
         }
       });
@@ -909,7 +917,7 @@ export class Game {
 
     Object.keys(this.players).forEach(tid => {
       const target = this.players[tid];
-      const hit = this._resolveMeleeHitResult(attacker, target, attackConfig);
+      const hit = this._resolveMeleeHitResult(attacker, target, attackConfig, now);
       if (!hit) return;
 
       hitCount++;
@@ -935,7 +943,7 @@ export class Game {
     return hitCount;
   }
 
-  _resolveMeleeHitResult(attacker, target, weapon) {
+  _resolveMeleeHitResult(attacker, target, weapon, now = Date.now()) {
     if (!target || target.isInvincible?.()) return null;
     if (!Collision.checkMeleeHit(attacker, target, weapon)) return null;
     // A cover tile between attacker and target blocks the strike.
@@ -949,12 +957,14 @@ export class Game {
     let damage = weapon.damage || 0;
     let pull = 0;
     let knockback = weapon.knockback || 0;
+    let slowMs = 0, bleed = false, burn = false;
 
     if (weapon.type === 'melee_sweet_arc') {
       const sweetDistance = weapon.innerRange || weapon.range * 0.58;
       if (dist >= sweetDistance) {
         damage = weapon.sweetDamage || damage;
         pull = weapon.pull || 0;
+        if (weapon.sweetBleed) bleed = true;        // scythe outer blade → bleed
       }
     } else if (weapon.type === 'melee_backstab') {
       const fromTargetToAttacker = Math.atan2(attacker.y - target.y, attacker.x - target.x);
@@ -967,9 +977,20 @@ export class Game {
       const uX = Math.cos(attacker.angle);
       const uY = Math.sin(attacker.angle);
       const perpDiff = Math.abs(dx * uY - dy * uX);
-      const critWidth = Math.max(5, (weapon.width || 0) * 0.55) + (target.radius || 14) * 0.25;
-      if (perpDiff <= critWidth) {
-        damage = weapon.critDamage || damage;
+      // Centerline crit (only weapons that declare critDamage, e.g. combo finishers).
+      if (weapon.critDamage) {
+        const critWidth = Math.max(5, (weapon.width || 0) * 0.55) + (target.radius || 14) * 0.25;
+        if (perpDiff <= critWidth) damage = weapon.critDamage;
+      }
+      // Dagger backstab: hit from the target's rear 90° → bonus + bleed.
+      if (weapon.backstabDamage) {
+        const fromTargetToAttacker = Math.atan2(attacker.y - target.y, attacker.x - target.x);
+        const behindAngle = (target.angle || 0) + Math.PI;
+        const win = ((weapon.backstabAngle || 90) * Math.PI) / 360;
+        if (angleDistance(fromTargetToAttacker, behindAngle) <= win) {
+          damage = weapon.backstabDamage;
+          if (weapon.backstabBleed) bleed = true;
+        }
       }
     } else if (weapon.type === 'melee_slam') {
       const inner = weapon.innerRange || weapon.range * 0.45;
@@ -978,7 +999,41 @@ export class Game {
       }
     }
 
-    return { damage, pull, knockback, stunMs: weapon.stunMs || 0 };
+    // Spear tip hit: the far 30px of the thrust → bonus + slow.
+    if (weapon.tipDamage && weapon.type === 'melee_line') {
+      const proj = dx * Math.cos(attacker.angle) + dy * Math.sin(attacker.angle);
+      if (proj >= (weapon.range - (weapon.tipRange || 30))) {
+        damage = weapon.tipDamage;
+        if (weapon.tipSlowMs) slowMs = Math.max(slowMs, weapon.tipSlowMs);
+      }
+    }
+
+    // Consecutive same-target chain (katana ramp / gauntlet uppercut). Tracked on
+    // the LIVE attacker; bonuses only raise damage (never lower a finisher).
+    const live = this.players[attacker.id];
+    if (live && (weapon.chainHits || weapon.uppercutEvery)) {
+      if (live._chainTargetId === target.id && now - (live._chainAt || 0) <= 2000) {
+        live._chainCount = (live._chainCount || 1) + 1;
+      } else {
+        live._chainCount = 1;
+        live._chainTargetId = target.id;
+      }
+      live._chainAt = now;
+      if (weapon.chainHits && live._chainCount >= weapon.chainHits) {
+        damage = Math.max(damage, weapon.chainDamage || damage);
+      }
+      if (weapon.uppercutEvery && live._chainCount % weapon.uppercutEvery === 0) {
+        damage = Math.max(damage, weapon.uppercutDamage || damage);
+        knockback = Math.max(knockback, weapon.uppercutKnockback || 0);
+      }
+    }
+
+    // Unconditional on-hit status (axe bleed, hammer slow, finisher slow…).
+    if (weapon.onHitBleed) bleed = true;
+    if (weapon.onHitBurn) burn = true;
+    if (weapon.onHitSlowMs) slowMs = Math.max(slowMs, weapon.onHitSlowMs);
+
+    return { damage, pull, knockback, stunMs: weapon.stunMs || 0, slowMs, bleed, burn };
   }
 
   _applyMeleeHitMovement(attacker, target, hit) {
@@ -1856,7 +1911,9 @@ export class Game {
       range: effectiveRange,
       damage,
       cooldown: Weapons.greatsword.cooldown,
-      chargeRatio
+      chargeRatio,
+      // Full charge also slows (Task 10).
+      onHitSlowMs: chargeRatio >= 0.99 ? (sk.fullChargeSlowMs || 0) : 0
     };
 
     const effect = {
@@ -2479,11 +2536,13 @@ export class Game {
       ...Weapons.katana,
       type: 'melee_heavy_line',
       hitMode: null,
-      damage: sk.iaijutsuDamage || 80,
+      damage: sk.iaijutsuDamage || 70,
       range: sk.iaijutsuRange || 150,
       width: sk.iaijutsuWidth || 40,
       cooldown: 0,
-      knockback: 58
+      knockback: 58,
+      onHitBleed: true,        // R 발도술 → 출혈
+      chainHits: 0             // don't let the basic-attack chain bonus apply here
     };
     const attacker = {
       ...this._snapshotMeleeAttacker(player),

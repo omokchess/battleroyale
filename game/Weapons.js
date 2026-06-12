@@ -7,70 +7,78 @@
 export const Weapons = {
   sword: {
     name: '검',
-    damage: 24,
+    damage: 25,    // 밸런스의 영점 (DPS 48) — 모든 무기는 이 무기 대비 장단점이 명확
     maxHp: 120,
-    cooldown: 550, // milliseconds
+    cooldown: 520, // milliseconds
     moveSpeed: 1.1,
     range: 70,     // pixels
     angle: 110,    // degrees
     type: 'melee_arc',
     hitMode: 'melee_blade_sweep',  // hit along the swept blade, like the greatsword
     bladeHalfWidth: 12,
-    description: '공수 밸런스가 뛰어난 무기입니다. 준수한 사거리와 공격 속도를 자랑합니다.',
+    description: '공수 밸런스가 뛰어난 기준점 무기입니다. 상태이상이나 조건부 보상은 없지만 모든 면이 안정적입니다.',
     skill: 'F 스킬: 0.25초 간격으로 검기 3회 발사 (벽·적 명중 시 폭발) · 쿨타임 4초',
     color: '#45f3ff'
   },
   axe: {
     name: '도끼',
-    damage: 40,
-    maxHp: 150,
-    cooldown: 900,
-    moveSpeed: 0.8,
+    damage: 38,
+    maxHp: 155,
+    cooldown: 850,
+    moveSpeed: 0.85,
     range: 58,
     angle: 360,    // Full circle
     type: 'melee_circle',
-    description: '파괴적인 360도 회전 공격을 펼칩니다. 자신 주변의 모든 적에게 피해를 줍니다.',
+    onHitBleed: true,            // 명중 시 출혈 — 난전에서 다수에게 도트를 묻힌다
+    description: '파괴적인 360도 회전 공격을 펼칩니다. 자신 주변의 모든 적에게 피해를 주고 출혈을 입힙니다.',
     skill: 'F 스킬: 4초간 제자리에서 100px·120도 부채꼴 베기로 전환(이동·대시 불가), 0.3초마다 공격 · 쿨타임 버프 종료 후 6초',
     color: '#f55555'
   },
   bow: {
     name: '활',
-    damage: 33,
-    maxHp: 80,
+    damage: 30,
+    maxHp: 85,
     cooldown: 800,
     moveSpeed: 1,
     range: Infinity,
     speed: 640,    // Projectile speed (px/s)
     type: 'projectile',
-    description: '벽에 닿을 때까지 날아가는 장거리 무기입니다. 강력한 피해를 주지만 조준이 까다롭습니다.',
+    closeRange: 120,            // 근접 감쇠 시작 거리
+    closeDamage: 20,           // 120px 이내 명중 시 피해
+    description: '벽에 닿을 때까지 날아가는 장거리 무기입니다. 멀수록 강하지만 120px 이내 근접에서는 피해가 20으로 약해집니다.',
     skill: 'F 스킬: 화살 적중마다 스택 +1(최대 5), 사용 시 스택 수만큼 0.25초 간격 레일건 발사 · 쿨타임 8초',
     color: '#a3ff45'
   },
   spear: {
     name: '창',
-    damage: 17,
-    maxHp: 100,
+    damage: 20,
+    maxHp: 105,
     cooldown: 500,
     moveSpeed: 1,
-    range: 120,
+    range: 130,
     width: 16,     // Width of straight thrust box
     type: 'melee_line',
-    description: '직선으로 가하는 찌르기 공격입니다. 사거리가 길고 좌우 범위가 좁습니다.',
+    tipRange: 30,              // 선단 명중 구간(사거리 끝 30px)
+    tipDamage: 28,
+    tipSlowMs: 500,
+    description: '직선으로 가하는 찌르기 공격입니다. 사거리가 길고 좌우가 좁으며, 끝 30px(선단)에 맞히면 28 피해 + 둔화로 거리를 다시 벌립니다.',
     skill: 'F 스킬: 벽까지 즉시 투창 후 돌아오며 닿는 적 전체에게 35 피해 · 쿨타임 회수 후 2초',
     color: '#ffa345'
   },
   gauntlet: {
     name: '건틀릿',
-    damage: 16,            // balance: 19→16 (DPS 79→67) — was a clear outlier (+40%
-                           // over the next cluster) and overlapped guardian's niche
+    damage: 15,
     maxHp: 110,
-    cooldown: 240,
+    cooldown: 220,
     moveSpeed: 1.3,
     range: 58,
     width: 24,
     punchConvergeOffset: 8,
     type: 'melee_line',
-    description: '쉴 새 없는 연속 펀치 공격입니다. 사거리는 극도로 짧지만 공격 속도가 무시무시합니다.',
+    uppercutEvery: 4,         // 같은 적 4타째
+    uppercutDamage: 25,
+    uppercutKnockback: 30,
+    description: '쉴 새 없는 연속 펀치 무기입니다. 사거리는 극도로 짧지만 공속이 무시무시하며, 같은 적 4타째 어퍼컷으로 25 피해 + 넉백을 줍니다.',
     skill: 'F 스킬: 4초간 공격이 창처럼 직선으로 뻗어 사거리 115px로 늘어납니다(피해 20) · 쿨타임 버프 종료 후 7초',
     color: '#ff45db'
   },
@@ -85,8 +93,8 @@ export const Weapons = {
     angle: 210,
     fixedSwingDirection: 1,
     type: 'melee_arc',
-    description: '평타 없이 F 스킬 차징으로만 공격하는 중량 무기입니다. 차징 시간에 따라 피해량이 달라집니다.',
-    skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 1~70 피해를 줍니다.',
+    description: '평타 없이 F 차징으로만 공격하는 중량 무기입니다. 차징 시간에 따라 15~75 피해를 주고, 풀차징(1초) 명중 시 둔화까지 겁니다.',
+    skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 15~75 피해. 풀차징 명중 시 0.8초 둔화.',
     color: '#8bd3ff'
   },
   scythe: {
@@ -100,33 +108,35 @@ export const Weapons = {
     innerRange: 52,
     angle: 190,
     pull: 24,
+    sweetBleed: true,          // 바깥날 명중 시 출혈
     fixedSwingDirection: 1,
     type: 'melee_sweet_arc',
     hitMode: 'melee_blade_sweep',  // hit along the swept blade, like the greatsword
     bladeHalfWidth: 16,
-    description: '안쪽보다 바깥날이 강한 초승달 공격입니다. 바깥쪽에 맞은 적은 끌려옵니다.',
+    description: '안쪽보다 바깥날이 강한 초승달 공격입니다. 바깥날에 맞은 적은 끌려오며 출혈을 입습니다.',
     skill: 'F 스킬: 더 넓은 수확 베기로 바깥날 피해와 끌어당김을 강화합니다.',
     color: '#d946ef'
   },
   dagger: {
     name: '단검',
-    damage: 14,
+    damage: 13,
     maxHp: 90,
     cooldown: 300,
     moveSpeed: 1.35,
     range: 58,
     width: 1,
-    critDamage: 20,
+    backstabDamage: 22,        // 등 뒤 90° 명중
+    backstabAngle: 90,
+    backstabBleed: true,
     hitCooldownRefundMs: 40,
     type: 'melee_precise_line',
-    description: '레이피어처럼 얇은 직선 판정으로 빠르게 찌르는 암살 무기입니다.',
+    description: '얇은 직선 판정의 암살 무기입니다. 정면은 약하지만, 대상의 등 뒤 90°에서 찌르면 22 피해 + 출혈을 입힙니다. 포지셔닝이 전부입니다.',
     skill: 'F 스킬: 가장 가까운 적과 0.7초간 사슬을 잇고, 원 타이밍에 F를 누르면 배후 공격으로 70 피해를 줍니다.',
     color: '#f8fafc'
   },
   rapier: {
     name: '레이피어',
     damage: 20,
-    critDamage: 24,
     maxHp: 100,
     cooldown: 430,
     moveSpeed: 1.15,
@@ -135,22 +145,23 @@ export const Weapons = {
     hitCooldownRefundMs: 120,
     missPenaltyMs: 150,
     type: 'melee_precise_line',
-    description: '1px짜리 바늘 같은 찌르기 무기입니다. 평타 5타째에 강하게 내지르고, 명중 시 템포가 빨라집니다.',
+    description: '바늘 같은 찌르기 무기입니다. 5타째 피니셔로 30 피해 + 둔화를 넣고, 명중 시 템포가 빨라지는 리듬형입니다.',
     skill: 'F 스킬: 5초간 연격 태세 — 공속·사거리·명중 환급 강화, 빗나감 패널티 제거 · 쿨타임 버프 종료 후 6초',
     color: '#facc15'
   },
   hammer: {
     name: '망치',
-    damage: 36,
-    maxHp: 145,
-    cooldown: 1150,
-    moveSpeed: 0.75,
+    damage: 34,
+    maxHp: 150,
+    cooldown: 1100,
+    moveSpeed: 0.78,
     range: 78,
     innerRange: 36,
     angle: 360,
     knockback: 68,
+    onHitSlowMs: 1000,         // 평타 명중 시 1초 둔화 — 다음 타를 보장
     type: 'melee_slam',
-    description: '묵직한 원형 내려찍기 무기입니다. 맞은 적을 크게 밀어냅니다.',
+    description: '묵직한 원형 내려찍기 무기입니다. 맞은 적을 크게 밀어내고 1초간 둔화시켜, 느린 만큼 적을 묶어 다음 타를 보장합니다.',
     skill: 'F 스킬: 1초 예열 후 점점 커지는 충격파 3연발 (피해 20·40·52, 스턴 동반). 시전~종료까지 평타 불가 · 쿨타임 8.5초',
     color: '#fb923c'
   },
@@ -170,17 +181,19 @@ export const Weapons = {
   },
   katana: {
     name: '카타나',
-    damage: 24,
+    damage: 18,
     maxHp: 100,             // 검(120)보다 낮은 체력으로 역할 분리
-    cooldown: 430,          // 검(550)보다 빠른 평타
+    cooldown: 400,          // 검(520)보다 빠른 평타
     moveSpeed: 1.2,
     range: 70,
     angle: 110,
+    chainHits: 3,             // 같은 적 3타째부터
+    chainDamage: 24,
     type: 'melee_arc',
     hitMode: 'melee_blade_sweep',
     bladeHalfWidth: 12,
-    description: '검보다 빠르게 휘두르지만 체력이 낮은 쾌속 도검입니다. 빠른 평타와 발도술로 압박합니다.',
-    skill: 'F: 기존 2회 베기 그대로 ·  R 홀드: 1초간 발도술 차징 후 전방 40px 폭 직선을 베어 80 피해',
+    description: '빠르게 휘두르는 쾌속 도검입니다. 같은 적에게 연속 명중하면 3타째부터 피해가 24로 오르는 연참형 — 첫 교환은 검보다 약하고 들러붙으면 강합니다.',
+    skill: 'F: 2회 베기 ·  R 홀드: 1초 발도술 차징 후 전방 직선 베기로 70 피해 + 출혈',
     color: '#f43f5e'
   },
   magicstaff: {
@@ -193,8 +206,8 @@ export const Weapons = {
     range: Infinity,
     speed: 540,             // shown as cast speed
     type: 'projectile',     // idle preview draws the aim line
-    description: '세 가지 주문을 상황에 맞게 따로 쓰는 마법 지팡이입니다.',
-    skill: 'F: 파이어볼 발사 ·  좌클릭: 조준 지점에 아이스 샤드 ·  R: 자가 회복  (주문마다 개별 쿨타임 2초)',
+    description: '세 가지 주문을 상황에 맞게 쓰는 마법 지팡이입니다. 파이어볼은 화상, 아이스 샤드는 둔화를 겁니다.',
+    skill: 'F: 파이어볼(직격 32 + 화상) ·  좌클릭: 아이스 샤드(14 + 둔화) ·  R: 자가 회복 25 (쿨 6초)',
     color: '#a855f7'
   },
   sniper: {
@@ -413,9 +426,10 @@ export const SkillConfig = {
     cooldownMs: 800,
     chargeMaxMs: 1000,
     chargeThreshold: 0.5,
-    minDamage: 1,
-    thresholdDamage: 35,
-    damage: 70,
+    minDamage: 15,         // bumped from 1 so a short charge is still a real option
+    thresholdDamage: 38,
+    damage: 75,
+    fullChargeSlowMs: 800, // full-charge hit also slows
     // Hit only along the swept blade (its arc band + blade thickness), not the
     // whole fan — the visual cleave arc and the hit test now match. The reach is
     // scaled by charge (see _releaseGreatswordCharge) so a half charge cuts only
@@ -493,7 +507,7 @@ export const SkillConfig = {
     attackLockMs: 250,
     iaijutsuCooldownMs: 3000,
     iaijutsuChargeMs: 1000,
-    iaijutsuDamage: 80,
+    iaijutsuDamage: 70,    // 80→70, now also applies bleed (see _releaseKatanaIaijutsu)
     iaijutsuRange: 150,
     iaijutsuWidth: 40
   },
@@ -594,8 +608,8 @@ export const ComboConfig = {
       type: 'melee_precise_line',
       range: 130,
       width: 6,
-      damage: 24,
-      critDamage: 36,
+      damage: 30,          // 5타째 피니셔
+      onHitSlowMs: 500,    // + 0.5초 둔화
       knockback: 30,
       cooldown: 430
     }
@@ -619,9 +633,9 @@ export const ComboConfig = {
 // --- Magic staff spell tuning ------------------------------------------------
 export const MagicConfig = {
   cooldownMs: 2000,
-  fireball:  { cooldownMs: 2000, damage: 40, speed: 540, radius: 9, burnDps: 2, burnDurationMs: 4000 },
-  iceShard:  { cooldownMs: 2000, count: 4, damage: 12, speed: 740, radius: 6, intervalMs: 120 },
-  lifebound: { cooldownMs: 2000, heal: 30 }
+  fireball:  { cooldownMs: 2000, damage: 32, speed: 540, radius: 9, burnDps: 6, burnDurationMs: 3000, slowMs: 0 },
+  iceShard:  { cooldownMs: 2000, count: 4, damage: 14, speed: 740, radius: 6, intervalMs: 120, slowMs: 1500 },
+  lifebound: { cooldownMs: 6000, heal: 25 }
 };
 
 // --- R / LMB auxiliary skill tuning ----------------------------------------
