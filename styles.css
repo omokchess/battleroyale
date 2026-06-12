@@ -258,17 +258,15 @@ h1 {
   background-clip: padding-box !important;
   color: #2c2110 !important;                        /* dark ink */
   text-shadow: 0 1px 0 rgba(255, 249, 230, 0.5) !important;  /* legibility emboss */
-  /* Ragged edge: a 9-slice torn-paper rim (sparse random bites + a darkening
-     gradient toward the outer edge). 'stretch' (not tile) so each side shows
-     one unique, irregular rip instead of a repeating dotted pattern. */
+  /* Ragged edge: a 9-slice torn-paper rim whose gradient darkens monotonically
+     from the inner paper tone out to a scorched edge (no re-lightening band),
+     with sparse shallow bites. 'stretch' so each side is a unique, non-repeating
+     rip. The rim itself carries all the edge browning — no separate inset
+     shadow (which would stop at the padding box and create a seam). */
   border-style: solid !important;
-  border-width: 10px !important;
-  border-image: url('/assets/torn-frame.svg') 12 / 10px / 0 stretch !important;
-  /* Aged scorching: the paper browns well into the sheet from every edge. */
-  box-shadow:
-    inset 0 0 72px 30px rgba(112, 78, 36, 0.50),
-    inset 0 0 140px 0 rgba(88, 60, 26, 0.34),
-    0 6px 22px rgba(0, 0, 0, 0.55) !important;
+  border-width: 18px !important;
+  border-image: url('/assets/torn-frame.svg') 24 / 18px / 0 stretch !important;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55) !important;
 }
 
 /* Ink text for anything sitting directly on the parchment sheet. */

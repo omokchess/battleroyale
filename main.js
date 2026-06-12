@@ -189,7 +189,7 @@ function displayWeaponStats(weaponType) {
     : `${uiIcon('attack')}공격력: <strong class="text-white">${damageLabel}</strong>`;
 
   weaponStats.innerHTML = `
-    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[#45f3ff] font-bold mb-1">
+    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[#e6c75a] font-bold mb-1">
       <span class="whitespace-nowrap">${cfg.name.toUpperCase()}</span>
       <span class="whitespace-nowrap">${cooldownLabel}</span>
     </div>
@@ -554,26 +554,26 @@ function renderRoomList(rooms) {
     // Dummy (practice) rooms get a bold red border + badge so they're obvious.
     const borderCls = isDummy
       ? 'border-red-500 hover:border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.35)]'
-      : 'border-gray-700 hover:border-[#66fcf1]';
+      : 'border-gray-700 hover:border-[#c9a227]';
     const dummyBadge = isDummy
       ? '<span class="font-mono text-[9px] text-red-300 border border-red-500 px-1 py-0.5 uppercase shrink-0">더미방</span>'
       : '';
     // Room-setting badges (arena size always shown; storm/cover/healing when on).
     const badges = roomConfigBadges(room.config)
-      .map(b => `<span class="font-mono text-[9px] text-[#66fcf1] border border-[#2b6f72] bg-[#0b0c10] px-1 py-0.5 uppercase">${escapeHtml(b)}</span>`)
+      .map(b => `<span class="font-mono text-[9px] text-[#e6c75a] border border-[#7a5a28] bg-[#1a120a] px-1 py-0.5 uppercase">${escapeHtml(b)}</span>`)
       .join('');
     const badgeRow = badges
       ? `<div class="flex flex-wrap gap-1 mt-1">${badges}</div>`
       : '';
     return `
-      <button class="room-row w-full text-left bg-[#0b0c10] border-2 ${borderCls} p-2.5 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2" data-code="${code}">
+      <button class="room-row w-full text-left bg-[#1a120a] border-2 ${borderCls} p-2.5 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2" data-code="${code}">
         <div class="min-w-0">
           <div class="font-mono text-sm text-white font-bold truncate flex items-center gap-1.5">${dummyBadge}<span class="truncate">${code}</span></div>
           <div class="font-mono text-[10px] text-gray-400 truncate">${uiIcon('user')} ${host} · <span style="color:${cfg.color}">${cfg.name}</span></div>
           ${badgeRow}
         </div>
         <div class="text-right shrink-0">
-          <div class="font-mono text-[10px] ${isDummy ? 'text-red-300' : 'text-[#66fcf1]'} font-bold">${uiIcon('play')}참가</div>
+          <div class="font-mono text-[10px] ${isDummy ? 'text-red-300' : 'text-[#e6c75a]'} font-bold">${uiIcon('play')}참가</div>
           <div class="font-mono text-[10px] text-green-400">${uiIcon('users')}${players}명</div>
         </div>
       </button>`;
