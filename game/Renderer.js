@@ -133,7 +133,7 @@ export class Renderer {
     }
 
     // Clear Screen (dark beyond the arena walls)
-    ctx.fillStyle = '#0a0910';
+    ctx.fillStyle = '#0d0a06';
     ctx.fillRect(0, 0, cw, ch);
 
     const shake = typeof camera.getShakeOffset === 'function'
@@ -1013,78 +1013,135 @@ export class Renderer {
   }
 
   /**
-   * Draw modular pixelated grid background
+   * Draw the arena floor: a grassy field (Task 4).
+   *
+   * The grass is baked ONCE into an offscreen canvas at full world resolution
+   * (deterministic from world position, so every client renders the exact same
+   * field — no sync needed) and then blitted with the camera transform. Baking
+   * once keeps per-frame cost to a single scaled drawImage.
    */
-  // Arena floor: cobblestone tiles (medieval) laced with neon energy seams (modern).
   _drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight) {
     ctx.save();
-    const gridSize = 60;
-    const cell = gridSize * (camera.zoom || 1);
     const tl = camera.toScreen(0, 0, cw, ch);
     const br = camera.toScreen(mapWidth, mapHeight, cw, ch);
+    const dw = br.x - tl.x, dh = br.y - tl.y;
 
-    // Stone floor base.
-    ctx.fillStyle = '#1e1b26';
-    ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-
-    // Cobblestone tiles (checker-shaded), skipping off-screen ones.
-    const cols = Math.ceil(mapWidth / gridSize);
-    const rows = Math.ceil(mapHeight / gridSize);
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < cols; gx++) {
-        const p = camera.toScreen(gx * gridSize, gy * gridSize, cw, ch);
-        if (p.x > cw || p.x + cell < 0 || p.y > ch || p.y + cell < 0) continue;
-        ctx.fillStyle = (gx + gy) % 2 === 0 ? '#232029' : '#1a1822';
-        ctx.fillRect(p.x, p.y, cell + 1, cell + 1);
-      }
+    const grass = this._getGrassField(mapWidth, mapHeight);
+    if (grass) {
+      const prevSmooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;            // keep blades chunky when upscaled
+      ctx.drawImage(grass, 0, 0, grass.width, grass.height, tl.x, tl.y, dw, dh);
+      ctx.imageSmoothingEnabled = prevSmooth;
+    } else {
+      // SSR / no canvas: flat grass fill.
+      ctx.fillStyle = '#5a8f3c';
+      ctx.fillRect(tl.x, tl.y, dw, dh);
     }
 
-    const vline = (x, color, lw) => {
-      const a = camera.toScreen(x, 0, cw, ch), b = camera.toScreen(x, mapHeight, cw, ch);
-      ctx.strokeStyle = color; ctx.lineWidth = lw;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    };
-    const hline = (y, color, lw) => {
-      const a = camera.toScreen(0, y, cw, ch), b = camera.toScreen(mapWidth, y, cw, ch);
-      ctx.strokeStyle = color; ctx.lineWidth = lw;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    };
-
-    // Dark mortar seams between stones.
-    for (let x = 0; x <= mapWidth; x += gridSize) vline(x, '#141119', 2);
-    for (let y = 0; y <= mapHeight; y += gridSize) hline(y, '#141119', 2);
-
-    // Faint torch-gilded accent seams every 3rd line (warm gold, no neon).
-    const gild = this._hexToRGB('#c9a227', 0.10);
-    for (let x = 0; x <= mapWidth; x += gridSize * 3) vline(x, gild, 1);
-    for (let y = 0; y <= mapHeight; y += gridSize * 3) hline(y, gild, 1);
-
-    // Center heraldic emblem (crossed swords on a stone medallion).
+    // Center heraldic emblem (crossed swords) — a faint trampled-grass medallion.
     const ec = camera.toScreen(mapWidth / 2, mapHeight / 2, cw, ch);
     this._drawArenaEmblem(ctx, ec.x, ec.y, camera.zoom || 1);
 
     ctx.restore();
   }
 
-  // A faint floor crest: a square stone medallion with brass crossed swords.
+  /**
+   * Lazily bake (and cache) the grass field for the current map size. Baked at
+   * a fixed world->texel scale so large maps don't blow up memory, then upscaled
+   * at blit time. Deterministic: a position-seeded PRNG drives every tuft, so
+   * the field is identical on every client without any network sync.
+   */
+  _getGrassField(mapWidth, mapHeight) {
+    if (typeof document === 'undefined') return null;
+    const key = `${mapWidth}x${mapHeight}`;
+    if (this._grassKey === key && this._grassField) return this._grassField;
+
+    // ~1 texel per 1.5 world units keeps even a 2000px map under ~1.8M texels.
+    const scale = 1 / 1.5;
+    const tw = Math.max(1, Math.round(mapWidth * scale));
+    const th = Math.max(1, Math.round(mapHeight * scale));
+    const cv = this._grassField || document.createElement('canvas');
+    cv.width = tw; cv.height = th;
+    const g = cv.getContext('2d');
+
+    // mulberry32 PRNG — fast, deterministic, seeded per call.
+    let s = 0x9e3779b9 >>> 0;
+    const rng = () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
+    // 1) Base grass.
+    g.fillStyle = '#5a8f3c';
+    g.fillRect(0, 0, tw, th);
+
+    // 2) Patchy shading: 4px cells flipped between three green tones so the field
+    //    reads as a mosaic, not a flat slab.
+    const tones = ['#5a8f3c', '#4e7d34', '#6da04a'];
+    const cell = 4;
+    for (let y = 0; y < th; y += cell) {
+      for (let x = 0; x < tw; x += cell) {
+        const r = rng();
+        if (r < 0.62) continue;                 // most cells keep the base tone
+        g.fillStyle = tones[(r * 3) | 0];
+        g.fillRect(x, y, cell, cell);
+      }
+    }
+
+    // 3) Scattered blade flecks — short 1px highlights/shadows for texture.
+    const blades = Math.round(tw * th * 0.012);
+    for (let i = 0; i < blades; i++) {
+      const x = (rng() * tw) | 0;
+      const y = (rng() * th) | 0;
+      const r = rng();
+      g.fillStyle = r < 0.5 ? '#87b35c' : '#436b2c';
+      const h = 1 + ((rng() * 2) | 0);
+      g.fillRect(x, y, 1, h);
+    }
+
+    // 4) A few bare dirt patches for variety.
+    const patches = Math.max(3, Math.round((tw * th) / 90000));
+    for (let i = 0; i < patches; i++) {
+      const px = (rng() * tw) | 0;
+      const py = (rng() * th) | 0;
+      const pr = 6 + ((rng() * 10) | 0);
+      g.fillStyle = '#8a6a3f';
+      g.beginPath(); g.ellipse(px, py, pr, pr * 0.7, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#765a35';
+      g.beginPath(); g.ellipse(px, py, pr * 0.55, pr * 0.4, 0, 0, Math.PI * 2); g.fill();
+    }
+
+    // 5) Vignette so the field edges sink toward the dark walls.
+    const grd = g.createRadialGradient(tw / 2, th / 2, Math.min(tw, th) * 0.35,
+      tw / 2, th / 2, Math.max(tw, th) * 0.62);
+    grd.addColorStop(0, 'rgba(0,0,0,0)');
+    grd.addColorStop(1, 'rgba(20,30,12,0.45)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, tw, th);
+
+    this._grassField = cv;
+    this._grassKey = key;
+    return cv;
+  }
+
+  // A faint floor crest: trampled-grass medallion with brass crossed swords.
   _drawArenaEmblem(ctx, cx, cy, zoom) {
     ctx.save();
     const r = 40 * zoom;
-    ctx.fillStyle = 'rgba(15, 12, 22, 0.55)';
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    ctx.strokeStyle = this._hexToRGB('#3a3447', 0.8);
-    ctx.lineWidth = 3;
-    ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
-    ctx.strokeStyle = this._hexToRGB('#c9a227', 0.4);
+    // Lighter, trodden grass ring rather than a stone slab.
+    ctx.fillStyle = this._hexToRGB('#6da04a', 0.30);
+    ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = this._hexToRGB('#c9a227', 0.35);
     ctx.lineWidth = 2;
-    ctx.strokeRect(cx - r + 6, cy - r + 6, r * 2 - 12, r * 2 - 12);
+    ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.92, r * 0.78, 0, 0, Math.PI * 2); ctx.stroke();
 
-    ctx.shadowBlur = this._glow * 6;
-    ctx.shadowColor = '#c9a227';
     ctx.lineCap = 'round';
     const s = r * 0.58;
-    // Two blades.
-    ctx.strokeStyle = this._hexToRGB('#d4af37', 0.5);
+    // Two brass blades.
+    ctx.strokeStyle = this._hexToRGB('#d4af37', 0.45);
     ctx.lineWidth = 4 * zoom;
     ctx.beginPath(); ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s); ctx.stroke();
@@ -1111,12 +1168,12 @@ export class Renderer {
     if (br.x < cw) ctx.fillRect(br.x, tl.y, cw - br.x, ch - tl.y);
     if (br.y < ch) ctx.fillRect(0, br.y, cw, ch - br.y);
 
-    // Stone wall (thick) + lighter capstone edge.
+    // Stone wall (thick) + lighter capstone edge — warm castle masonry.
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#3a3447';
+    ctx.strokeStyle = '#5b5048';
     ctx.lineWidth = 8;
     ctx.strokeRect(tl.x, tl.y, w, h);
-    ctx.strokeStyle = '#4b4359';
+    ctx.strokeStyle = '#7a6b58';
     ctx.lineWidth = 2;
     ctx.strokeRect(tl.x - 3, tl.y - 3, w + 6, h + 6);
 
@@ -1143,12 +1200,12 @@ export class Renderer {
     ctx.restore();
   }
 
-  // A corner wall torch: iron sconce + flickering amber flame with neon-style glow.
+  // A corner wall torch: iron sconce + flickering amber flame with a warm glow.
   _drawTorch(ctx, x, y, now) {
     ctx.save();
-    ctx.fillStyle = '#2b2730';
+    ctx.fillStyle = '#2a2018';
     ctx.fillRect(x - 4, y - 4, 8, 8);
-    ctx.strokeStyle = '#5b5468';
+    ctx.strokeStyle = '#5b5044';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x - 4, y - 4, 8, 8);
     const flick = Math.sin(now / 90 + x * 0.5) * 2 + Math.sin(now / 47 + y) * 1;
