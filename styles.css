@@ -1,5 +1,37 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   THEME PALETTE (Task 4) — medieval fantasy. Single source of truth for UI
+   colors; tune the theme here. The four legacy neon roles map to:
+     --c-bg      (was var(--c-bg))  deep near-black, warm
+     --c-panel   (was var(--c-panel))  dark wood panel
+     --c-accent  (was var(--c-accent))  gold (borders/accents)
+     --c-accent2 (was var(--c-accent2))  parchment (headings/highlights)
+   index.html mirrors these literal values in its Tailwind arbitrary classes
+   (opacity modifiers like /85 don't work on var() colors).
+   ========================================================================== */
+:root {
+  --c-bg:        #14100b;   /* deep warm black */
+  --c-bg-deep:   #0d0a06;   /* darkest (beyond the arena / shadows) */
+  --c-panel:     #2c2016;   /* dark wood panel */
+  --c-panel-2:   #3a2a18;   /* lighter wood */
+  --c-wood-frame:#1a120a;   /* frame timber */
+  --c-accent:    #c9a227;   /* gold */
+  --c-accent2:   #e8d5a3;   /* parchment / light gold */
+  --c-parchment: #e8d5a3;
+  --c-ink:       #3a2e1f;   /* dark ink on parchment */
+  --c-iron:      #7a7f87;   /* steel/iron secondary */
+  --c-gold:      #c9a227;
+  --c-blood:     #8f2020;   /* health bar */
+  /* Grass-field tones (used by the canvas renderer in 4-2). */
+  --c-grass:     #5a8f3c;
+  --c-grass-dk:  #4e7d34;
+  --c-grass-lt:  #6da04a;
+  --c-grass-blade:#87b35c;
+  --c-dirt:      #8a6a3f;
+  --c-stone:     #8b8c8e;
+}
+
 .hidden { display: none !important; }
 
 /* In-game weapon switch: a vertical bar in the arena's right gutter.
@@ -80,7 +112,7 @@
   line-height: 1;
   padding: 0.14rem 0.34rem;
   border-radius: 3px;
-  color: #0b0c10;
+  color: var(--c-bg);
 }
 
 #mobileActionCluster {
@@ -157,37 +189,37 @@
   border-radius: 9999px !important;
 }
 
-/* ---- Medieval + modern "neon dungeon" theme (visual only — no markup/logic) ---- */
-/* Full-screen layers get a dark stone backdrop lit by a warm torch glow (medieval)
-   and a cool neon glow (modern), with a faint stone grain. */
+/* ---- Medieval fantasy theme (visual only — no markup/logic) ---- */
+/* Full-screen layers get a deep warm-black backdrop lit by a torch-amber glow and
+   a faint blood-red corner, with a subtle timber grain. */
 body,
 #authScreen,
 #lobbyMenu {
-  background-color: #0c0a12 !important;
+  background-color: var(--c-bg-deep) !important;
   background-image:
-    radial-gradient(110% 75% at 10% -8%, rgba(251, 146, 60, 0.14), transparent 55%),
-    radial-gradient(110% 75% at 92% 108%, rgba(139, 46, 46, 0.13), transparent 55%),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 6px),
-    linear-gradient(160deg, #16121d, #0a0810) !important;
+    radial-gradient(110% 75% at 10% -8%, rgba(201, 162, 39, 0.12), transparent 55%),
+    radial-gradient(110% 75% at 92% 108%, rgba(143, 32, 32, 0.12), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(255, 240, 200, 0.015) 0 1px, transparent 1px 6px),
+    linear-gradient(160deg, #1a130b, #0d0a06) !important;
 }
 
-/* Stone panels: warm the slate, framed with an ornate brass inner border. */
-.bg-\[\#1f2833\] {
-  background-color: #1b1622 !important;
+/* Wood panels: warm timber framed with an ornate brass inner border. */
+.bg-\[\#2c2016\] {
+  background-color: var(--c-panel) !important;
   box-shadow:
     inset 0 0 0 2px rgba(201, 162, 39, 0.30),
-    inset 0 0 0 3px rgba(10, 8, 16, 0.9),
+    inset 0 0 0 3px rgba(13, 10, 6, 0.9),
     inset 0 3px 16px rgba(0, 0, 0, 0.55) !important;
 }
 
-/* Antique brass replaces the neon-cyan borders (the medieval metal layer). */
-.border-\[\#45f3ff\] { border-color: #a8842c !important; }
+/* Antique brass borders (the medieval metal layer). */
+.border-\[\#c9a227\] { border-color: #a8842c !important; }
 
-/* No cyber-cyan left: recolor every neon accent to gold / parchment / brass. */
-.text-\[\#45f3ff\], .text-\[\#66fcf1\] { color: #d8b24a !important; }
+/* Gold / parchment / brass accents. */
+.text-\[\#c9a227\], .text-\[\#e8d5a3\] { color: #d8b24a !important; }
 .text-\[\#22d3ee\] { color: #c99a3a !important; }
-.bg-\[\#45f3ff\] { background-color: #b8902f !important; }
-.border-\[\#22d3ee\], .border-\[\#66fcf1\] { border-color: #a8842c !important; }
+.bg-\[\#c9a227\] { background-color: #b8902f !important; }
+.border-\[\#22d3ee\], .border-\[\#e8d5a3\] { border-color: #a8842c !important; }
 
 /* Gilded titles + torch-amber warmth on primary actions. Cyan text accents remain = modern hint. */
 h1 {
@@ -229,7 +261,7 @@ html, body {
 
 .weapon-card {
   border: 2px solid #374151;
-  background-color: #0b0c10;
+  background-color: var(--c-bg);
   min-height: 6rem;
   padding: 0.5rem 0.3rem;
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -821,18 +853,18 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
   text-transform: uppercase;
   padding: 7px 2px;
   border: 2px solid #374151;        /* gray-700 */
-  background: #0b0c10;
+  background: var(--c-bg);
   color: #9ca3af;                   /* gray-400 */
   cursor: pointer;
   white-space: nowrap;
   transition: transform 0.05s ease, border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
 }
-.cfg-opt:hover { border-color: #45f3ff; color: #e5e7eb; }
+.cfg-opt:hover { border-color: var(--c-accent); color: #e5e7eb; }
 .cfg-opt:active { transform: scale(0.95); }
 .cfg-opt.selected {
-  border-color: #45f3ff;
+  border-color: var(--c-accent);
   background: rgba(69, 243, 255, 0.12);
-  color: #66fcf1;
+  color: var(--c-accent2);
   box-shadow: inset 0 0 0 1px rgba(69, 243, 255, 0.45);
   font-weight: 700;
 }
