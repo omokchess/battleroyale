@@ -2822,7 +2822,7 @@ export class Game {
     });
   }
 
-  // --- 스나이퍼 (sniper): immobile. Pressing F locks the aim line and exposes a
+  // --- 마탄 석궁 (sniper): immobile. Pressing F locks the aim line and exposes a
   // telegraph laser for telegraphMs before the killing hitscan resolves, giving
   // targets a window to dash/step out of the line (counterplay). The origin and
   // direction are frozen at fire time so re-aiming mid-telegraph can't track.
@@ -2883,7 +2883,7 @@ export class Game {
 
     if (hitTarget) {
       const died = hitTarget.takeDamage(9999, player.nickname); // instakill
-      if (died) this._creditKill(player.id, hitTarget, '스나이퍼로');
+      if (died) this._creditKill(player.id, hitTarget, '마탄 석궁으로');
     }
 
     this.effects.push({

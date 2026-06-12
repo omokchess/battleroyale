@@ -211,7 +211,7 @@ export const Weapons = {
     color: '#a855f7'
   },
   sniper: {
-    name: '스나이퍼',
+    name: '마탄 석궁',
     damage: Infinity,       // 즉사 (actual shot resolves as a 9999 hitscan)
     maxHp: 90,
     cooldown: 2000,
@@ -220,9 +220,9 @@ export const Weapons = {
     range: Infinity,
     speed: Infinity,        // instant hitscan
     type: 'projectile',     // idle preview draws the aim line
-    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 저격총입니다. F로 0.5초간 조준선을 노출한 뒤 직선상 첫 적을 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
+    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 마탄 석궁입니다. F로 0.5초간 조준선을 노출한 뒤 직선상 첫 적을 마탄으로 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
     skill: 'F: 0.5초 조준선 노출(텔레그래프) 후 직선상 첫 적 즉사 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)',
-    color: '#22c55e'
+    color: '#9d4edd'
   },
   chakram: {
     name: '차크람',
@@ -236,7 +236,7 @@ export const Weapons = {
     projectileKind: 'chakram',
     description: '던지면 날아갔다가 부메랑처럼 돌아오는 원반입니다. 나가는 길과 돌아오는 길 양쪽에 피해를 주지만, 원반이 떠 있는 동안은 비무장 상태가 됩니다.',
     skill: 'F 스킬: 부채꼴 3방향으로 동시에 차크람을 던집니다(각 18 피해) · 쿨타임 6초',
-    color: '#38bdf8'
+    color: '#c2cad6'
   },
   pistols: {
     name: '쌍권총',

@@ -18,8 +18,9 @@ const WEAPON_SPRITE_META = {
   hammer: { src: '/assets/weapons/hammer.png', scale: 0.68, anchorX: 0.22, anchorY: 0.56, angleOffset: 0 },
   matchlock: { src: '/assets/weapons/matchlock.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   katana: { src: '/assets/weapons/katana.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0, noAimFlip: true },
-  magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
-  sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
+  magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 }
+  // sniper intentionally omitted (Task 4-6): the '마탄 석궁' uses a procedural
+  // crossbow drawing so its silhouette matches the medieval theme.
 };
 const WEAPON_ASSET_VERSION = '20260609a';
 
@@ -32,6 +33,7 @@ const PIXEL_ART_ENABLED = false;
 // renders flat so it reads as physical rather than neon.
 const MAGIC_EFFECT_TYPES = new Set([
   'explosion', 'lifebound_heal', 'icicle_load',
+  'sniper_telegraph', // 마탄 석궁: arcane bolt — its aim beam blooms (and stays a clear tell)
 ]);
 
 // Only greatsword uses an idle angle offset; other idle weapons point at aim.
@@ -1639,19 +1641,19 @@ export class Renderer {
     ctx.restore();
   }
 
-  // 스나이퍼 순간이동: an expanding green scope ring with crosshair ticks.
+  // 마탄 석궁 순간이동: an expanding arcane ring with crosshair ticks.
   _drawSniperTeleport(ctx, scr, e, alpha, zoom) {
     const progress = clamp01(e.progress);
     ctx.save();
     const r = (8 + 34 * easeOutCubic(progress)) * (0.6 + zoom * 0.4);
     ctx.shadowBlur = this._glow * 10 * alpha;
-    ctx.shadowColor = '#22c55e';
-    ctx.strokeStyle = this._hexToRGB('#22c55e', 0.8 * alpha);
+    ctx.shadowColor = '#9d4edd';
+    ctx.strokeStyle = this._hexToRGB('#9d4edd', 0.8 * alpha);
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.strokeStyle = this._hexToRGB('#bbf7d0', 0.7 * alpha);
+    ctx.strokeStyle = this._hexToRGB('#e0c3fc', 0.7 * alpha);
     ctx.lineWidth = 1.5;
     for (const ang of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
       ctx.beginPath();
@@ -4446,27 +4448,37 @@ export class Renderer {
       ctx.fill();
     }
     else if (weaponType === 'sniper') {
-      // 스나이퍼: long rifle with a green scope.
+      // 마탄 석궁 (Task 4-6): an arcane crossbow — wooden tiller, steel bow limbs,
+      // a drawn string, and a glowing magic bolt loaded in the groove.
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle);
-      ctx.fillStyle = '#3f3f46';
-      ctx.fillRect(-13, -2.6, 7, 5.2);               // stock
-      ctx.strokeStyle = '#374151';
-      ctx.lineWidth = 3;
+      // Tiller (wooden stock running along the aim line).
+      ctx.fillStyle = '#5b4a32';
+      ctx.fillRect(-12, -1.8, 30, 3.6);
+      ctx.fillStyle = '#3f3320';                     // darker underside
+      ctx.fillRect(-12, 0.4, 30, 1.4);
+      // Steel bow limbs (curved), mounted across the front of the tiller.
+      ctx.strokeStyle = '#9aa2ad';
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
-      ctx.moveTo(-7, 0);
-      ctx.lineTo(24, 0);                             // long barrel
+      ctx.moveTo(12, -9);
+      ctx.quadraticCurveTo(17, 0, 12, 9);            // limb bows back toward shooter
       ctx.stroke();
-      ctx.fillStyle = '#111216';                     // scope body
-      ctx.strokeStyle = '#22c55e';
-      ctx.lineWidth = 1.4;
-      ctx.fillRect(1, -5.5, 9, 3.2);
-      ctx.strokeRect(1, -5.5, 9, 3.2);
-      ctx.shadowBlur = this._glow * 6;
-      ctx.shadowColor = '#22c55e';
-      ctx.fillStyle = '#22c55e';
+      // Bowstring drawn to the catch.
+      ctx.strokeStyle = '#d8c7a8';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(24, 0, 2, 0, Math.PI * 2);             // muzzle
+      ctx.moveTo(12, -9); ctx.lineTo(-1, 0); ctx.lineTo(12, 9);
+      ctx.stroke();
+      // Loaded magic bolt — arcane glow tip.
+      ctx.shadowBlur = this._glow * 6;
+      ctx.shadowColor = '#9d4edd';
+      ctx.strokeStyle = '#c9a227';                   // brass shaft
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(-1, 0); ctx.lineTo(18, 0); ctx.stroke();
+      ctx.fillStyle = '#c79bf0';                     // glowing bolt head
+      ctx.beginPath();
+      ctx.moveTo(22, 0); ctx.lineTo(16, -3); ctx.lineTo(16, 3); ctx.closePath();
       ctx.fill();
     }
     else if (weaponType === 'chakram') {
