@@ -559,7 +559,9 @@ test('hammer skill fires three expanding shockwaves with scaling damage and stun
 
   game._processHammerSlams(1000 + sk.previewMs + d[0] + d[1] + d[2]);      // wave 3
   assert.equal(target.hp, target.maxHp - w1.damage - w2.damage - w3.damage);
-  assert.equal(target.stunTimeLeft, w3.stunMs / 1000);
+  // Anti stun-lock (Task 10-1): only the first wave stuns; waves 2-3 land inside
+  // the post-stun immunity window, so the stun value stays at wave 1's.
+  assert.equal(target.stunTimeLeft, w1.stunMs / 1000);
   assert.equal(game.pendingHammerSlams.length, 0);
 });
 
@@ -767,11 +769,11 @@ test('magic staff fireball deals direct damage then a burn that ticks 2/sec for 
   assert.equal(target.hp, hp0 - 40);
   assert.ok(target.burnTimeLeft > 3.9);
 
-  game._tickBurns(1.0, 2000);
+  game._tickStatuses(1.0, 2000);
   assert.equal(target.hp, hp0 - 40 - 2);                            // first tick
-  game._tickBurns(1.0, 3000);
-  game._tickBurns(1.0, 4000);
-  game._tickBurns(1.0, 5000);
+  game._tickStatuses(1.0, 3000);
+  game._tickStatuses(1.0, 4000);
+  game._tickStatuses(1.0, 5000);
   assert.equal(target.hp, hp0 - 40 - 8);                            // 4 ticks total = 8
   assert.equal(target.burnTimeLeft, 0);
 });

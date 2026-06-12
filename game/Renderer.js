@@ -407,6 +407,57 @@ export class Renderer {
   }
 
   /**
+   * Small status-effect badges above a player (bleed/burn/slow/stun). Pixel
+   * icons with a dark outline so they read on any background.
+   */
+  _drawStatusIcons(ctx, bodyScr, p, radius) {
+    const active = [];
+    if (p.bleedTimeLeft > 0) active.push('bleed');
+    if (p.burnTimeLeft > 0) active.push('burn');
+    if (p.slowTimeLeft > 0) active.push('slow');
+    if (p.stunTimeLeft > 0) active.push('stun');
+    if (!active.length) return;
+
+    const s = 8;                  // icon box
+    const gap = 2;
+    const total = active.length * (s + gap) - gap;
+    let x = bodyScr.x - total / 2;
+    const y = bodyScr.y - radius - 40;
+    const blink = (Math.sin(Date.now() / 160) + 1) / 2;
+    ctx.save();
+    for (const kind of active) {
+      ctx.fillStyle = 'rgba(11,12,16,0.8)';
+      ctx.fillRect(x - 1, y - 1, s + 2, s + 2);  // dark backing for contrast
+      const cx = x + s / 2, cy = y + s / 2;
+      if (kind === 'bleed') {
+        ctx.fillStyle = '#c0392b';                // red droplet
+        ctx.beginPath(); ctx.arc(cx, cy + 1, 2.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx, cy - 3.5); ctx.lineTo(cx - 2.2, cy + 0.5); ctx.lineTo(cx + 2.2, cy + 0.5); ctx.closePath(); ctx.fill();
+      } else if (kind === 'burn') {
+        ctx.fillStyle = '#fb923c';                // flame
+        ctx.beginPath(); ctx.moveTo(cx, cy - 4); ctx.lineTo(cx + 3, cy + 3); ctx.lineTo(cx - 3, cy + 3); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(cx - 1, cy, 2, 3);
+      } else if (kind === 'slow') {
+        ctx.strokeStyle = '#67e8f9';              // snowflake
+        ctx.lineWidth = 1.3;
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI;
+          ctx.beginPath();
+          ctx.moveTo(cx - Math.cos(a) * 3.5, cy - Math.sin(a) * 3.5);
+          ctx.lineTo(cx + Math.cos(a) * 3.5, cy + Math.sin(a) * 3.5);
+          ctx.stroke();
+        }
+      } else { // stun
+        ctx.fillStyle = `rgba(250,204,21,${0.6 + 0.4 * blink})`; // blinking stars
+        for (const dx of [-2.5, 0, 2.5]) ctx.fillRect(cx + dx - 0.8, cy - 1.6, 1.6, 1.6);
+      }
+      x += s + gap;
+    }
+    ctx.restore();
+  }
+
+  /**
    * Floating pixel-font damage numbers that rise and fade above a character.
    * Color/size encode the hit tier; your own damage is always red so you can
    * tell at a glance that YOU got hit. Each number drifts on its own random
@@ -433,6 +484,7 @@ export class Renderer {
       if (tier === 'big') fill = '#ff9d3a';
       if (tier === 'lethal') fill = '#ff5d5d';
       if (d.isLocal) fill = '#ff5555';
+      if (d.dotColor) fill = d.dotColor; // bleed/burn tick color overrides
 
       const anchor = camera.toScreen(d.x, d.y, cw, ch);
       const rise = 14 + life * 30;                    // drift upward (screen px)
@@ -3625,6 +3677,9 @@ export class Renderer {
         ctx.fillStyle = p.title.color || '#facc15';
         ctx.fillText(p.title.text, bodyScr.x, bodyScr.y - radius - 27);
       }
+
+      // Status-effect icons (bleed/burn/slow/stun) above the HP bar.
+      this._drawStatusIcons(ctx, bodyScr, p, radius);
 
       // Mini floating HP bars (hovering above head)
       const barW = 32;

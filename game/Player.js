@@ -4,6 +4,7 @@
  */
 
 import { Weapons, getEffectiveWeapon, DashConfig } from './Weapons.js';
+import { STATUS } from './Status.js';
 
 export class Player {
   constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
@@ -67,6 +68,12 @@ export class Player {
     this.burnTickLeft = 0;     // fire DoT: seconds until the next tick
     this.burnDps = 0;          // fire DoT: damage per tick
     this.burnSourceId = null;  // fire DoT: who applied it (kill credit)
+    this.bleedTimeLeft = 0;    // bleed DoT: seconds remaining
+    this.bleedTickLeft = 0;    // bleed DoT: seconds until the next tick
+    this.bleedDps = 0;         // bleed DoT: damage per tick
+    this.bleedSourceId = null; // bleed DoT: who applied it (kill credit)
+    this.stunImmuneUntil = 0;  // host-ms: no new stun until this time (anti stun-lock)
+    this.statusImmuneUntil = 0;// host-ms: respawn protection — no new status until this time
     this.teleportReadyAt = 0;  // sniper R teleport: host-ms timestamp when ready again
     this.sniperTeleportTargetUntil = 0;
     this.altSkillCdLeft = 0;    // generic R skill cooldown (seconds)
@@ -201,7 +208,7 @@ export class Player {
     if (dx !== 0 || dy !== 0) {
       const length = Math.sqrt(dx * dx + dy * dy);
       const weaponConfig = Weapons[this.weapon] || Weapons.sword;
-      const slowMul = this.slowTimeLeft > 0 ? 0.35 : 1; // harpoon pull drag
+      const slowMul = this.slowTimeLeft > 0 ? STATUS.slow.moveFactor : 1; // −30% slow
       // Flamethrower is dragged down while actively spraying.
       let baseMul = weaponConfig.moveSpeed ?? 1;
       if (this.weapon === 'flamethrower' && this.flameSpraying) baseMul = weaponConfig.sprayMoveSpeed ?? baseMul;
@@ -265,6 +272,12 @@ export class Player {
     this.burnTickLeft = 0;
     this.burnDps = 0;
     this.burnSourceId = null;
+    this.bleedTimeLeft = 0;
+    this.bleedTickLeft = 0;
+    this.bleedDps = 0;
+    this.bleedSourceId = null;
+    // Note: stunImmuneUntil / statusImmuneUntil are timestamps set on respawn,
+    // not cleared here (clearCombatTimers also runs on death).
     this.teleportReadyAt = 0;
     this.sniperTeleportTargetUntil = 0;
     this.altSkillCdLeft = 0;
@@ -302,8 +315,10 @@ export class Player {
     return this.swingDirection;
   }
 
-  takeDamage(amount, attackerName) {
-    if (this.isDead || this.isInvincible()) return false;
+  // `ignoreIframe` lets damage-over-time (bleed/burn) keep ticking through dash
+  // i-frames — i-frames only block NEW direct hits/status, not existing DoTs.
+  takeDamage(amount, attackerName, ignoreIframe = false) {
+    if (this.isDead || (!ignoreIframe && this.isInvincible())) return false;
 
     this.hp -= amount;
     if (this.hp <= 0) {
@@ -339,6 +354,8 @@ export class Player {
       skillCdMs: Math.round(this.skillCdLeft * 1000),
       dashCdMs: Math.round(this.dashCdLeft * 1000),
       stunMs: Math.round(this.stunTimeLeft * 1000),
+      slowMs: Math.round((this.slowTimeLeft || 0) * 1000),
+      bleedMs: Math.round((this.bleedTimeLeft || 0) * 1000),
       spearThrown: this.spearThrown,
       flameSpraying: this.flameSpraying,
       isMobile: this.isMobile,
@@ -383,6 +400,8 @@ export class Player {
     this.skillCdLeft = (data.skillCdMs || 0) / 1000;
     this.dashCdLeft = (data.dashCdMs || 0) / 1000;
     this.stunTimeLeft = (data.stunMs || 0) / 1000;
+    this.slowTimeLeft = (data.slowMs || 0) / 1000;
+    this.bleedTimeLeft = (data.bleedMs || 0) / 1000;
     this.spearThrown = Boolean(data.spearThrown);
     this.arrowStacks = Math.max(0, Math.floor(data.arrowStacks || 0));
     this.greatswordChargeStart = data.greatswordChargeMs > 0 ? Date.now() - data.greatswordChargeMs : 0;

@@ -16,6 +16,7 @@ import { normalizeRoomConfig, arenaDimensions, HEAL_RATES } from './RoomConfig.j
 import { Sound } from './Sound.js';
 import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, coverClearOfPoint, coverBlocksCircle } from './Cover.js';
 import { Zone } from './Zone.js';
+import { STATUS } from './Status.js';
 
 // Time a dead player waits before respawning.
 const RESPAWN_MS = 500;
@@ -508,7 +509,7 @@ export class Game {
     });
 
     // 3b. Tick fire DoT (magic staff fireball burns).
-    this._tickBurns(deltaTime, now);
+    this._tickStatuses(deltaTime, now);
 
     // 4. Update and check projectile hits
     this.projectiles.forEach(proj => {
@@ -610,7 +611,7 @@ export class Game {
               target.y = attacker.y + Math.sin(a) * (hk.pullToFront || 50);
               Collision.clampToMap(target, this.mapWidth, this.mapHeight);
               if (this.cover.length) resolveCover(this.cover, target, target.radius || 14);
-              target.slowTimeLeft = (hk.slowMs || 300) / 1000;
+              this._applySlow(target, hk.slowMs || 300);
               target.prevX = target.x; // discontinuous move — don't let melee sweep it
               target.prevY = target.y;
             }
@@ -676,7 +677,10 @@ export class Game {
           p.y = spawnP.y;
           p.respawnTime = 0;
           p.respawnRemainingMs = 0;
-          p.clearCombatTimers();
+          p.clearCombatTimers(); // also clears bleed/burn DoTs
+          // Respawn protection: brief status-immunity window (matches i-frames).
+          p.statusImmuneUntil = now + (p.iframeTimeLeft > 0 ? Math.round(p.iframeTimeLeft * 1000) : 600);
+          p.stunImmuneUntil = 0;
           // Cosmetic respawn effect (equipped), synced to all.
           if (p.respawnFxColor) {
             this.effects.push({
@@ -911,8 +915,12 @@ export class Game {
       hitCount++;
       this._applyMeleeHitMovement(attacker, target, hit);
       const died = target.takeDamage(hit.damage, attacker.nickname);
-      if (!died && hit.stunMs) {
-        target.stunTimeLeft = Math.max(target.stunTimeLeft || 0, hit.stunMs / 1000);
+      if (!died) {
+        // Conditional status effects carried on the hit result (Task 10).
+        if (hit.stunMs) this._applyStun(target, hit.stunMs, now);
+        if (hit.slowMs) this._applySlow(target, hit.slowMs);
+        if (hit.bleed) this._applyBleed(target, attacker.id);
+        if (hit.burn) this._applyBurn(target, attacker.id);
       }
       if (died) this._creditKill(attacker.id, target);
     });
@@ -2690,31 +2698,68 @@ export class Game {
     this.pendingMagicShards = this.pendingMagicShards.filter(shard => shard.playerId !== playerId);
   }
 
+  // --- Status effects (Task 10-1): bleed/burn DoTs, slow, stun -----------------
+
+  // New status can't be applied during respawn protection or dash i-frames;
+  // existing DoTs keep ticking regardless.
+  _canApplyStatus(target) {
+    if (!target || target.isDead) return false;
+    if (Date.now() < (target.statusImmuneUntil || 0)) return false;
+    if (target.isInvincible && target.isInvincible()) return false;
+    return true;
+  }
+
   _applyBurn(target, sourceId, dps, durationMs) {
-    if (!target || target.isDead) return;
-    target.burnTimeLeft = Math.max(target.burnTimeLeft || 0, (durationMs || 4000) / 1000);
-    target.burnDps = dps || 2;
+    if (!this._canApplyStatus(target)) return;
+    const c = STATUS.burn;
+    target.burnTimeLeft = Math.max(target.burnTimeLeft || 0, (durationMs || c.durationMs) / 1000);
+    target.burnDps = dps || c.dps;
     target.burnSourceId = sourceId;
     if (!(target.burnTickLeft > 0)) target.burnTickLeft = 1; // first tick 1s after ignition
   }
 
-  _tickBurns(deltaTime, now) {
-    Object.keys(this.players).forEach(id => {
-      const p = this.players[id];
-      if (!p || p.isDead || !(p.burnTimeLeft > 0)) return;
-      p.burnTimeLeft = Math.max(0, p.burnTimeLeft - deltaTime);
-      p.burnTickLeft -= deltaTime;
-      if (p.burnTickLeft <= 0 && !p.isDead) {
-        p.burnTickLeft += 1;
-        const died = p.takeDamage(p.burnDps || 2, '화염');
-        if (died) this._creditKill(p.burnSourceId, p, '화염으로');
+  _applyBleed(target, sourceId, dps, durationMs) {
+    if (!this._canApplyStatus(target)) return;
+    const c = STATUS.bleed;
+    target.bleedTimeLeft = Math.max(target.bleedTimeLeft || 0, (durationMs || c.durationMs) / 1000);
+    target.bleedDps = dps || c.dps;
+    target.bleedSourceId = sourceId;
+    if (!(target.bleedTickLeft > 0)) target.bleedTickLeft = 1;
+  }
+
+  // Slow magnitude is fixed (−30%); a longer remaining duration wins.
+  _applySlow(target, durationMs) {
+    if (!this._canApplyStatus(target)) return;
+    target.slowTimeLeft = Math.max(target.slowTimeLeft || 0, (durationMs || 1500) / 1000);
+  }
+
+  // Stun, with a post-stun immunity window so a target can't be chain-stunned.
+  _applyStun(target, durationMs, now = Date.now()) {
+    if (!this._canApplyStatus(target)) return;
+    if (now < (target.stunImmuneUntil || 0)) return;
+    const ms = durationMs || 400;
+    target.stunTimeLeft = Math.max(target.stunTimeLeft || 0, ms / 1000);
+    target.stunImmuneUntil = now + ms + STATUS.stun.immuneMs;
+  }
+
+  // Tick both DoTs (host). Slow/stun timers decay in Player._tickTimers.
+  _tickStatuses(deltaTime, now) {
+    const tickDot = (p, key) => {
+      const tl = key + 'TimeLeft', tk = key + 'TickLeft', dp = key + 'Dps', src = key + 'SourceId';
+      if (!(p[tl] > 0)) return;
+      p[tl] = Math.max(0, p[tl] - deltaTime);
+      p[tk] -= deltaTime;
+      if (p[tk] <= 0 && !p.isDead) {
+        p[tk] += 1;
+        const died = p.takeDamage(p[dp] || STATUS[key].dps, STATUS[key].deathName, true);
+        if (died) this._creditKill(p[src], p, STATUS[key].viaLabel);
       }
-      if (p.burnTimeLeft <= 0) {
-        p.burnTimeLeft = 0;
-        p.burnTickLeft = 0;
-        p.burnDps = 0;
-        p.burnSourceId = null;
-      }
+      if (p[tl] <= 0) { p[tl] = 0; p[tk] = 0; p[dp] = 0; p[src] = null; }
+    };
+    Object.values(this.players).forEach(p => {
+      if (!p || p.isDead) return;
+      tickDot(p, 'burn');
+      tickDot(p, 'bleed');
     });
   }
 
@@ -3586,6 +3631,8 @@ export class Game {
       if (p.buffTimeLeft > 0) p.buffTimeLeft = Math.max(0, p.buffTimeLeft - deltaTime);
       if (p.stunTimeLeft > 0) p.stunTimeLeft = Math.max(0, p.stunTimeLeft - deltaTime);
       if (p.burnTimeLeft > 0) p.burnTimeLeft = Math.max(0, p.burnTimeLeft - deltaTime);
+      if (p.bleedTimeLeft > 0) p.bleedTimeLeft = Math.max(0, p.bleedTimeLeft - deltaTime);
+      if (p.slowTimeLeft > 0) p.slowTimeLeft = Math.max(0, p.slowTimeLeft - deltaTime);
       if (p.altSkillCdLeft > 0) p.altSkillCdLeft = Math.max(0, p.altSkillCdLeft - deltaTime);
       if (p.targetSkillCdLeft > 0) p.targetSkillCdLeft = Math.max(0, p.targetSkillCdLeft - deltaTime);
       this._tickMagicCooldowns(p, deltaTime);
@@ -3712,10 +3759,18 @@ export class Game {
             recent.y = p.y;
             recent.tier = damageTier(recent.amount);
           } else {
+            // A small drop on a target with an active DoT is shown as a tick in
+            // the DoT's color (burn=orange, bleed=dark red), distinct from hits.
+            let dotColor = null;
+            if (dmg <= 6) {
+              if (p.burnTimeLeft > 0) dotColor = '#fb923c';
+              else if (p.bleedTimeLeft > 0) dotColor = '#c0392b';
+            }
             this._dmgPopups.push({
               targetId: id, amount: dmg, x: p.x, y: p.y,
               born: now, isLocal,
               tier: damageTier(dmg),
+              dotColor,
               // Random horizontal drift so stacked numbers fan out instead of
               // overlapping into an unreadable blob.
               vx: (Math.random() - 0.5) * 2
@@ -4411,6 +4466,8 @@ export class Game {
             p.pendingIcicles = Math.max(0, Math.floor(snap.pendingIcicles || 0));
             p.magicCooldowns = deserializeMagicCooldowns(snap.magicCdMs);
             p.burnTimeLeft = Math.max(0, (snap.burnMs || 0) / 1000);
+            p.bleedTimeLeft = Math.max(0, (snap.bleedMs || 0) / 1000);
+            p.slowTimeLeft = Math.max(0, (snap.slowMs || 0) / 1000);
             p.teleportReadyAt = Date.now() + Math.max(0, Math.round(snap.teleportCdMs || 0));
             p.color = snap.color;
             p.accentColor = snap.accentColor;
