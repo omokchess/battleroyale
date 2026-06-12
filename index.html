@@ -37,7 +37,7 @@
     </div>
 
     <div id="authScreen" class="hidden absolute inset-0 z-[60] flex items-center justify-center bg-[#14100b] p-4">
-      <div class="w-full max-w-sm p-8 bg-[#2c2016] border-4 border-[#c9a227] text-center shadow-[0_0_20px_rgba(69,243,255,0.3)]">
+      <div class="w-full max-w-sm p-8 bg-[#2c2016] border-4 border-[#c9a227] text-center shadow-[0_0_20px_rgba(201,162,39,0.3)]">
         <h1 class="font-display text-3xl font-extrabold text-[#c9a227] uppercase mb-2 drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]">픽셀로얄</h1>
         <p class="font-mono text-xs text-[#e8d5a3] mb-6 tracking-wider">로그인하고 게임을 즐기세요</p>
 
@@ -49,7 +49,7 @@
             class="w-full bg-[#14100b] border-2 border-gray-600 focus:border-[#c9a227] text-white px-3 py-2 font-mono text-sm focus:outline-none" />
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <button id="loginBtn" class="bg-gradient-to-r from-teal-500 to-[#2c2016] hover:from-teal-400 border-2 border-teal-300 text-white font-mono text-sm font-bold py-2 uppercase cursor-pointer active:scale-95 transition-transform">로그인</button>
+          <button id="loginBtn" class="bg-gradient-to-r from-[#cda833] to-[#7a5e1e] hover:from-[#e6c75a] border-2 border-[#e6c75a] text-white font-mono text-sm font-bold py-2 uppercase cursor-pointer active:scale-95 transition-transform">로그인</button>
           <button id="signupBtn" class="bg-[#2c2016] hover:bg-gray-700 border-2 border-[#c9a227] text-[#c9a227] font-mono text-sm font-bold py-2 uppercase cursor-pointer active:scale-95 transition-transform">회원가입</button>
         </div>
         <p id="authNote" class="hidden mt-4 font-mono text-[11px] text-yellow-400 leading-snug"></p>
@@ -61,7 +61,7 @@
       <div class="w-full max-w-6xl flex flex-col lg:flex-row gap-4 items-stretch my-auto">
 
         <!-- COLUMN 1: Account / My Page (sits left of weapon + create on desktop) -->
-        <div id="lobbyAccount" class="w-full lg:w-80 lg:shrink-0 flex flex-col p-5 sm:p-6 bg-[#2c2016] border-4 border-[#c9a227] rounded-none shadow-[0_0_20px_rgba(69,243,255,0.3)] overflow-y-auto max-h-[92vh]">
+        <div id="lobbyAccount" class="w-full lg:w-80 lg:shrink-0 flex flex-col p-5 sm:p-6 bg-[#2c2016] border-4 border-[#c9a227] rounded-none shadow-[0_0_20px_rgba(201,162,39,0.3)] overflow-y-auto max-h-[92vh]">
           <div class="flex items-center justify-between mb-3">
             <span class="hidden lg:block font-mono text-xs text-[#e8d5a3] uppercase font-bold">내 페이지</span>
             <button id="muteToggleLobby" type="button" class="mute-toggle ml-auto bg-[#14100b] hover:bg-gray-800 border-2 border-gray-600 text-[#c9a227] font-mono text-[10px] px-2.5 py-1.5 uppercase cursor-pointer active:scale-95 transition-transform">🔊 소리</button>
@@ -99,7 +99,7 @@
         </div>
 
         <!-- COLUMN 2: Weapon select + Create Room -->
-        <div id="lobbyLeft" class="flex-1 p-6 sm:p-8 bg-[#2c2016] border-4 border-[#c9a227] rounded-none shadow-[0_0_20px_rgba(69,243,255,0.3)] relative overflow-y-auto max-h-[92vh]">
+        <div id="lobbyLeft" class="flex-1 p-6 sm:p-8 bg-[#2c2016] border-4 border-[#c9a227] rounded-none shadow-[0_0_20px_rgba(201,162,39,0.3)] relative overflow-y-auto max-h-[92vh]">
 
         <!-- Retro Header Decoration -->
         <div class="text-center mb-6">
@@ -356,7 +356,7 @@
         <div id="lobbyCreate" class="pt-3 border-t border-gray-700 mt-4">
           <span class="font-mono text-xs text-[#e8d5a3] uppercase">방 만들기</span>
           <p class="font-mono text-[10px] text-amber-300/80 mt-1 leading-snug">⚔ 방장이 되어 경기를 호스팅합니다. 경기장 크기·자기장·엄폐물·회복을 직접 설정할 수 있어요.</p>
-          <button id="openRoomCustomBtn" class="w-full mt-2 bg-gradient-to-r from-teal-500 to-[#2c2016] hover:from-teal-400 hover:to-[#223040] border-2 border-teal-300 text-white font-mono text-xs px-5 py-2.5 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
+          <button id="openRoomCustomBtn" class="w-full mt-2 bg-gradient-to-r from-[#cda833] to-[#7a5e1e] hover:from-[#e6c75a] hover:to-[#5a4320] border-2 border-[#e6c75a] text-white font-mono text-xs px-5 py-2.5 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
             방 커스텀
           </button>
         </div>
@@ -364,7 +364,7 @@
         <!-- ROOM CUSTOM MODAL: arena size / storm / cover / healing. Shared by both
              the normal room and the dummy (practice) room so settings can be tested. -->
         <div id="roomCustomModal" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-[#14100b]/85 backdrop-blur-sm font-mono p-4 overflow-y-auto">
-          <div class="border-4 border-[#c9a227] bg-[#2c2016] w-full max-w-md my-auto shadow-[0_0_24px_rgba(69,243,255,0.35)] max-h-[92vh] overflow-y-auto">
+          <div class="border-4 border-[#c9a227] bg-[#2c2016] w-full max-w-md my-auto shadow-[0_0_24px_rgba(201,162,39,0.35)] max-h-[92vh] overflow-y-auto">
             <div class="p-5 sm:p-6">
               <div class="flex items-center justify-between mb-1">
                 <h2 class="text-lg font-bold text-[#e8d5a3] uppercase tracking-widest select-none">방 커스텀</h2>
@@ -424,7 +424,7 @@
 
               <div class="h-px bg-gray-700 my-3"></div>
 
-              <button id="hostBtn" class="w-full bg-gradient-to-r from-teal-500 to-[#2c2016] hover:from-teal-400 hover:to-[#223040] border-2 border-teal-300 text-white font-mono text-xs px-5 py-2.5 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
+              <button id="hostBtn" class="w-full bg-gradient-to-r from-[#cda833] to-[#7a5e1e] hover:from-[#e6c75a] hover:to-[#5a4320] border-2 border-[#e6c75a] text-white font-mono text-xs px-5 py-2.5 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
                 방 생성
               </button>
               <p class="font-mono text-[10px] text-red-300/80 mt-3 leading-snug">🎯 더미방은 위 설정을 그대로 쓰는 연습장입니다(가만히 서 있는 연습용 더미 포함). 방 목록엔 <b class="text-red-300">빨간 테두리</b>로 표시돼요.</p>
@@ -478,7 +478,7 @@
             <div class="flex gap-2 mt-2">
               <input type="text" id="joinRoomInput" maxlength="10" placeholder="방 코드 입력"
                 class="flex-1 min-w-0 bg-[#14100b] border-2 border-gray-600 focus:border-[#c9a227] text-white px-3 py-2 rounded-none font-mono text-xs focus:outline-none uppercase" />
-              <button id="joinBtn" class="bg-gradient-to-r from-blue-600 to-[#2c2016] hover:from-blue-500 hover:to-[#223040] border-2 border-blue-400 text-white font-mono text-xs px-5 py-2 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform whitespace-nowrap">
+              <button id="joinBtn" class="bg-gradient-to-r from-[#cda833] to-[#7a5e1e] hover:from-[#e6c75a] hover:to-[#5a4320] border-2 border-[#e6c75a] text-white font-mono text-xs px-5 py-2 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform whitespace-nowrap">
                 참가
               </button>
             </div>
@@ -536,7 +536,7 @@
               <span class="inline-block w-2.5 h-2.5 rounded-full bg-green-500" id="latencyIndicator"></span>
               <span id="hudPing">지연 시간: -- ms</span>
             </div>
-            <div id="hostServerIndicator" class="text-[8px] text-teal-400 hidden uppercase font-bold mt-1">
+            <div id="hostServerIndicator" class="text-[8px] text-[#c9a227] hidden uppercase font-bold mt-1">
               <span class="inline-flex items-center justify-end gap-1">
                 <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M3 8l5 4 4-7 4 7 5-4-2 11H5L3 8z" />
@@ -612,7 +612,7 @@
           <div class="text-red-500 text-3xl font-extrabold tracking-widest uppercase mb-2 animate-pulse">사망했습니다</div>
           <div class="text-gray-400 text-xs uppercase tracking-wider mb-6">장비를 재정비하고 부활하는 중...</div>
           <div id="respawnProgressContainer" class="w-48 bg-[#14100b] h-2 border border-gray-600 overflow-hidden mx-auto mb-2 relative">
-            <div id="respawnProgressBar" class="bg-gradient-to-r from-red-650 to-teal-400 h-full w-full transition-all duration-100"></div>
+            <div id="respawnProgressBar" class="bg-gradient-to-r from-red-650 to-[#c9a227] h-full w-full transition-all duration-100"></div>
           </div>
           <div id="respawnTimerText" class="text-[#c9a227] text-lg font-bold">0.5s</div>
         </div>
@@ -620,7 +620,7 @@
 
       <!-- LEAVE CONFIRMATION (replaces the old native confirm dialog) -->
       <div id="leaveConfirmModal" class="absolute inset-0 z-[60] hidden flex items-center justify-center bg-[#14100b]/80 backdrop-blur-sm font-mono p-4">
-        <div class="border-4 border-[#c9a227] bg-[#2c2016] p-7 text-center max-w-xs w-full shadow-[0_0_24px_rgba(69,243,255,0.35)]">
+        <div class="border-4 border-[#c9a227] bg-[#2c2016] p-7 text-center max-w-xs w-full shadow-[0_0_24px_rgba(201,162,39,0.35)]">
           <h2 class="text-lg font-bold text-[#e8d5a3] mb-1 uppercase tracking-widest select-none">전장에서 나가기</h2>
           <div class="my-3 h-0.5 bg-gradient-to-r from-transparent via-[#facc15] to-transparent"></div>
           <p class="text-gray-300 text-xs leading-relaxed mb-6">정말 나가시겠습니까?</p>
@@ -680,7 +680,7 @@
         class="absolute right-2 sm:right-4 z-[36] gap-2
                max-h-[94vh] overflow-y-auto p-2 sm:p-3
                bg-[#2c2016] bg-opacity-95 border-2 border-[#c9a227] rounded-lg
-               shadow-[0_0_20px_rgba(69,243,255,0.3)] pointer-events-auto select-none">
+               shadow-[0_0_20px_rgba(201,162,39,0.3)] pointer-events-auto select-none">
         <div class="wsp-header font-mono text-center text-[10px] sm:text-[11px] text-gray-300 font-bold pb-1.5 mb-1 border-b border-gray-600">
           무기 교체
           <div class="text-[8px] sm:text-[9px] text-gray-500 font-normal mt-0.5">다음 부활 시 적용</div>
@@ -706,7 +706,7 @@
           <button id="altSkillBtn" class="mobile-action-btn mobile-action-right bg-[#2c2016] bg-opacity-80 border-2 border-[#c9a227] text-[#e6c75a] rounded-full font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(201,162,39,0.35)] flex flex-col items-center justify-center">
             <span class="text-base">R</span><span class="text-[8px]">ALT</span>
           </button>
-          <button id="skillBtn" class="mobile-action-btn mobile-action-left bg-[#2c2016] bg-opacity-80 border-2 border-[#c9a227] text-[#c9a227] rounded-full font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(69,243,255,0.35)] flex flex-col items-center justify-center">
+          <button id="skillBtn" class="mobile-action-btn mobile-action-left bg-[#2c2016] bg-opacity-80 border-2 border-[#c9a227] text-[#c9a227] rounded-full font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(201,162,39,0.35)] flex flex-col items-center justify-center">
             <span class="text-base">F</span><span class="text-[8px]">SKILL</span>
           </button>
           <button id="dashBtn" class="mobile-action-btn mobile-action-bottom bg-[#2c2016] bg-opacity-80 border-2 border-[#22d3ee] text-[#22d3ee] rounded-full font-mono font-bold uppercase leading-tight active:scale-90 transition-transform shadow-[0_0_12px_rgba(34,211,238,0.35)] flex flex-col items-center justify-center">
@@ -722,7 +722,7 @@
     
     <!-- LEADERBOARD MODAL -->
     <div id="leaderboardModal" data-close-modal="leaderboardModal" class="hidden absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
-      <div class="w-full max-w-md bg-[#2c2016] border-4 border-[#c9a227] p-5 max-h-[85vh] flex flex-col shadow-[0_0_20px_rgba(69,243,255,0.3)]">
+      <div class="w-full max-w-md bg-[#2c2016] border-4 border-[#c9a227] p-5 max-h-[85vh] flex flex-col shadow-[0_0_20px_rgba(201,162,39,0.3)]">
         <div class="flex items-center justify-between mb-3">
           <h2 class="font-display text-xl text-[#c9a227] font-bold uppercase tracking-widest">랭킹보드</h2>
           <button data-close-modal="leaderboardModal" class="text-gray-400 hover:text-white font-mono text-lg leading-none px-2 cursor-pointer">✕</button>
