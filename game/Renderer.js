@@ -182,6 +182,7 @@ export class Renderer {
       this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects, mapWidth, mapHeight, visualSettings);
       // Orbiting guardian blades (deterministic from time; suppressed while launched).
       this._drawGuardianOrbits(ctx, camera, cw, ch, gameState.players, gameState.projectiles, nowTime);
+      this._drawChakramOrbit(ctx, camera, cw, ch, gameState.players, nowTime);
       // Flamethrower cones for anyone actively spraying.
       this._drawFlameCones(ctx, camera, cw, ch, gameState.players, nowTime);
     }
@@ -1416,6 +1417,19 @@ export class Renderer {
   }
 
   // Two blades orbiting each guardian player, unless their blades are launched.
+  // 차크람 R 맴돌이: a single disc orbiting the caster while active. Mirrors the
+  // host spin in _updateChakramOrbit (now/140, radius 46) so positions agree.
+  _drawChakramOrbit(ctx, camera, cw, ch, players, now) {
+    for (const id of Object.keys(players)) {
+      const pl = players[id];
+      if (!pl || pl.isDead || !(pl.chakramOrbitUntil > now)) continue;
+      const ang = (now / 140) % (Math.PI * 2);
+      const wx = pl.x + Math.cos(ang) * 46;
+      const wy = pl.y + Math.sin(ang) * 46;
+      this._drawChakram(ctx, camera.toScreen(wx, wy, cw, ch), camera.zoom || 1);
+    }
+  }
+
   _drawGuardianOrbits(ctx, camera, cw, ch, players, projectiles, now) {
     const cfg = Weapons.guardian;
     const launched = new Set();

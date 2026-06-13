@@ -452,6 +452,7 @@ export class Game {
     this._updateZone(now, deltaTime);
     this._updateHealingItems(now);
     this._updateGuardianBlades(now);
+    this._updateChakramOrbit(now);
     this._updateMines(now);
     this._updateFlamethrower(now, deltaTime);
     this._updateFirePatches(now);
@@ -1108,6 +1109,15 @@ export class Game {
       return;
     }
 
+    if (cfg.type === 'chakram_orbit') {
+      player.chakramOrbitUntil = now + (cfg.durationMs || 1500);
+      player.chakramOrbitDamage = cfg.orbitDamage || 14;
+      player.chakramOrbitRadius = cfg.orbitRadius || 46;
+      player.chakramOrbitHitCd = cfg.hitCooldownMs || 400;
+      player.chakramOrbitHits = {};
+      return;
+    }
+
     const base = getEffectiveWeapon(player.weapon, player.buffType);
     const attackConfig = {
       ...base,
@@ -1144,6 +1154,26 @@ export class Game {
 
     const hitCount = this._queueOrApplyMeleeHit(player, attackConfig, now);
     if (hitCount !== null) this._applyAttackTempoResult(player, attackConfig, hitCount, now);
+
+    // 쳐내기: knock out the nearest incoming enemy projectile in front of the player.
+    if (cfg.deflectProjectile) this._deflectProjectile(player, attackConfig.range || 60);
+  }
+
+  // Destroy one enemy projectile within reach in front of the player (chakram 쳐내기).
+  _deflectProjectile(player, reach) {
+    let best = null, bestD = Infinity;
+    for (const proj of this.projectiles) {
+      if (!proj || proj.isDead || proj.ownerId === player.id) continue;
+      const dx = proj.x - player.x, dy = proj.y - player.y;
+      const d = Math.hypot(dx, dy);
+      if (d > reach + (proj.radius || 6)) continue;
+      if (Math.cos(player.angle) * dx + Math.sin(player.angle) * dy < 0) continue; // must be in front
+      if (d < bestD) { bestD = d; best = proj; }
+    }
+    if (best) {
+      best.isDead = true;
+      if (best.locksOwner) { const o = this.players[best.ownerId]; if (o) o.chakramOut = false; }
+    }
   }
 
   _spawnAuxProjectiles(player, cfg, now) {
@@ -3279,9 +3309,10 @@ export class Game {
   }
 
   _throwChakram(player, cfg, now) {
-    player.lastAttackTime = now;    // re-stamped on return so the 900ms cd starts then
+    player.lastAttackTime = now;    // re-stamped on return so the cooldown starts then
     player.chakramOut = true;
-    this._spawnChakram(player, player.angle, cfg.damage, cfg.range, cfg.speed, now, `${now}`, false);
+    const p = this._spawnChakram(player, player.angle, cfg.damage, cfg.range, cfg.speed, now, `${now}`, false);
+    p.wallBouncesLeft = cfg.wallReflect || 0;
     this.effects.push({
       attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
       weapon: 'chakram', type: 'projectile_shot', projectileKind: 'chakram',
@@ -3298,7 +3329,8 @@ export class Game {
     const spread = ((sk.fanSpreadDeg || 34) * Math.PI) / 180;
     for (let i = 0; i < n; i++) {
       const off = n === 1 ? 0 : (i - (n - 1) / 2) * (spread / (n - 1));
-      this._spawnChakram(player, player.angle + off, sk.damage, sk.range, sk.speed, now, `fan-${now}-${i}`, true);
+      const p = this._spawnChakram(player, player.angle + off, sk.damage, sk.range, sk.speed, now, `fan-${now}-${i}`, true);
+      p.bleed = Boolean(sk.bleed);
     }
     this.effects.push({
       attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
@@ -3322,6 +3354,7 @@ export class Game {
         if (Collision.checkProjectileHit(proj, target)) {
           hitSet.add(target.id);
           const died = target.takeDamage(proj.damage, proj.deathName || '차크람');
+          if (!died && proj.bleed) this._applyBleed(target, proj.ownerId);
           if (died) this._creditKill(proj.ownerId, target, proj.hitLabel || '차크람으로');
         }
       });
@@ -3335,6 +3368,17 @@ export class Game {
       const hitWall = proj.x <= proj.radius || proj.x >= this.mapWidth - proj.radius ||
                       proj.y <= proj.radius || proj.y >= this.mapHeight - proj.radius;
       const hitCover = this.cover.length && coverBlocksCircle(this.cover, proj.x, proj.y, proj.radius);
+      // Wall reflect: bounce off the arena edge once (extra hit chance) before returning.
+      if (hitWall && !hitCover && flew < proj.outRange && (proj.wallBouncesLeft || 0) > 0) {
+        proj.wallBouncesLeft -= 1;
+        if (proj.x <= proj.radius || proj.x >= this.mapWidth - proj.radius) proj.vx = -proj.vx;
+        if (proj.y <= proj.radius || proj.y >= this.mapHeight - proj.radius) proj.vy = -proj.vy;
+        proj.x = Math.max(proj.radius, Math.min(this.mapWidth - proj.radius, proj.x));
+        proj.y = Math.max(proj.radius, Math.min(this.mapHeight - proj.radius, proj.y));
+        proj.angle = Math.atan2(proj.vy, proj.vx);
+        proj.hitOut.clear();        // allow re-hitting after the bounce
+        return;
+      }
       if (flew >= proj.outRange || hitWall || hitCover) {
         proj.x = Math.max(proj.radius, Math.min(this.mapWidth - proj.radius, proj.x));
         proj.y = Math.max(proj.radius, Math.min(this.mapHeight - proj.radius, proj.y));
@@ -3570,6 +3614,27 @@ export class Game {
       out.push({ x: player.x + Math.cos(a) * cfg.orbitRadius, y: player.y + Math.sin(a) * cfg.orbitRadius, angle: a });
     }
     return out;
+  }
+
+  // 차크람 R 맴돌이: a defensive disc orbits the caster, dealing contact damage
+  // with a per-target hit cooldown while active.
+  _updateChakramOrbit(now) {
+    Object.values(this.players).forEach(player => {
+      if (player.isDead || !player.chakramOrbitUntil || now >= player.chakramOrbitUntil) return;
+      const orbitR = player.chakramOrbitRadius || 46;
+      const ang = (now / 140) % (Math.PI * 2);          // deterministic spin from time
+      const ox = player.x + Math.cos(ang) * orbitR;
+      const oy = player.y + Math.sin(ang) * orbitR;
+      const hits = player.chakramOrbitHits || (player.chakramOrbitHits = {});
+      Object.values(this.players).forEach(target => {
+        if (target.id === player.id || target.isDead || target.isInvincible()) return;
+        if (Math.hypot(target.x - ox, target.y - oy) > target.radius + 12) return;
+        if ((hits[target.id] || 0) > now) return;        // per-target hit cooldown
+        hits[target.id] = now + (player.chakramOrbitHitCd || 400);
+        const died = target.takeDamage(player.chakramOrbitDamage || 14, player.nickname);
+        if (died) this._creditKill(player.id, target, '차크람으로');
+      });
+    });
   }
 
   _updateGuardianBlades(now) {

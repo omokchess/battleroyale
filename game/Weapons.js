@@ -226,16 +226,17 @@ export const Weapons = {
   },
   chakram: {
     name: '차크람',
-    damage: 22,             // applied once per leg (outbound + return) per target
+    damage: 26,             // applied once per leg (outbound + return) per target
     maxHp: 100,
-    cooldown: 900,          // measured from when the disk returns to hand
+    cooldown: 750,          // measured from when the disk returns to hand
     moveSpeed: 1.1,
     range: 280,             // outbound distance before it boomerangs back
     speed: 640,             // outbound flight speed (px/s)
+    wallReflect: 1,         // bounces off a wall once before returning (extra hit chance)
     type: 'projectile',
     projectileKind: 'chakram',
-    description: '던지면 날아갔다가 부메랑처럼 돌아오는 원반입니다. 나가는 길과 돌아오는 길 양쪽에 피해를 주지만, 원반이 떠 있는 동안은 비무장 상태가 됩니다.',
-    skill: 'F 스킬: 부채꼴 3방향으로 동시에 차크람을 던집니다(각 18 피해) · 쿨타임 6초',
+    description: '자동으로 날아갔다 돌아오는 원반(벽 1회 반사). 원반이 떠 있는 동안은 비무장.',
+    skill: 'F: 삼지창 투척 — 부채꼴 3방향(각 22+출혈) · 좌클릭: 쳐내기(근접 18, 적 투사체 상쇄) · R: 맴돌이(1.5초 방어 원반 공전)',
     color: '#c2cad6'
   },
   pistols: {
@@ -367,10 +368,11 @@ export const SkillConfig = {
     returnMs: 1800
   },
   chakram: {
-    cooldownMs: 6000,
+    cooldownMs: 4500,
     fanCount: 3,           // simultaneous discs
     fanSpreadDeg: 34,      // total angular spread of the fan
-    damage: 18,            // per disc, per leg
+    damage: 22,            // per disc, per leg
+    bleed: true,           // direct hits bleed
     range: 280,
     speed: 640,
     returnSpeed: 720
@@ -693,6 +695,13 @@ export const AuxSkillConfig = {
   },
   sniper: {
     target: { cooldownMs: 6000, type: 'hitscan', damage: 55, range: Infinity }
+  },
+  // --- New-weapon kits (Task 1 revised). 'alt' = LMB, 'target' = R. ----------
+  chakram: {
+    // 쳐내기: a quick forward swing that also deflects one incoming projectile.
+    alt: { label: 'PARRY', cooldownMs: 700, type: 'melee_circle', damage: 18, range: 60, angle: 200, knockback: 18, deflectProjectile: true },
+    // 맴돌이: a defensive disc orbits the player for a short time (bespoke).
+    target: { label: 'ORBIT', cooldownMs: 6000, type: 'chakram_orbit', durationMs: 1500, orbitDamage: 14, orbitRadius: 46, hitCooldownMs: 400 }
   }
 };
 

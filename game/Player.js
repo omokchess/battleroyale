@@ -56,6 +56,7 @@ export class Player {
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
     this.chakramOut = false;  // true while a thrown chakram hasn't returned (disarmed)
+    this.chakramOrbitUntil = 0; // ms timestamp until which the R 맴돌이 defensive disc orbits
     this.slowTimeLeft = 0;    // seconds of a movement slow (harpoon pull) — can still attack
     // Flamethrower fuel state (host-driven; flameSpraying is synced for visuals).
     this.flameFuel = (Weapons.flamethrower?.fuelMs) || 3000;
@@ -372,6 +373,7 @@ export class Player {
       sniperTeleportTargetMs: Math.max(0, Math.round((this.sniperTeleportTargetUntil || 0) - Date.now())),
       altSkillCdMs: Math.round((this.altSkillCdLeft || 0) * 1000),
       targetSkillCdMs: Math.round((this.targetSkillCdLeft || 0) * 1000),
+      orbitMs: Math.max(0, Math.round((this.chakramOrbitUntil || 0) - Date.now())),
       color: this.color,
       accentColor: this.accentColor,
       costumeDecoration: this.costumeDecoration || null,
@@ -411,6 +413,7 @@ export class Player {
     this.sniperTeleportTargetUntil = data.sniperTeleportTargetMs > 0 ? Date.now() + data.sniperTeleportTargetMs : 0;
     this.altSkillCdLeft = Math.max(0, (data.altSkillCdMs || 0) / 1000);
     this.targetSkillCdLeft = Math.max(0, (data.targetSkillCdMs || 0) / 1000);
+    this.chakramOrbitUntil = data.orbitMs > 0 ? Date.now() + data.orbitMs : 0;
     this.daggerQte = deserializeDaggerQte(data.daggerQte);
     this.comboStep = Math.max(0, Math.floor(data.comboStep || 0));
     this.comboDelayUntil = Date.now() + Math.max(0, Math.round(data.comboDelayMs || 0));
