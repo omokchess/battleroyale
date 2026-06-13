@@ -211,7 +211,7 @@ export const Weapons = {
     color: '#a855f7'
   },
   sniper: {
-    name: '마탄 석궁',
+    name: '스나이퍼',
     damage: Infinity,       // 즉사 (actual shot resolves as a 9999 hitscan)
     maxHp: 90,
     cooldown: 2000,
@@ -220,9 +220,9 @@ export const Weapons = {
     range: Infinity,
     speed: Infinity,        // instant hitscan
     type: 'projectile',     // idle preview draws the aim line
-    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 마탄 석궁입니다. F로 0.5초간 조준선을 노출한 뒤 직선상 첫 적을 마탄으로 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
+    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 저격총입니다. F로 0.5초간 조준선을 노출한 뒤 직선상 첫 적을 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
     skill: 'F: 0.5초 조준선 노출(텔레그래프) 후 직선상 첫 적 즉사 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)',
-    color: '#9d4edd'
+    color: '#22c55e'
   },
   chakram: {
     name: '차크람',
