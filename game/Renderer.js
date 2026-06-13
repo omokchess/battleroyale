@@ -1264,7 +1264,7 @@ export class Renderer {
         this._drawChakram(ctx, scr, zoom);
       } else if (p.kind === 'pistol') {
         this._drawPistolBullet(ctx, scr, angle, zoom);
-      } else if (p.kind === 'guardianblade') {
+      } else if (p.kind === 'guardianblade' || p.kind === 'guardianhoming') {
         this._drawGuardianBlade(ctx, scr, zoom);
       } else if (p.kind === 'harpoon') {
         this._drawHarpoon(ctx, scr, angle, zoom);
@@ -1464,10 +1464,12 @@ export class Renderer {
       const pl = players[id];
       if (!pl || pl.isDead || pl.weapon !== 'guardian' || launched.has(id)) continue;
       const base = (now / period) * Math.PI * 2;
+      const stance = pl.guardianStanceUntil && now < pl.guardianStanceUntil;
+      const radius = cfg.orbitRadius + (stance ? (cfg.stanceRadiusBonus || 0) : 0);
       for (let i = 0; i < n; i++) {
         const a = base + (i / n) * Math.PI * 2;
-        const wx = pl.x + Math.cos(a) * cfg.orbitRadius;
-        const wy = pl.y + Math.sin(a) * cfg.orbitRadius;
+        const wx = pl.x + Math.cos(a) * radius;
+        const wy = pl.y + Math.sin(a) * radius;
         const scr = camera.toScreen(wx, wy, cw, ch);
         this._drawGuardianBlade(ctx, scr, camera.zoom || 1, a * 2);
       }

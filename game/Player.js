@@ -58,6 +58,7 @@ export class Player {
     this.chakramOut = false;  // true while a thrown chakram hasn't returned (disarmed)
     this.chakramOrbitUntil = 0; // ms timestamp until which the R 맴돌이 defensive disc orbits
     this.heatShieldUntil = 0; // ms timestamp until which 열기 방패 (flamethrower R) is active
+    this.guardianStanceUntil = 0; // ms timestamp until which 수호 태세 (guardian F) widens the orbit
     this.slowTimeLeft = 0;    // seconds of a movement slow (harpoon pull) — can still attack
     // Flamethrower fuel state (host-driven; flameSpraying is synced for visuals).
     this.flameFuel = (Weapons.flamethrower?.fuelMs) || 3000;
@@ -379,6 +380,7 @@ export class Player {
       targetSkillCdMs: Math.round((this.targetSkillCdLeft || 0) * 1000),
       orbitMs: Math.max(0, Math.round((this.chakramOrbitUntil || 0) - Date.now())),
       shieldMs: Math.max(0, Math.round((this.heatShieldUntil || 0) - Date.now())),
+      stanceMs: Math.max(0, Math.round((this.guardianStanceUntil || 0) - Date.now())),
       color: this.color,
       accentColor: this.accentColor,
       costumeDecoration: this.costumeDecoration || null,
@@ -420,6 +422,7 @@ export class Player {
     this.targetSkillCdLeft = Math.max(0, (data.targetSkillCdMs || 0) / 1000);
     this.chakramOrbitUntil = data.orbitMs > 0 ? Date.now() + data.orbitMs : 0;
     this.heatShieldUntil = data.shieldMs > 0 ? Date.now() + data.shieldMs : 0;
+    this.guardianStanceUntil = data.stanceMs > 0 ? Date.now() + data.stanceMs : 0;
     this.daggerQte = deserializeDaggerQte(data.daggerQte);
     this.comboStep = Math.max(0, Math.floor(data.comboStep || 0));
     this.comboDelayUntil = Date.now() + Math.max(0, Math.round(data.comboDelayMs || 0));

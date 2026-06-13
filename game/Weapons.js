@@ -256,20 +256,20 @@ export const Weapons = {
   },
   guardian: {
     name: '수호 블레이드',
-    damage: 16,             // orbit contact damage (per target, re-hit every 500ms)
+    damage: 18,             // orbit contact damage (per target, re-hit every 400ms)
     maxHp: 110,
     cooldown: 500,          // unused (no manual attack) but kept for the stats card
     automaticAttack: false, // damage comes from the orbiting blades, not a swing
     moveSpeed: 1.2,
     range: 55,              // orbit radius == effective reach
     type: 'orbit',
-    orbitCount: 2,
-    orbitRadius: 55,
+    orbitCount: 3,
+    orbitRadius: 60,
     orbitPeriodMs: 1100,    // one full revolution
-    rehitMs: 500,           // min gap between hits on the same target
+    rehitMs: 400,           // min gap between hits on the same target
     bladeRadius: 9,
-    description: '칼날 두 개가 몸 주위를 공전하며 닿는 적을 자동으로 벱니다. 조준이 없어 무빙과 거리 조절이 전부이며, 사거리가 몸 둘레뿐이라 긴 사거리 무기에 접근하기 어렵습니다.',
-    skill: 'F 스킬: 칼날 2개를 바깥으로 발사(각 24 피해)했다가 회수하며, 회수 전까지 비무장 · 쿨타임 5초',
+    description: '칼날 3개가 몸 주위를 공전하며 닿는 적을 자동으로 벱니다(조준 없음). 사거리가 몸 둘레뿐이라 긴 사거리 무기엔 접근이 까다롭습니다.',
+    skill: 'F: 수호 태세(1.5초 공전 속도·반경↑ + 적 투사체 1개 차단) · 좌클릭: 사출 — 칼날 전부 조준 발사(각 24) 후 회수 · R: 추적 칼날(가까운 적 1.5초 자동 추적)',
     color: '#2dd4bf'
   },
   harpoon: {
@@ -389,10 +389,20 @@ export const SkillConfig = {
     hopDistance: 90        // backward escape hop after the barrage
   },
   guardian: {
-    cooldownMs: 5000,
-    launchDamage: 24,      // per launched blade, per leg
-    launchRange: 200,      // outward flight before the blade returns
-    launchSpeed: 560
+    // F 수호 태세 (buff): faster/wider orbit + blocks one incoming projectile.
+    cooldownMs: 6000,
+    stanceMs: 1500,
+    stanceSpeedMul: 1.8,
+    stanceRadiusBonus: 16,
+    // LMB 사출 (launch) params, reused by the alt aux.
+    launchDamage: 24,
+    launchRange: 200,
+    launchSpeed: 560,
+    // R 추적 칼날 (homing) params.
+    homingDamage: 14,
+    homingDurationMs: 1500,
+    homingSpeed: 360,
+    homingHitCooldownMs: 400
   },
   harpoon: {
     cooldownMs: 4000,      // F 당겨가기 self-pull
@@ -720,6 +730,12 @@ export const AuxSkillConfig = {
     alt: { label: 'GAFF', cooldownMs: 1000, type: 'melee_line', damage: 30, range: 74, width: 24, knockback: 24 },
     // 사슬 휘감기: a short chain lash that stuns for 0.5s.
     target: { label: 'CHAIN', cooldownMs: 7000, type: 'melee_line', damage: 8, range: 92, width: 18, stunMs: 500 }
+  },
+  guardian: {
+    // 사출: launch all orbiting blades outward (bespoke; reuses _launchGuardianBlades).
+    alt: { label: 'LAUNCH', cooldownMs: 4000, type: 'guardian_launch' },
+    // 추적 칼날: detach one blade to home the nearest enemy (bespoke).
+    target: { label: 'SEEK', cooldownMs: 6000, type: 'guardian_homing' }
   }
 };
 

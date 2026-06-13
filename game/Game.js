@@ -527,6 +527,11 @@ export class Game {
         this._updateChakram(proj, deltaTime, now);
         return;
       }
+      // 추적 칼날 (guardian R): homes the nearest enemy for a short lifetime.
+      if (proj.kind === 'guardianhoming') {
+        this._updateHomingBlade(proj, deltaTime, now);
+        return;
+      }
 
       proj.update(deltaTime);
 
@@ -1108,6 +1113,16 @@ export class Game {
 
     if (cfg.type === 'hitscan') {
       this._fireAuxHitscan(player, cfg, now);
+      return;
+    }
+
+    if (cfg.type === 'guardian_launch') {
+      this._launchGuardianBlades(player, now);
+      return;
+    }
+
+    if (cfg.type === 'guardian_homing') {
+      this._spawnHomingBlade(player, now);
       return;
     }
 
@@ -1857,7 +1872,7 @@ export class Game {
       case 'sniper': this._fireSniperShot(player, now); break;
       case 'chakram': this._throwChakramFan(player, now); break;
       case 'pistols': this._firePistolBarrage(player, now); break;
-      case 'guardian': this._launchGuardianBlades(player, now); break;
+      case 'guardian': this._guardianStance(player, now); break;
       case 'harpoon': this._harpoonPull(player, now); break;
       case 'minebag': this._placeMine(player, now); break;
       case 'flamethrower': this._throwFirePatch(player, now); break;
@@ -3662,12 +3677,67 @@ export class Game {
     const cfg = Weapons.guardian;
     const base = (now / (cfg.orbitPeriodMs || 1100)) * Math.PI * 2;
     const n = cfg.orbitCount || 2;
+    // 수호 태세: widen the orbit while active (radius only — re-hit cap makes
+    // a speed change DPS-neutral, so geometry stays consistent with the client).
+    const stance = player.guardianStanceUntil && now < player.guardianStanceUntil;
+    const radius = cfg.orbitRadius + (stance ? (cfg.stanceRadiusBonus || 0) : 0);
     const out = [];
     for (let i = 0; i < n; i++) {
       const a = base + (i / n) * Math.PI * 2;
-      out.push({ x: player.x + Math.cos(a) * cfg.orbitRadius, y: player.y + Math.sin(a) * cfg.orbitRadius, angle: a });
+      out.push({ x: player.x + Math.cos(a) * radius, y: player.y + Math.sin(a) * radius, angle: a });
     }
     return out;
+  }
+
+  // F 수호 태세: widen the orbit briefly and knock out one incoming projectile.
+  _guardianStance(player, now) {
+    const sk = SkillConfig.guardian;
+    player.skillCdLeft = (sk.cooldownMs || 6000) / 1000;
+    player.guardianStanceUntil = now + (sk.stanceMs || 1500);
+    this._deflectProjectile(player, (Weapons.guardian.orbitRadius || 60) + (sk.stanceRadiusBonus || 0));
+  }
+
+  // R 추적 칼날: detach one blade that homes the nearest enemy for a short time.
+  _spawnHomingBlade(player, now) {
+    const sk = SkillConfig.guardian;
+    const spawnDist = (player.radius || 14) + 6;
+    const proj = new Projectile(
+      `${player.id}-ghoming-${now}`, player.id,
+      player.x + Math.cos(player.angle) * spawnDist,
+      player.y + Math.sin(player.angle) * spawnDist,
+      player.angle, sk.homingSpeed || 360, Infinity, sk.homingDamage || 14, 'guardianhoming'
+    );
+    proj.weapon = 'guardian';
+    proj.radius = 11;
+    proj.expireAt = now + (sk.homingDurationMs || 1500);
+    proj.hitCooldownMs = sk.homingHitCooldownMs || 400;
+    proj.homingHits = {};
+    this.projectiles.push(proj);
+  }
+
+  _updateHomingBlade(proj, deltaTime, now) {
+    if (now >= proj.expireAt) { proj.isDead = true; return; }
+    // steer toward the nearest living enemy
+    let best = null, bestD = Infinity;
+    for (const t of Object.values(this.players)) {
+      if (t.id === proj.ownerId || t.isDead) continue;
+      const d = Math.hypot(t.x - proj.x, t.y - proj.y);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    if (best) proj.angle = Math.atan2(best.y - proj.y, best.x - proj.x);
+    proj.vx = Math.cos(proj.angle) * proj.speed;
+    proj.vy = Math.sin(proj.angle) * proj.speed;
+    proj.x += proj.vx * deltaTime;
+    proj.y += proj.vy * deltaTime;
+    if (proj.x < 0 || proj.x > this.mapWidth || proj.y < 0 || proj.y > this.mapHeight) { proj.isDead = true; return; }
+    for (const t of Object.values(this.players)) {
+      if (t.id === proj.ownerId || t.isDead || t.isInvincible()) continue;
+      if (Math.hypot(t.x - proj.x, t.y - proj.y) > (t.radius || 14) + proj.radius) continue;
+      if ((proj.homingHits[t.id] || 0) > now) continue;
+      proj.homingHits[t.id] = now + proj.hitCooldownMs;
+      const died = t.takeDamage(proj.damage, '수호 블레이드');
+      if (died) this._creditKill(proj.ownerId, t, '수호 블레이드로');
+    }
   }
 
   // 차크람 R 맴돌이: a defensive disc orbits the caster, dealing contact damage
@@ -3733,7 +3803,7 @@ export class Game {
 
   _launchGuardianBlades(player, now) {
     const sk = SkillConfig.guardian;
-    player.skillCdLeft = (sk.cooldownMs || 5000) / 1000;
+    // Cooldown is governed by the LMB aux executor (altSkillCdLeft), not skillCdLeft.
     const blades = this._guardianBladePositions(player, now);
     blades.forEach((b, i) => {
       const proj = new Projectile(
