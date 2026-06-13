@@ -57,6 +57,7 @@ export class Player {
     this.spearThrown = false; // true while the javelin skill is airborne
     this.chakramOut = false;  // true while a thrown chakram hasn't returned (disarmed)
     this.chakramOrbitUntil = 0; // ms timestamp until which the R 맴돌이 defensive disc orbits
+    this.heatShieldUntil = 0; // ms timestamp until which 열기 방패 (flamethrower R) is active
     this.slowTimeLeft = 0;    // seconds of a movement slow (harpoon pull) — can still attack
     // Flamethrower fuel state (host-driven; flameSpraying is synced for visuals).
     this.flameFuel = (Weapons.flamethrower?.fuelMs) || 3000;
@@ -321,7 +322,10 @@ export class Player {
   takeDamage(amount, attackerName, ignoreIframe = false) {
     if (this.isDead || (!ignoreIframe && this.isInvincible())) return false;
 
-    this.hp -= amount;
+    let dmg = amount;
+    // 열기 방패 (flamethrower R): flat 30% damage reduction while active.
+    if (this.heatShieldUntil && Date.now() < this.heatShieldUntil) dmg *= 0.7;
+    this.hp -= dmg;
     if (this.hp <= 0) {
       this.hp = 0;
       this.isDead = true;
@@ -374,6 +378,7 @@ export class Player {
       altSkillCdMs: Math.round((this.altSkillCdLeft || 0) * 1000),
       targetSkillCdMs: Math.round((this.targetSkillCdLeft || 0) * 1000),
       orbitMs: Math.max(0, Math.round((this.chakramOrbitUntil || 0) - Date.now())),
+      shieldMs: Math.max(0, Math.round((this.heatShieldUntil || 0) - Date.now())),
       color: this.color,
       accentColor: this.accentColor,
       costumeDecoration: this.costumeDecoration || null,
@@ -414,6 +419,7 @@ export class Player {
     this.altSkillCdLeft = Math.max(0, (data.altSkillCdMs || 0) / 1000);
     this.targetSkillCdLeft = Math.max(0, (data.targetSkillCdMs || 0) / 1000);
     this.chakramOrbitUntil = data.orbitMs > 0 ? Date.now() + data.orbitMs : 0;
+    this.heatShieldUntil = data.shieldMs > 0 ? Date.now() + data.shieldMs : 0;
     this.daggerQte = deserializeDaggerQte(data.daggerQte);
     this.comboStep = Math.max(0, Math.floor(data.comboStep || 0));
     this.comboDelayUntil = Date.now() + Math.max(0, Math.round(data.comboDelayMs || 0));

@@ -301,20 +301,21 @@ export const Weapons = {
   },
   flamethrower: {
     name: '화염방사기',
-    damage: 6,              // per tick (5 ticks/s → DPS 30)
+    damage: 7,              // per tick (5 ticks/s → DPS 35)
     maxHp: 130,
     cooldown: 200,          // tick reference (no manual swing)
     automaticAttack: false, // sprays continuously via its own updater
     moveSpeed: 0.95,        // while recharging / not spraying
     sprayMoveSpeed: 0.55,   // dragged down while spraying
-    range: 90,
+    range: 105,
     angle: 60,              // cone width (degrees)
     type: 'cone',
     tickMs: 200,
-    fuelMs: 3000,           // 3s of continuous spray
+    burn: true,             // spray refreshes 화상 on hit
+    fuelMs: 3500,           // 3.5s of continuous spray
     rechargeMs: 2000,       // 2s to refill once fully spent
-    description: '전방 부채꼴에 불을 지속 분사하는 근접 무기입니다. 조준이 후해 모바일에 강하지만 사거리가 짧고 분사 중에는 굼떠지며, 연료가 바닥나면 재충전 동안 무장 해제됩니다.',
-    skill: 'F 스킬: 전방에 2초간 타오르는 화염 장판을 던집니다(초당 10 피해) · 쿨타임 7초',
+    description: '전방 부채꼴에 불을 자동 분사하는 근접 무기(명중 시 화상). 조준이 후하지만 사거리가 짧고 분사 중 굼뜨며, 연료가 바닥나면 재충전 동안 무장 해제.',
+    skill: 'F: 화염 장판(2.5초·초당 12+화상) · 좌클릭: 점화 — 전방 화염탄 폭발(반경 50·28+화상) · R: 열기 방패(1.5초 받는 피해 30%↓+접촉 화상)',
     color: '#fb923c'
   }
 };
@@ -409,12 +410,13 @@ export const SkillConfig = {
     maxMines: 3            // per player; placing a 4th removes the oldest
   },
   flamethrower: {
-    cooldownMs: 7000,
+    cooldownMs: 6000,
     patchRange: 76,        // how far in front the patch lands
     patchRadius: 55,
-    patchMs: 2000,         // burn duration
+    patchMs: 2500,         // burn duration
     patchTickMs: 250,      // damage cadence
-    patchDamage: 2.5       // per tick (≈10/s)
+    patchDamage: 3,        // per tick (≈12/s)
+    burn: true             // patch ticks also refresh 화상
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends
@@ -703,6 +705,12 @@ export const AuxSkillConfig = {
     alt: { label: 'TRIPLE', cooldownMs: 700, type: 'chakram_throw', count: 3, spreadDeg: 18, damage: 18, range: 240, speed: 680, deflectProjectile: true },
     // 맴돌이: a defensive disc orbits the player for a short time (bespoke).
     target: { label: 'ORBIT', cooldownMs: 6000, type: 'chakram_orbit', durationMs: 1500, orbitDamage: 14, orbitRadius: 46, hitCooldownMs: 400 }
+  },
+  flamethrower: {
+    // 점화: a forward fire bomb that bursts for AoE damage + burn.
+    alt: { label: 'IGNITE', cooldownMs: 2500, type: 'fire_bomb', range: 88, radius: 50, damage: 28, burn: true },
+    // 열기 방패: a brief 30% damage shield that burns adjacent enemies (bespoke).
+    target: { label: 'SHIELD', cooldownMs: 8000, type: 'heat_shield', durationMs: 1500, contactRadius: 34 }
   }
 };
 

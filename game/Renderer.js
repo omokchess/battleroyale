@@ -183,6 +183,7 @@ export class Renderer {
       // Orbiting guardian blades (deterministic from time; suppressed while launched).
       this._drawGuardianOrbits(ctx, camera, cw, ch, gameState.players, gameState.projectiles, nowTime);
       this._drawChakramOrbit(ctx, camera, cw, ch, gameState.players, nowTime);
+      this._drawHeatShields(ctx, camera, cw, ch, gameState.players, nowTime);
       // Flamethrower cones for anyone actively spraying.
       this._drawFlameCones(ctx, camera, cw, ch, gameState.players, nowTime);
     }
@@ -1427,6 +1428,27 @@ export class Renderer {
       const wx = pl.x + Math.cos(ang) * 46;
       const wy = pl.y + Math.sin(ang) * 46;
       this._drawChakram(ctx, camera.toScreen(wx, wy, cw, ch), camera.zoom || 1);
+    }
+  }
+
+  // 열기 방패 (flamethrower R): a pulsing ember ring around the shielded player.
+  _drawHeatShields(ctx, camera, cw, ch, players, now) {
+    for (const id of Object.keys(players)) {
+      const pl = players[id];
+      if (!pl || pl.isDead || !(pl.heatShieldUntil > now)) continue;
+      const scr = camera.toScreen(pl.x, pl.y, cw, ch);
+      const z = camera.zoom || 1;
+      const r = (pl.radius || 14) * z + 8 + Math.sin(now / 90) * 2;
+      ctx.save();
+      ctx.shadowColor = '#fb923c';
+      ctx.shadowBlur = this._glow ? 14 : 0;
+      ctx.strokeStyle = this._hexToRGB('#fb923c', 0.85);
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = this._hexToRGB('#fde68a', 0.5);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, r - 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
     }
   }
 

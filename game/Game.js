@@ -453,6 +453,7 @@ export class Game {
     this._updateHealingItems(now);
     this._updateGuardianBlades(now);
     this._updateChakramOrbit(now);
+    this._updateHeatShield(now);
     this._updateMines(now);
     this._updateFlamethrower(now, deltaTime);
     this._updateFirePatches(now);
@@ -1106,6 +1107,30 @@ export class Game {
 
     if (cfg.type === 'hitscan') {
       this._fireAuxHitscan(player, cfg, now);
+      return;
+    }
+
+    if (cfg.type === 'fire_bomb') {
+      const bx = Math.max(8, Math.min(this.mapWidth - 8, player.x + Math.cos(player.angle) * (cfg.range || 88)));
+      const by = Math.max(8, Math.min(this.mapHeight - 8, player.y + Math.sin(player.angle) * (cfg.range || 88)));
+      const r = cfg.radius || 50;
+      Object.values(this.players).forEach(t => {
+        if (t.id === player.id || t.isDead || t.isInvincible()) return;
+        if ((t.x - bx) ** 2 + (t.y - by) ** 2 > (r + (t.radius || 14)) ** 2) return;
+        const died = t.takeDamage(cfg.damage || 28, player.nickname);
+        if (!died && cfg.burn) this._applyBurn(t, player.id);
+        if (died) this._creditKill(player.id, t, '점화로');
+      });
+      this.effects.push({
+        attackerId: player.id, x: bx, y: by, weapon: 'flamethrower',
+        type: 'explosion', radius: r, progress: 0, timestamp: now, lifetime: 360
+      });
+      return;
+    }
+
+    if (cfg.type === 'heat_shield') {
+      player.heatShieldUntil = now + (cfg.durationMs || 1500);
+      player.heatShieldRadius = cfg.contactRadius || 34;
       return;
     }
 
@@ -3507,6 +3532,7 @@ export class Game {
           if (now - last < (cfg.tickMs || 200)) return;
           player._flameHits[t.id] = now;
           const died = t.takeDamage(cfg.damage, '화염방사기');
+          if (!died && cfg.burn) this._applyBurn(t, player.id);
           if (died) this._creditKill(player.id, t, '화염방사기로');
         });
       } else {
@@ -3545,6 +3571,7 @@ export class Game {
           if (t.id === patch.ownerId || t.isDead || t.isInvincible?.()) continue;
           if ((t.x - patch.x) ** 2 + (t.y - patch.y) ** 2 <= (r + (t.radius || 14)) ** 2) {
             const died = t.takeDamage(sk.patchDamage || 2.5, '화염 장판');
+            if (!died && sk.burn) this._applyBurn(t, patch.ownerId);
             if (died) this._creditKill(patch.ownerId, t, '화염 장판으로');
           }
         }
@@ -3649,6 +3676,22 @@ export class Game {
         hits[target.id] = now + (player.chakramOrbitHitCd || 400);
         const died = target.takeDamage(player.chakramOrbitDamage || 14, player.nickname);
         if (died) this._creditKill(player.id, target, '차크람으로');
+      });
+    });
+  }
+
+  // 열기 방패 (flamethrower R): burns enemies that stay in contact while active.
+  _updateHeatShield(now) {
+    Object.values(this.players).forEach(player => {
+      if (player.isDead || !player.heatShieldUntil || now >= player.heatShieldUntil) return;
+      const cr = player.heatShieldRadius || 34;
+      if (!player._heatHits) player._heatHits = {};
+      Object.values(this.players).forEach(t => {
+        if (t.id === player.id || t.isDead || t.isInvincible()) return;
+        if (Math.hypot(t.x - player.x, t.y - player.y) > cr + (t.radius || 14)) return;
+        if ((player._heatHits[t.id] || 0) > now) return;
+        player._heatHits[t.id] = now + 300;
+        this._applyBurn(t, player.id);
       });
     });
   }
