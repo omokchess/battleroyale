@@ -4,6 +4,7 @@
  */
 
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
+import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW } from './SpriteAtlas.js';
 
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
@@ -73,6 +74,15 @@ export class Renderer {
     this.offCtx = this.offscreen ? this.offscreen.getContext('2d') : null;
 
     this._initWeaponSprites();
+
+    // Ninja Adventure sprite atlas (Task 4). Loads async + fails soft: until it
+    // is ready (or if an asset 404s) every sprite draw falls back to the legacy
+    // shape rendering, so the game is always playable.
+    this.atlas = new SpriteAtlas('/assets/ninja');
+    this.atlas.load(SPRITE_MANIFEST).catch(() => {});
+    this._charTintCache = {};   // tinted body frames keyed by skin+color
+    this._charPrev = {};        // last positions, to detect movement for the walk cycle
+    this._charAnim = {};        // per-player walk frame state
   }
 
   _initWeaponSprites() {
@@ -1418,6 +1428,82 @@ export class Renderer {
   }
 
   // Two blades orbiting each guardian player, unless their blades are launched.
+  /**
+   * Draw the player body as a Ninja Adventure character sprite (Task 4-C).
+   * Returns false if the atlas isn't ready / the skin failed to load, so the
+   * caller falls back to the legacy square. Hitbox is unchanged — this is
+   * purely cosmetic and centered on the player's logical position.
+   */
+  _drawCharacterSprite(ctx, scr, player, radius, isLocal) {
+    if (!this.atlas) return false;
+    const skin = this._charSkinKey(player);
+    const sheet = this.atlas.get(skin);
+    if (!sheet || !sheet.naturalWidth) return false;
+
+    // Direction row from aim angle (y-down). right/down/left/up.
+    const a = ((player.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    let row = CHAR_ROW.right;
+    if (a >= Math.PI * 0.25 && a < Math.PI * 0.75) row = CHAR_ROW.down;
+    else if (a >= Math.PI * 0.75 && a < Math.PI * 1.25) row = CHAR_ROW.left;
+    else if (a >= Math.PI * 1.25 && a < Math.PI * 1.75) row = CHAR_ROW.up;
+
+    // Walk frame: advance only while the player is moving.
+    const now = Date.now();
+    const prev = this._charPrev[player.id];
+    const moving = prev ? (Math.abs(prev.x - player.x) + Math.abs(prev.y - player.y)) > 0.4 : false;
+    this._charPrev[player.id] = { x: player.x, y: player.y };
+    let anim = this._charAnim[player.id];
+    if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now };
+    if (moving) {
+      if (now - anim.at > 130) { anim.frame = (anim.frame + 1) % CHAR_COLS; anim.at = now; }
+    } else { anim.frame = 0; anim.at = now; }
+    const col = anim.frame;
+
+    const tinted = this._tintedSheet(skin, sheet, player.color);
+    const src = tinted || sheet;
+    const sx = col * CHAR_FRAME, sy = row * CHAR_FRAME;
+    const size = Math.round(radius * 2.7);
+    const dx = Math.round(scr.x - size / 2);
+    const dy = Math.round(scr.y - size / 2);
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(src, sx, sy, CHAR_FRAME, CHAR_FRAME, dx, dy, size, size);
+    // Local-player tell: a thin red rim under the existing marker.
+    if (isLocal) {
+      ctx.strokeStyle = 'rgba(239,68,68,0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(dx + 0.5, dy + 0.5, size - 1, size - 1);
+    }
+    ctx.imageSmoothingEnabled = prevSmooth;
+    return true;
+  }
+
+  // Which body sheet a player uses. Cosmetic skin if set, else a stable default.
+  _charSkinKey(player) {
+    const want = player.bodySkin ? `char/${player.bodySkin}` : 'char/Boy';
+    return this.atlas.has(want) ? want : 'char/Boy';
+  }
+
+  // Cache a colour-tinted copy of a whole sheet, keyed by skin+colour, so the
+  // tint pass runs once per (skin,colour) rather than every frame.
+  _tintedSheet(skin, sheet, color) {
+    if (!color || typeof document === 'undefined') return null;
+    const key = `${skin}|${color}`;
+    let c = this._charTintCache[key];
+    if (c) return c;
+    c = document.createElement('canvas');
+    c.width = sheet.naturalWidth; c.height = sheet.naturalHeight;
+    const cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(sheet, 0, 0);
+    cx.globalCompositeOperation = 'source-atop';   // tint only opaque pixels
+    cx.globalAlpha = 0.32;
+    cx.fillStyle = color;
+    cx.fillRect(0, 0, c.width, c.height);
+    this._charTintCache[key] = c;
+    return c;
+  }
+
   // 차크람 R 맴돌이: a single disc orbiting the caster while active. Mirrors the
   // host spin in _updateChakramOrbit (now/140, radius 46) so positions agree.
   _drawChakramOrbit(ctx, camera, cw, ch, players, now) {
@@ -3675,15 +3761,17 @@ export class Renderer {
       }
       this._drawCostumeEffect(ctx, bodyScr, p, radius, Date.now());
 
-      // Draw Main Player Chassis (square — pixel theme)
+      // Draw Main Player Chassis — sprite if loaded, else the legacy square.
       const bodyR = radius + motion.bodyScale;
-      ctx.fillRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
-
-      // Outline
-      ctx.shadowBlur = this._glow *0;
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = isLocal ? '#ef4444' : '#0d0a06';
-      ctx.strokeRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
+      const drewSprite = this._drawCharacterSprite(ctx, bodyScr, p, radius, isLocal);
+      if (!drewSprite) {
+        ctx.fillRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
+        // Outline
+        ctx.shadowBlur = this._glow *0;
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isLocal ? '#ef4444' : '#0d0a06';
+        ctx.strokeRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
+      }
 
       // Magic staff status overlays: fire DoT flames + loaded ice shards orbiting.
       if (p.burnTimeLeft > 0) this._drawBurnFlames(ctx, bodyScr, radius, camera.zoom || 1);
