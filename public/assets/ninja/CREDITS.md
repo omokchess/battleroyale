@@ -1,33 +1,29 @@
 # Art assets — Ninja Adventure Asset Pack
 
-**Pack:** Ninja Adventure Asset Pack
+**Pack:** Ninja Adventure Asset Pack (full pack)
 **Author:** Pixel-Boy & AAA (pixel-boy)
-**License:** CC0 1.0 Universal (public domain). Commercial use and
-redistribution permitted; attribution not required but appreciated.
-**Sources:**
-- itch.io: https://pixel-boy.itch.io/ninja-adventure-asset-pack
-- GitHub (CC0, official): https://github.com/pixel-boy/NinjaAdventure
-- OpenGameArt mirror: https://opengameart.org/content/ninja-adventure-free-sprite
+**License:** CC0 1.0 Universal — full text in `LICENSE.txt`. Commercial use
+and redistribution permitted; attribution not required but appreciated.
+**Source:** https://pixel-boy.itch.io/ninja-adventure-asset-pack
 
 This game has an in-app coin economy (cosmetic shop). CC0 places no
 restriction on commercial use or redistribution, so it is safe here.
 
-## Vendored subset
-The sprites under this folder were taken from the official GitHub repo
-(`content/`), which is the demo subset of the pack (16×16 base grid).
-Used as the single coherent pack per the theme spec; any missing pieces
-are filled procedurally in the same palette/outline style, and every
-sprite draw falls back to the legacy shape renderer if an asset fails to
-load (the game never breaks on a missing asset).
+## Vendored subset (curated from the full 1915-sprite pack)
+16×16 base grid. Any weapon without a pack equivalent (firearms, etc.)
+keeps the legacy procedural drawing, and **every sprite draw falls back to
+the legacy shape renderer if an asset fails to load** — the game never
+breaks on a missing asset.
 
-- `character/` — body sheets (16×16 frames; 64×112 = 4 frames × 7 rows),
-  `Shadow.png` foot shadow.
-- `weapon/<name>/in_hand.png` — small hand-overlay sprite; `sprite.png`
-  item icon. (axe, big_sword, bone, book, club)
-- `map/tileset_*.png` — floor / wall / village / interior tilesets.
-- `destroyable/` — crate, pot, grass (used as arena cover objects).
-- `particle/` — grass, leaf, pot, rock, wood burst sheets (16×16 frames).
-- `ui/heart*.png` — heart pickups / health UI.
-
-The full pack (hundreds more sprites: every weapon, full VFX, UI frames)
-is available from the itch.io page above if broader coverage is wanted.
+- `character/*.png` — body SpriteSheets (64×112 = 16×16 frames, 4 cols ×
+  7 rows): Boy, Knight, KnightGold, FighterRed, GladiatorBlue, Cavegirl,
+  DemonRed, Hunter. Tinted per shop cosmetic.
+- `weapon/*.png` — small in-hand sprites mapped to our 20 weapons
+  (Sword, Axe, BigSword, Sai=dagger, Rapier, Hammer, Katana, Lance=spear,
+  Lance2=harpoon, Sword2=guardian, Ninjaku=chakram, MagicWand=magicstaff,
+  …). Firearms fall back to procedural.
+- `fx/` — Slash sheets (Arc/Circular/Slash01-03), Particle / Smoke /
+  Elemental / Magic burst sheets.
+- `map/` — TilesetField (grass), TilesetFloor, TilesetNature (objects).
+- `item/` — Potion (heal), Object (bag/crate/etc. for cover & mines).
+- `ui/` — Theme + Dialog 9-slice panels.
