@@ -4698,6 +4698,9 @@ export class Renderer {
    * this weapon (firearms etc.) → caller falls back.
    */
   _drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
+    // Temporarily disabled: the in-hand sprite orientation/anchor needs a
+    // pass-by-pass fix. Until then fall back to the working legacy weapons.
+    if (!this._ninjaWeaponsEnabled) return false;
     const img = this.atlas?.get(`wpn/${player.weapon}`);
     if (!img || !img.naturalWidth) return false;
 
