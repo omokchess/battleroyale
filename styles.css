@@ -264,8 +264,8 @@ h1 {
      rip. The rim itself carries all the edge browning — no separate inset
      shadow (which would stop at the padding box and create a seam). */
   border-style: solid !important;
-  border-width: 18px !important;
-  border-image: url('/assets/torn-frame.svg') 24 / 18px / 0 stretch !important;
+  border-width: 22px !important;
+  border-image: url('/assets/torn-frame.svg') 28 / 22px / 0 stretch !important;
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55) !important;
 }
 
