@@ -4,7 +4,7 @@
  */
 
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
-import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW } from './SpriteAtlas.js';
+import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW, WEAPON_SPRITE_TUNE, WEAPON_TUNE_DEFAULT } from './SpriteAtlas.js';
 
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
@@ -4698,30 +4698,29 @@ export class Renderer {
    * this weapon (firearms etc.) → caller falls back.
    */
   _drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
-    // Temporarily disabled: the in-hand sprite orientation/anchor needs a
-    // pass-by-pass fix. Until then fall back to the working legacy weapons.
-    if (!this._ninjaWeaponsEnabled) return false;
     const img = this.atlas?.get(`wpn/${player.weapon}`);
-    if (!img || !img.naturalWidth) return false;
+    if (!img || !img.naturalWidth) return false;     // no sprite for this key → fallback
 
-    const drawAngle = resolveWeaponSpriteDrawAngle(player.weapon, player.angle, weaponAngle, active);
+    const tune = WEAPON_SPRITE_TUNE[player.weapon] || WEAPON_TUNE_DEFAULT;
+    // The icon art points UP-RIGHT (tip ≈ -45°), grip at the lower-left, so the
+    // base rotation that aligns the tip with the aim is aim + 45°.
+    const aim = Number.isFinite(weaponAngle) ? weaponAngle : player.angle;
     const handDist = Math.max(radius - 2, radius + 4 + Math.max(0, reach) * 0.2);
-    const hx = scr.x + Math.cos(drawAngle) * handDist;
-    const hy = scr.y + Math.sin(drawAngle) * handDist;
-    const scale = (radius * 2.0 / img.naturalHeight) * (active ? 1.12 : 1);
-    const w = img.naturalWidth * scale;
-    const h = img.naturalHeight * scale;
-    const flip = Math.cos(drawAngle) < 0 ? -1 : 1;     // keep upright aiming left
+    const hx = scr.x + Math.cos(aim) * handDist;
+    const hy = scr.y + Math.sin(aim) * handDist;
+    // Integer 2× scale keeps the 16px pixels crisp. tune.scale fine-tunes.
+    const size = 16 * 2 * (tune.scale || 1);
+    const ax = Number.isFinite(tune.anchorX) ? tune.anchorX : 0.28;  // grip ≈ lower-left
+    const ay = Number.isFinite(tune.anchorY) ? tune.anchorY : 0.82;
     const isMagic = player.weapon === 'magicstaff';
 
     ctx.save();
     const smoothing = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    ctx.translate(hx, hy);
-    ctx.rotate(drawAngle + Math.PI / 2);
-    ctx.scale(1, flip);
+    ctx.translate(Math.round(hx), Math.round(hy));
+    ctx.rotate(aim + Math.PI / 4 + (tune.rot || 0));
     if (isMagic) { ctx.shadowBlur = this._glow * (active ? 8 : 3); ctx.shadowColor = player.accentColor || '#a855f7'; }
-    ctx.drawImage(img, -w / 2, -h, w, h);            // grip (bottom-center) at the hand
+    ctx.drawImage(img, -size * ax, -size * ay, size, size);   // grip at the hand
     ctx.imageSmoothingEnabled = smoothing;
     ctx.restore();
     return true;

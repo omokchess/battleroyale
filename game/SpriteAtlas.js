@@ -85,22 +85,31 @@ export const SPRITE_MANIFEST = {
   'char/DemonRed': 'character/DemonRed.png',
   'char/Hunter': 'character/Hunter.png',
 
-  // --- weapon in-hand sprites (mapped to our weapon keys) ---
-  'wpn/sword': 'weapon/Sword.png',
-  'wpn/axe': 'weapon/Axe.png',
-  'wpn/greatsword': 'weapon/BigSword.png',
-  'wpn/dagger': 'weapon/Sai.png',
-  'wpn/rapier': 'weapon/Rapier.png',
-  'wpn/hammer': 'weapon/Hammer.png',
-  'wpn/katana': 'weapon/Katana.png',
-  'wpn/spear': 'weapon/Lance.png',
-  'wpn/harpoon': 'weapon/Lance2.png',
-  'wpn/guardian': 'weapon/Sword2.png',
-  'wpn/chakram': 'weapon/Ninjaku.png',
-  'wpn/magicstaff': 'weapon/MagicWand.png',
-  'wpn/scythe': 'weapon/Bone.png',
-  'wpn/gauntlet': 'weapon/Fork.png',
-  'wpn/minebag': 'weapon/Book.png',
+  // --- weapon in-hand sprites ---------------------------------------------
+  // Convention: drop a PNG named EXACTLY after the weapon key into
+  // public/assets/ninja/weapon/<key>.png. The art should point UP with the
+  // grip at the bottom-center; the renderer rotates it to the aim direction.
+  // Any missing file falls back to the legacy weapon drawing.
+  'wpn/sword': 'weapon/sword.png',
+  'wpn/axe': 'weapon/axe.png',
+  'wpn/bow': 'weapon/bow.png',
+  'wpn/spear': 'weapon/spear.png',
+  'wpn/gauntlet': 'weapon/gauntlet.png',
+  'wpn/greatsword': 'weapon/greatsword.png',
+  'wpn/scythe': 'weapon/scythe.png',
+  'wpn/dagger': 'weapon/dagger.png',
+  'wpn/rapier': 'weapon/rapier.png',
+  'wpn/hammer': 'weapon/hammer.png',
+  'wpn/matchlock': 'weapon/matchlock.png',
+  'wpn/katana': 'weapon/katana.png',
+  'wpn/magicstaff': 'weapon/magicstaff.png',
+  'wpn/sniper': 'weapon/sniper.png',
+  'wpn/chakram': 'weapon/chakram.png',
+  'wpn/pistols': 'weapon/pistols.png',
+  'wpn/harpoon': 'weapon/harpoon.png',
+  'wpn/guardian': 'weapon/guardian.png',
+  'wpn/minebag': 'weapon/minebag.png',
+  'wpn/flamethrower': 'weapon/flamethrower.png',
 
   // --- fx sheets ---
   'fx/slash': 'fx/SpriteSheetSlash01.png',
@@ -112,6 +121,19 @@ export const SPRITE_MANIFEST = {
   'tile/floor': 'map/TilesetFloor.png',
   'tile/nature': 'map/TilesetNature.png',
 };
+
+/**
+ * Per-weapon orientation tuning for the in-hand sprite (Task 4-D).
+ * The renderer assumes the art points UP (grip at bottom-center) and rotates it
+ * to the aim direction. If a particular sprite looks rotated wrong, nudge `rot`
+ * (radians, +clockwise); `scale` resizes vs. the default; `anchorY` 1 = grip at
+ * the very bottom, 0.5 = centered. Anything not listed uses the defaults.
+ */
+export const WEAPON_SPRITE_TUNE = {
+  // example overrides — tweak per sprite as needed:
+  // sword:   { rot: 0, scale: 1.0, anchorY: 1 },
+};
+export const WEAPON_TUNE_DEFAULT = { rot: 0, scale: 1.0, anchorY: 1 };
 
 // Frame geometry constants for the sheets above.
 export const CHAR_FRAME = 16;     // 16×16 character frames
