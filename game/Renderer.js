@@ -4071,6 +4071,14 @@ export class Renderer {
     ctx.shadowColor = weaponInk;
 
     const weaponType = player.weapon;
+    // Ninja Adventure in-hand weapon sprite (Task 4-D) — preferred. Follows the
+    // same motion (weaponAngle/reach) so swings/thrusts move the sprite; the
+    // attack hitbox geometry is unchanged. Falls back to the legacy PNG, then
+    // to the procedural drawings below.
+    if (this._drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active)) {
+      ctx.restore();
+      return;
+    }
     if (this._drawWeaponSprite(ctx, scr, player, motion, radius, weaponAngle, reach, active)) {
       ctx.restore();
       return;
@@ -4680,6 +4688,40 @@ export class Renderer {
     }
 
     ctx.restore();
+  }
+
+  /**
+   * Draw the Ninja Adventure in-hand weapon sprite at the hand, oriented to the
+   * aim/swing angle. The sprite art points "up", so it is rotated by
+   * angle + 90° and flipped vertically when aiming left to stay upright. Native
+   * aspect ratio is preserved (no squaring). Returns false if no sprite for
+   * this weapon (firearms etc.) → caller falls back.
+   */
+  _drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
+    const img = this.atlas?.get(`wpn/${player.weapon}`);
+    if (!img || !img.naturalWidth) return false;
+
+    const drawAngle = resolveWeaponSpriteDrawAngle(player.weapon, player.angle, weaponAngle, active);
+    const handDist = Math.max(radius - 2, radius + 4 + Math.max(0, reach) * 0.2);
+    const hx = scr.x + Math.cos(drawAngle) * handDist;
+    const hy = scr.y + Math.sin(drawAngle) * handDist;
+    const scale = (radius * 2.0 / img.naturalHeight) * (active ? 1.12 : 1);
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+    const flip = Math.cos(drawAngle) < 0 ? -1 : 1;     // keep upright aiming left
+    const isMagic = player.weapon === 'magicstaff';
+
+    ctx.save();
+    const smoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(hx, hy);
+    ctx.rotate(drawAngle + Math.PI / 2);
+    ctx.scale(1, flip);
+    if (isMagic) { ctx.shadowBlur = this._glow * (active ? 8 : 3); ctx.shadowColor = player.accentColor || '#a855f7'; }
+    ctx.drawImage(img, -w / 2, -h, w, h);            // grip (bottom-center) at the hand
+    ctx.imageSmoothingEnabled = smoothing;
+    ctx.restore();
+    return true;
   }
 
   _drawWeaponSprite(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
