@@ -495,6 +495,7 @@ export class Game {
     this._processDaggerQtes(now);
     this._processHammerSlams(now);
     this._processPistolBursts(now);
+    this._processAimedShots(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -1113,6 +1114,32 @@ export class Game {
 
     if (cfg.type === 'hitscan') {
       this._fireAuxHitscan(player, cfg, now);
+      return;
+    }
+
+    if (cfg.type === 'aimed_shot') {
+      if (!this.pendingAimedShots) this.pendingAimedShots = [];
+      const fireAt = now + (cfg.windupMs || 400);
+      this.pendingAimedShots.push({ playerId: player.id, fireAt, damage: cfg.damage || 26, range: cfg.range || 520, speed: cfg.speed || 1100 });
+      // windup telegraph beam in the aim direction
+      const dist = cfg.range || 520;
+      this.effects.push({
+        id: `${player.id}-aimwind-${now}`, attackerId: player.id,
+        x: player.x, y: player.y,
+        x2: player.x + Math.cos(player.angle) * dist, y2: player.y + Math.sin(player.angle) * dist,
+        angle: player.angle, weapon: 'pistols', type: 'matchlock_telegraph',
+        beamDist: dist, progress: 0, timestamp: now, lifetime: cfg.windupMs || 400
+      });
+      return;
+    }
+
+    if (cfg.type === 'dodge_reload') {
+      // An iframe roll independent of the spacebar dash cooldown, then a buff.
+      const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+      player.dashDirX = dirX; player.dashDirY = dirY;
+      player.dashTimeLeft = DashConfig.durationMs / 1000;
+      player.iframeTimeLeft = Math.max(player.iframeTimeLeft || 0, DashConfig.iframeMs / 1000);
+      player.pistolReloadUntil = now + (cfg.reloadMs || 2000);
       return;
     }
 
@@ -3914,6 +3941,37 @@ export class Game {
       }
     }
     this.pendingPistolBursts = waiting;
+  }
+
+  // 조준 사격 (pistols LMB): after the 0.4s windup, fire a piercing hitscan that
+  // damages every enemy along the aim line (stopped only by walls/cover).
+  _processAimedShots(now) {
+    if (!this.pendingAimedShots?.length) return;
+    const waiting = [];
+    for (const s of this.pendingAimedShots) {
+      if (now < s.fireAt) { waiting.push(s); continue; }
+      const player = this.players[s.playerId];
+      if (!player || player.isDead || player.weapon !== 'pistols') continue;
+      const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+      const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+      const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+      const maxDist = Math.min(s.range, Number.isFinite(wallDist) ? wallDist : s.range, coverDist);
+      for (const t of Object.values(this.players)) {
+        if (t.id === player.id || t.isDead || t.isInvincible()) continue;
+        const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, t.x, t.y, t.radius);
+        if (d === null || d > maxDist) continue;
+        const died = t.takeDamage(s.damage, player.nickname);
+        if (died) this._creditKill(player.id, t, '쌍권총으로');
+      }
+      this.effects.push({
+        id: `${player.id}-aimshot-${now}`, attackerId: player.id,
+        x: player.x, y: player.y,
+        x2: player.x + dirX * maxDist, y2: player.y + dirY * maxDist,
+        angle: player.angle, weapon: 'pistols', type: 'railbeam',
+        progress: 0, timestamp: now, lifetime: 280
+      });
+    }
+    this.pendingAimedShots = waiting;
   }
 
   _sendLocalInput(now) {

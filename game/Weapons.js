@@ -241,17 +241,17 @@ export const Weapons = {
   },
   pistols: {
     name: '쌍권총',
-    damage: 9,
+    damage: 11,
     maxHp: 90,
-    cooldown: 200,          // rapid fire
+    cooldown: 180,          // rapid fire
     moveSpeed: 1.25,        // full speed while shooting (no move penalty)
-    range: 260,             // bullets vanish past this distance
+    range: 290,             // bullets vanish past this distance
     speed: 520,             // projectile speed (px/s)
-    spreadDeg: 4,           // slight per-shot spread → weak at max range
+    spreadDeg: 3,           // slight per-shot spread → weak at max range
     type: 'projectile',
     projectileKind: 'pistol',
-    description: '사거리가 제한된 빠른 탄을 연사하는 유일한 일반 총기입니다. 이동 패널티 없이 무빙샷이 가능하지만, 단발 화력이 낮고 탄퍼짐 탓에 최대 사거리에서는 명중률이 떨어집니다.',
-    skill: 'F 스킬: 0.6초간 8발 부채꼴 난사 후 뒤로 짧게 점프(이탈) · 쿨타임 6초',
+    description: '사거리 제한된 빠른 탄을 자동 연사하는 총기. 이동 패널티 없이 무빙샷이 강하지만 단발 화력이 낮고 최대 사거리 명중률이 떨어집니다.',
+    skill: 'F: 난사 — 0.6초간 10발 부채꼴 + 뒤로 점프 이탈 · 좌클릭: 조준 사격(0.4초 정조준 후 관통 26·퍼짐 0) · R: 구르기 장전(무적 회피 + 직후 2초 연사 속도↑)',
     color: '#fb7185'
   },
   guardian: {
@@ -379,9 +379,9 @@ export const SkillConfig = {
     returnSpeed: 720
   },
   pistols: {
-    cooldownMs: 6000,
-    burstCount: 8,
-    burstMs: 600,          // 8 shots spread across 0.6s
+    cooldownMs: 5000,
+    burstCount: 10,
+    burstMs: 600,          // shots spread across 0.6s
     fanSpreadDeg: 70,      // total fan width of the barrage
     damage: 11,            // per barrage bullet
     speed: 560,
@@ -748,6 +748,12 @@ export const AuxSkillConfig = {
     alt: { label: 'PLANT', cooldownMs: 2500, type: 'place_mine' },
     // 예광 지뢰: a sticky/timed mine that fuses for 2s then bursts + stuns.
     target: { label: 'TRACER', cooldownMs: 8000, type: 'tracer_mine' }
+  },
+  pistols: {
+    // 조준 사격: 0.4s aim, then a piercing shot (hits everyone in the line).
+    alt: { label: 'AIMED', cooldownMs: 2500, type: 'aimed_shot', windupMs: 400, damage: 26, range: 520, speed: 1100 },
+    // 구르기 장전: an iframe dodge roll + a 2s rapid-fire buff (bespoke).
+    target: { label: 'ROLL', cooldownMs: 6000, type: 'dodge_reload', reloadMs: 2000 }
   }
 };
 
