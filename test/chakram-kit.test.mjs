@@ -10,12 +10,25 @@ test('chakram base buff: 26 dmg / 750ms cd / 1 wall reflect', () => {
   assert.equal(Weapons.chakram.wallReflect, 1);
 });
 
-test('chakram has a full LMB(쳐내기)/R(맴돌이) aux kit', () => {
+test('chakram has a full LMB(3연발)/R(맴돌이) aux kit', () => {
   const kit = AuxSkillConfig.chakram;
   assert.ok(kit.alt && kit.alt.deflectProjectile, 'LMB deflects projectiles');
-  assert.equal(kit.alt.type, 'melee_circle');
+  assert.equal(kit.alt.type, 'chakram_throw');
+  assert.equal(kit.alt.count, 3);
   assert.equal(kit.target.type, 'chakram_orbit');
   assert.ok(kit.target.durationMs > 0 && kit.target.orbitDamage > 0);
+});
+
+test('LMB throws 3 chakram discs', () => {
+  const owner = new Player('o', 'Tri', 'chakram', 120, 120); owner.angle = 0;
+  const g = Object.create(Game.prototype);
+  g.players = { o: owner };
+  g.projectiles = [];
+  g.effects = [];
+  g.mapWidth = 700; g.mapHeight = 700;
+  g._executeAuxSkill(owner, AuxSkillConfig.chakram.alt, 5000, 'alt');
+  const discs = g.projectiles.filter(p => p.kind === 'chakram');
+  assert.equal(discs.length, 3);
 });
 
 test('R 맴돌이 disc deals contact damage to a nearby enemy', () => {

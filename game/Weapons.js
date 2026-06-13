@@ -236,7 +236,7 @@ export const Weapons = {
     type: 'projectile',
     projectileKind: 'chakram',
     description: '자동으로 날아갔다 돌아오는 원반(벽 1회 반사). 원반이 떠 있는 동안은 비무장.',
-    skill: 'F: 삼지창 투척 — 부채꼴 3방향(각 22+출혈) · 좌클릭: 쳐내기(근접 18, 적 투사체 상쇄) · R: 맴돌이(1.5초 방어 원반 공전)',
+    skill: 'F: 삼지창 투척 — 부채꼴 3방향(각 22+출혈) · 좌클릭: 3연발 차크람(각 18, 적 투사체 상쇄) · R: 맴돌이(1.5초 방어 원반 공전)',
     color: '#c2cad6'
   },
   pistols: {
@@ -698,8 +698,9 @@ export const AuxSkillConfig = {
   },
   // --- New-weapon kits (Task 1 revised). 'alt' = LMB, 'target' = R. ----------
   chakram: {
-    // 쳐내기: a quick forward swing that also deflects one incoming projectile.
-    alt: { label: 'PARRY', cooldownMs: 700, type: 'melee_circle', damage: 18, range: 60, angle: 200, knockback: 18, deflectProjectile: true },
+    // 쳐내기: hurl 3 discs in a tight forward burst (non-disarming) that also
+    // deflects the nearest incoming enemy projectile.
+    alt: { label: 'TRIPLE', cooldownMs: 700, type: 'chakram_throw', count: 3, spreadDeg: 18, damage: 18, range: 240, speed: 680, deflectProjectile: true },
     // 맴돌이: a defensive disc orbits the player for a short time (bespoke).
     target: { label: 'ORBIT', cooldownMs: 6000, type: 'chakram_orbit', durationMs: 1500, orbitDamage: 14, orbitRadius: 46, hitCooldownMs: 400 }
   }

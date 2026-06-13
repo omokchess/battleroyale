@@ -1109,6 +1109,22 @@ export class Game {
       return;
     }
 
+    if (cfg.type === 'chakram_throw') {
+      const n = Math.max(1, cfg.count || 3);
+      const spread = ((cfg.spreadDeg || 18) * Math.PI) / 180;
+      for (let i = 0; i < n; i++) {
+        const off = n === 1 ? 0 : (i - (n - 1) / 2) * (spread / (n - 1));
+        this._spawnChakram(player, player.angle + off, cfg.damage || 18, cfg.range || 240, cfg.speed || 680, now, `lmb-${now}-${i}`, true);
+      }
+      this.effects.push({
+        attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+        weapon: 'chakram', type: 'projectile_shot', projectileKind: 'chakram',
+        progress: 0, timestamp: now, lifetime: 220
+      });
+      if (cfg.deflectProjectile) this._deflectProjectile(player, 70);
+      return;
+    }
+
     if (cfg.type === 'chakram_orbit') {
       player.chakramOrbitUntil = now + (cfg.durationMs || 1500);
       player.chakramOrbitDamage = cfg.orbitDamage || 14;
