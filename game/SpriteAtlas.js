@@ -133,8 +133,8 @@ export const WEAPON_SPRITE_TUNE = {
   // Long polearms: grip sits at the very lower-left corner of the icon.
   spear:   { anchorX: 0.14, anchorY: 0.9, scale: 1.05 },
   harpoon: { anchorX: 0.14, anchorY: 0.9, scale: 1.05 },
-  // Bow is held centered on the hand, not pointed like a blade.
-  bow:     { anchorX: 0.5, anchorY: 0.5, scale: 0.95, rot: -Math.PI / 4 },
+  // Bow is held centered on the hand, not pointed like a blade. Small extra tilt.
+  bow:     { anchorX: 0.5, anchorY: 0.5, scale: 0.95, rot: -Math.PI / 4 + 0.35 },
 };
 export const WEAPON_TUNE_DEFAULT = { rot: 0, scale: 1.0, anchorY: 1 };
 
