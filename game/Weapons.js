@@ -288,15 +288,15 @@ export const Weapons = {
   },
   minebag: {
     name: '지뢰 가방',
-    damage: 12,
+    damage: 14,
     maxHp: 115,
-    cooldown: 500,
+    cooldown: 450,
     moveSpeed: 1.15,
     range: 55,
     angle: 90,
     type: 'melee_arc',
-    description: '평타는 약한 근접 베기지만, F로 지뢰를 깔아 길목을 장악하는 두뇌형 무기입니다. 정면 교전이 가장 약하니 설치할 틈을 만들며 싸워야 합니다.',
-    skill: 'F 스킬: 발밑에 지뢰 설치(1초 후 활성화, 폭발 38·반경 60, 최대 3개) · 설치 쿨타임 2.5초',
+    description: '평타는 약한 근접 베기. 지뢰를 깔아 길목을 장악하는 두뇌형 무기로, 정면 교전이 가장 약합니다.',
+    skill: 'F: 원격 기폭 — 설치된 지뢰 전부 즉시 폭발 · 좌클릭: 지뢰 설치(1초 후 활성·폭발 42+둔화·반경 60·최대 3) · R: 예광 지뢰(점착·2초 후 30+기절)',
     color: '#f59e0b'
   },
   flamethrower: {
@@ -415,12 +415,18 @@ export const SkillConfig = {
     arrivalRadius: 80
   },
   minebag: {
-    cooldownMs: 2500,      // place cooldown
+    cooldownMs: 2500,      // LMB place cooldown
+    detonateCooldownMs: 4000, // F 원격 기폭
     armMs: 1000,           // delay before a mine becomes live
     blastRadius: 60,
     triggerRadius: 46,     // enemy proximity that detonates an armed mine
-    damage: 38,
-    maxMines: 3            // per player; placing a 4th removes the oldest
+    damage: 42,
+    blastSlowMs: 600,      // 둔화 applied to anyone caught in a blast
+    maxMines: 3,           // per player; placing a 4th removes the oldest
+    tracerFuseMs: 2000,    // R 예광 지뢰 fuse
+    tracerDamage: 30,
+    tracerStunMs: 500,
+    tracerStickRange: 220  // how far the R mine looks for an enemy to stick to
   },
   flamethrower: {
     cooldownMs: 6000,
@@ -736,6 +742,12 @@ export const AuxSkillConfig = {
     alt: { label: 'LAUNCH', cooldownMs: 4000, type: 'guardian_launch' },
     // 추적 칼날: detach one blade to home the nearest enemy (bespoke).
     target: { label: 'SEEK', cooldownMs: 6000, type: 'guardian_homing' }
+  },
+  minebag: {
+    // 지뢰 설치 (moved from F): a proximity mine at the player's feet.
+    alt: { label: 'PLANT', cooldownMs: 2500, type: 'place_mine' },
+    // 예광 지뢰: a sticky/timed mine that fuses for 2s then bursts + stuns.
+    target: { label: 'TRACER', cooldownMs: 8000, type: 'tracer_mine' }
   }
 };
 

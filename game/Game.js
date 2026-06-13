@@ -1116,6 +1116,16 @@ export class Game {
       return;
     }
 
+    if (cfg.type === 'place_mine') {
+      this._placeMine(player, now);
+      return;
+    }
+
+    if (cfg.type === 'tracer_mine') {
+      this._placeTracerMine(player, now);
+      return;
+    }
+
     if (cfg.type === 'guardian_launch') {
       this._launchGuardianBlades(player, now);
       return;
@@ -1876,6 +1886,7 @@ export class Game {
       case 'harpoon': this._harpoonPull(player, now); break;
       case 'minebag': this._placeMine(player, now); break;
       case 'flamethrower': this._throwFirePatch(player, now); break;
+      case 'minebag': this._detonateAllMines(player, now); break;
       default: break;
     }
   }
@@ -3465,11 +3476,10 @@ export class Game {
     damageLeg(proj.hitBack, 'back');
   }
 
-  // --- 지뢰 가방 (mine bag): F places a proximity mine -----------------------
+  // --- 지뢰 가방 (mine bag): LMB plants a proximity mine ---------------------
   _placeMine(player, now) {
     const sk = SkillConfig.minebag;
-    player.skillCdLeft = (sk.cooldownMs || 2500) / 1000;
-    // Cap mines per player — placing over the cap drops the oldest.
+    // Cooldown governed by the LMB aux executor (altSkillCdLeft).
     const mine = {
       id: ++this._mineSeq,
       ownerId: player.id,
@@ -3477,12 +3487,63 @@ export class Game {
       armAt: now + (sk.armMs || 1000)
     };
     this.mines.push(mine);
-    const own = this.mines.filter(m => m.ownerId === player.id);
+    const own = this.mines.filter(m => m.ownerId === player.id && !m.tracer);
     const max = sk.maxMines || 3;
     if (own.length > max) {
       const oldest = own[0];
       this.mines = this.mines.filter(m => m !== oldest);
     }
+  }
+
+  // F 원격 기폭: detonate all of the player's armed proximity mines at once.
+  _detonateAllMines(player, now) {
+    const sk = SkillConfig.minebag;
+    player.skillCdLeft = (sk.detonateCooldownMs || 4000) / 1000;
+    const mine = this.mines.filter(m => m.ownerId === player.id && !m.tracer);
+    for (const m of mine) { this._explodeMine(m, now); m._spent = true; }
+    this.mines = this.mines.filter(m => !m._spent);
+  }
+
+  // R 예광 지뢰: stick a timed mine onto the nearest enemy (else drop in front),
+  // bursts after a fuse for high damage + stun.
+  _placeTracerMine(player, now) {
+    const sk = SkillConfig.minebag;
+    let stick = null, bestD = sk.tracerStickRange || 220;
+    for (const t of Object.values(this.players)) {
+      if (t.id === player.id || t.isDead) continue;
+      const d = Math.hypot(t.x - player.x, t.y - player.y);
+      if (d < bestD) { bestD = d; stick = t; }
+    }
+    const fx = stick ? stick.x : player.x + Math.cos(player.angle) * 60;
+    const fy = stick ? stick.y : player.y + Math.sin(player.angle) * 60;
+    this.mines.push({
+      id: ++this._mineSeq, ownerId: player.id, tracer: true,
+      stickTo: stick ? stick.id : null,
+      x: fx, y: fy,
+      armAt: now, fuseAt: now + (sk.tracerFuseMs || 2000)
+    });
+  }
+
+  // Shared blast: damage + 둔화 every non-owner in range; tracer mines also stun.
+  _explodeMine(mine, now) {
+    const sk = SkillConfig.minebag;
+    const blast = sk.blastRadius || 60;
+    const dmg = mine.tracer ? (sk.tracerDamage || 30) : sk.damage;
+    for (const t of Object.values(this.players)) {
+      if (t.id === mine.ownerId || t.isDead || t.isInvincible?.()) continue;
+      if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 > (blast + (t.radius || 14)) ** 2) continue;
+      const died = t.takeDamage(dmg, '지뢰');
+      if (!died) {
+        if (mine.tracer && sk.tracerStunMs) this._applyStun(t, sk.tracerStunMs, now);
+        else if (sk.blastSlowMs) this._applySlow(t, sk.blastSlowMs);
+      }
+      if (died) this._creditKill(mine.ownerId, t, '지뢰로');
+    }
+    this.effects.push({
+      attackerId: mine.ownerId, x: mine.x, y: mine.y,
+      weapon: 'minebag', type: 'mine_blast', range: blast,
+      progress: 0, timestamp: now, lifetime: 360
+    });
   }
 
   _updateMines(now) {
@@ -3492,6 +3553,18 @@ export class Game {
     for (const mine of this.mines) {
       const owner = this.players[mine.ownerId];
       if (!owner || owner.isDead) continue; // placer gone → mine removed
+
+      // Tracer mine: follow its stuck target, then burst on the fuse timer.
+      if (mine.tracer) {
+        if (mine.stickTo) {
+          const tgt = this.players[mine.stickTo];
+          if (tgt && !tgt.isDead) { mine.x = tgt.x; mine.y = tgt.y; }
+        }
+        if (now >= mine.fuseAt) { this._explodeMine(mine, now); continue; }
+        survivors.push(mine);
+        continue;
+      }
+
       if (now < mine.armAt) { survivors.push(mine); continue; }
       // Armed: detonate if a non-owner steps within the trigger radius.
       const trig = sk.triggerRadius || 46;
@@ -3501,20 +3574,7 @@ export class Game {
         if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 <= (trig + (t.radius || 14)) ** 2) { triggered = true; break; }
       }
       if (!triggered) { survivors.push(mine); continue; }
-      // Explode: damage every non-owner in the blast radius.
-      const blast = sk.blastRadius || 60;
-      for (const t of Object.values(this.players)) {
-        if (t.id === mine.ownerId || t.isDead || t.isInvincible?.()) continue;
-        if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 <= (blast + (t.radius || 14)) ** 2) {
-          const died = t.takeDamage(sk.damage, '지뢰');
-          if (died) this._creditKill(mine.ownerId, t, '지뢰로');
-        }
-      }
-      this.effects.push({
-        attackerId: mine.ownerId, x: mine.x, y: mine.y,
-        weapon: 'minebag', type: 'mine_blast', range: blast,
-        progress: 0, timestamp: now, lifetime: 360
-      });
+      this._explodeMine(mine, now);
     }
     this.mines = survivors;
   }
