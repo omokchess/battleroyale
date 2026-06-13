@@ -274,17 +274,17 @@ export const Weapons = {
   },
   harpoon: {
     name: '작살',
-    damage: 12,
+    damage: 16,
     maxHp: 105,
     cooldown: 1100,
     moveSpeed: 1.0,
-    range: 200,             // throw distance
+    range: 230,             // throw distance
     speed: 700,
     type: 'projectile',
     projectileKind: 'harpoon',
-    description: '중거리로 작살을 던져 명중한 적을 자신 앞으로 끌어옵니다. 끌어온 직후 짧은 경직을 주지만 본인 평타가 약해, 마무리할 다음 수가 필요한 시동기입니다.',
-    skill: 'F 스킬: 조준 방향의 적 또는 벽으로 자신이 끌려가는 이동기(피해 없음) · 쿨타임 5초',
-    color: '#60a5fa'
+    description: '자동으로 작살을 던져 명중한 적을 앞으로 끌어옵니다(경직 0.4초+둔화). 본인 평타가 약해 마무리 수가 필요한 시동기.',
+    skill: 'F: 당겨가기 — 조준 방향 적/벽으로 자신이 끌려가는 이동기(도착 시 주변 둔화) · 좌클릭: 갈고리 마무리(근접 30) · R: 사슬 휘감기(0.5초 기절)',
+    color: '#9aa2ad'
   },
   minebag: {
     name: '지뢰 가방',
@@ -395,11 +395,14 @@ export const SkillConfig = {
     launchSpeed: 560
   },
   harpoon: {
-    cooldownMs: 5000,
+    cooldownMs: 4000,      // F 당겨가기 self-pull
     pullRange: 360,        // max self-pull distance toward enemy/wall
     stopGap: 32,           // stop short of the contact point
     pullToFront: 50,       // basic-attack pulls the target this far in front
-    slowMs: 300            // brief drag on a hooked target (not a stun)
+    slowMs: 400,           // drag on a hooked target
+    pullStunMs: 400,       // brief 경직 when the hook lands
+    arrivalSlowMs: 600,    // F: slow enemies near the landing spot
+    arrivalRadius: 80
   },
   minebag: {
     cooldownMs: 2500,      // place cooldown
@@ -711,6 +714,12 @@ export const AuxSkillConfig = {
     alt: { label: 'IGNITE', cooldownMs: 2500, type: 'fire_bomb', range: 88, radius: 50, damage: 28, burn: true },
     // 열기 방패: a brief 30% damage shield that burns adjacent enemies (bespoke).
     target: { label: 'SHIELD', cooldownMs: 8000, type: 'heat_shield', durationMs: 1500, contactRadius: 34 }
+  },
+  harpoon: {
+    // 갈고리 마무리: a heavy short-range strike to finish a pulled target.
+    alt: { label: 'GAFF', cooldownMs: 1000, type: 'melee_line', damage: 30, range: 74, width: 24, knockback: 24 },
+    // 사슬 휘감기: a short chain lash that stuns for 0.5s.
+    target: { label: 'CHAIN', cooldownMs: 7000, type: 'melee_line', damage: 8, range: 92, width: 18, stunMs: 500 }
   }
 };
 

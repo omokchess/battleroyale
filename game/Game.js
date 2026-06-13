@@ -615,6 +615,7 @@ export class Game {
               Collision.clampToMap(target, this.mapWidth, this.mapHeight);
               if (this.cover.length) resolveCover(this.cover, target, target.radius || 14);
               this._applySlow(target, hk.slowMs || 300);
+              if (hk.pullStunMs) this._applyStun(target, hk.pullStunMs, Date.now());
               target.prevX = target.x; // discontinuous move — don't let melee sweep it
               target.prevY = target.y;
             }
@@ -3604,6 +3605,16 @@ export class Game {
     if (this.cover.length) resolveCover(this.cover, player, player.radius || 14);
     player.prevX = player.x; // discontinuous — avoid melee sweep across the yank
     player.prevY = player.y;
+    // Arrival: slow enemies near the landing spot.
+    if (sk.arrivalSlowMs) {
+      const ar = sk.arrivalRadius || 80;
+      Object.values(this.players).forEach(t => {
+        if (t.id === player.id || t.isDead || t.isInvincible()) return;
+        if (Math.hypot(t.x - player.x, t.y - player.y) <= ar + (t.radius || 14)) {
+          this._applySlow(t, sk.arrivalSlowMs);
+        }
+      });
+    }
     this.effects.push({
       id: `${player.id}-harpoonpull-${now}`,
       attackerId: player.id,
