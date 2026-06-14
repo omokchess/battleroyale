@@ -66,7 +66,7 @@ export const Weapons = {
     color: '#ffa345'
   },
   gauntlet: {
-    name: '건틀릿',
+    name: '대가위',
     damage: 15,
     maxHp: 110,
     cooldown: 220,
