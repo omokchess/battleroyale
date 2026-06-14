@@ -1096,7 +1096,10 @@ export class Renderer {
     if (this._grassKey === key && this._grassField) return this._grassField;
     if (!tileImg) { this._grassKey = null; return null; }
 
-    // Bake the map-sized floor once by repeating the 32×32 tile.
+    // Bake the map-sized floor once by repeating the hand-drawn tile. To stop
+    // the eye from catching the obvious grid repeat, each cell is flipped
+    // horizontally/vertically with a deterministic per-cell hash. Keeps the same
+    // texture density but breaks the seam pattern so it reads clean, not busy.
     const tw = mapWidth, th = mapHeight;
     const cv = document.createElement('canvas');
     cv.width = tw; cv.height = th;
@@ -1104,9 +1107,22 @@ export class Renderer {
     g.imageSmoothingEnabled = false;
     const tsW = tileImg.naturalWidth  || 700;
     const tsH = tileImg.naturalHeight || 700;
-    for (let y = 0; y < th; y += tsH)
-      for (let x = 0; x < tw; x += tsW)
-        g.drawImage(tileImg, x, y, tsW, tsH);
+    let col = 0;
+    for (let x = 0; x < tw; x += tsW, col++) {
+      let row = 0;
+      for (let y = 0; y < th; y += tsH, row++) {
+        // hash(col,row) → 2 bits: bit0 = flipX, bit1 = flipY.
+        let h = (col * 73856093) ^ (row * 19349663);
+        h = (h ^ (h >>> 13)) >>> 0;
+        const flipX = (h & 1) ? -1 : 1;
+        const flipY = (h & 2) ? -1 : 1;
+        g.save();
+        g.translate(x + (flipX < 0 ? tsW : 0), y + (flipY < 0 ? tsH : 0));
+        g.scale(flipX, flipY);
+        g.drawImage(tileImg, 0, 0, tsW, tsH);
+        g.restore();
+      }
+    }
 
     this._grassField = cv;
     this._grassKey = key;
