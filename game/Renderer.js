@@ -1074,64 +1074,9 @@ export class Renderer {
     ctx.save();
     const tl = camera.toScreen(0, 0, cw, ch);
     const br = camera.toScreen(mapWidth, mapHeight, cw, ch);
-    const dw = br.x - tl.x, dh = br.y - tl.y;
-
-    const grass = this._getGrassField(mapWidth, mapHeight);
-    if (grass) {
-      const prevSmooth = ctx.imageSmoothingEnabled;
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(grass, 0, 0, grass.width, grass.height, tl.x, tl.y, dw, dh);
-      ctx.imageSmoothingEnabled = prevSmooth;
-    } else {
-      ctx.fillStyle = '#74a334';
-      ctx.fillRect(tl.x, tl.y, dw, dh);
-    }
-
+    ctx.fillStyle = '#74a334';
+    ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
     ctx.restore();
-  }
-
-  /**
-   * Lazily bake (and cache) the arena floor using the Ninja Adventure
-   * TilesetField palette. The tileset image (rows 6-8, the green section) is
-   * tiled across the baked canvas when the atlas is ready; otherwise a
-   * procedural fallback using the same colours is used. Re-bakes if the atlas
-   * loads after the first call (cache key encodes atlas readiness).
-   */
-  _getGrassField(mapWidth, mapHeight) {
-    if (typeof document === 'undefined') return null;
-    const fieldImg = this.atlas?.get('tile/field');
-    const key = `${mapWidth}x${mapHeight}_${fieldImg ? '1' : '0'}`;
-    if (this._grassKey === key && this._grassField) return this._grassField;
-
-    // ~1 texel per 1.5 world units keeps even a 2000px map under ~1.8M texels.
-    const scale = 1 / 1.5;
-    const tw = Math.max(1, Math.round(mapWidth * scale));
-    const th = Math.max(1, Math.round(mapHeight * scale));
-    const cv = (this._grassKey && this._grassKey !== key)
-      ? document.createElement('canvas') : (this._grassField || document.createElement('canvas'));
-    cv.width = tw; cv.height = th;
-    const g = cv.getContext('2d');
-    g.imageSmoothingEnabled = false;
-
-    // 1) Base fill.
-    g.fillStyle = '#74a334';
-    g.fillRect(0, 0, tw, th);
-
-    if (fieldImg) {
-      // 2) Tile rows 6-8 of TilesetField (the green section: srcY=96, srcH=48).
-      const srcW = 80, srcY = 96, srcH = 48;
-      const dstW = Math.round(srcW * scale);
-      const dstH = Math.round(srcH * scale);
-      for (let y = 0; y < th; y += dstH) {
-        for (let x = 0; x < tw; x += dstW) {
-          g.drawImage(fieldImg, 0, srcY, srcW, srcH, x, y, dstW, dstH);
-        }
-      }
-    }
-
-    this._grassField = cv;
-    this._grassKey = key;
-    return cv;
   }
 
   /**
