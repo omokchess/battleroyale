@@ -129,9 +129,8 @@ export const SPRITE_MANIFEST = {
  * the very bottom, 0.5 = centered. Anything not listed uses the defaults.
  */
 export const WEAPON_SPRITE_TUNE = {
-  // Long polearms: grip sits at the very lower-left corner of the icon.
+  // Long polearm: grip sits at the very lower-left corner of the icon.
   spear:   { anchorX: 0.14, anchorY: 0.9, scale: 1.05 },
-  harpoon: { anchorX: 0.14, anchorY: 0.9, scale: 1.05 },
   // Bow is held centered on the hand, not pointed like a blade. Small extra tilt.
   bow:     { anchorX: 0.5, anchorY: 0.5, scale: 0.95, rot: -Math.PI / 4 + 0.35 },
   // 강궁 (sniper): a heavy bow — same hold treatment as the bow.
