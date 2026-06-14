@@ -20,7 +20,7 @@ test('minebag base buff: 14 dmg / 450ms; blast 42 + slow', () => {
   assert.ok(SkillConfig.minebag.blastSlowMs > 0);
 });
 
-test('minebag aux kit: 설치(place) on LMB, 예광지뢰(tracer) on R', () => {
+test('minebag aux kit: 설치(place) on R, 예광지뢰(tracer) on LMB', () => {
   assert.equal(AuxSkillConfig.minebag.alt.type, 'place_mine');
   assert.equal(AuxSkillConfig.minebag.target.type, 'tracer_mine');
 });
@@ -38,7 +38,18 @@ test('F 원격 기폭 detonates all the player\'s mines at once', () => {
   assert.ok(victim.hp < before, 'remote detonation damaged the nearby enemy');
 });
 
-test('R 예광 지뢰 sticks to a foe and bursts after the fuse (+stun)', () => {
+test('minebag F activation path triggers remote detonation', () => {
+  const owner = new Player('o', 'Boom', 'minebag', 100, 100);
+  const victim = new Player('t', 'T', 'sword', 110, 100);
+  const g = makeGame({ o: owner, t: victim });
+  g._placeMine(owner, 1000);
+  const before = victim.hp;
+  g._activateSkill(owner, 2000);
+  assert.equal(g.mines.length, 0, 'F consumed the placed mine');
+  assert.ok(victim.hp < before, 'F damaged the nearby enemy');
+});
+
+test('LMB 예광 지뢰 sticks to a foe and bursts after the fuse (+stun)', () => {
   const owner = new Player('o', 'Tracer', 'minebag', 100, 100); owner.angle = 0;
   const foe = new Player('t', 'T', 'sword', 160, 100);
   const g = makeGame({ o: owner, t: foe });

@@ -36,6 +36,7 @@ const healingRateRow = document.getElementById('healingRateRow');
 
 const weaponCards = document.querySelectorAll('.weapon-card');
 const weaponStats = document.getElementById('weaponStats');
+const weaponPreview = document.getElementById('weaponPreview');
 const statusMsg = document.getElementById('statusMsg');
 const hostServerIndicator = document.getElementById('hostServerIndicator');
 
@@ -105,9 +106,26 @@ const UI_ICONS = {
 };
 
 const WEAPON_ICON_VERSION = '20260607c';
+const NINJA_WEAPON_SPRITES = new Set(['sword','axe','bow','spear','greatsword','scythe','dagger','rapier','hammer','katana','magicstaff','chakram','harpoon','guardian','minebag','sniper','flamethrower','gauntlet']);
 
 function uiIcon(name, className = 'inline-block w-3 h-3 align-[-2px] mr-1 shrink-0') {
   return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${UI_ICONS[name] || ''}</svg>`;
+}
+
+function weaponIconRotation(weaponType) {
+  if (weaponType === 'bow') return '';
+  if (weaponType === 'greatsword') return 'transform:rotate(270deg);';
+  return 'transform:rotate(90deg);';
+}
+
+function weaponIconMarkup(weaponType, { preview = false } = {}) {
+  const safeWeapon = encodeURIComponent(String(weaponType || 'sword'));
+  const className = preview ? 'weapon-preview-art' : 'w-full h-full object-contain';
+  if (NINJA_WEAPON_SPRITES.has(weaponType)) {
+    const padding = preview ? 'padding:10%;' : 'padding:14%;';
+    return `<img src="/assets/ninja/weapon/${safeWeapon}.png" alt="${safeWeapon}" draggable="false" class="${className}" style="image-rendering:pixelated;${padding}" />`;
+  }
+  return `<img src="/assets/weapons/${safeWeapon}.png?v=${WEAPON_ICON_VERSION}" alt="${safeWeapon}" draggable="false" class="${className}" style="image-rendering:pixelated;${weaponIconRotation(weaponType)}" />`;
 }
 
 /**
@@ -128,7 +146,6 @@ function setupWeaponSelector() {
   // Show the weapon art in each lobby card (replaces the placeholder SVGs).
   // Prefer the new Ninja/RPG-icon sprites (displayed upright like inventory
   // icons); weapons without one fall back to the legacy PNG (rotated upright).
-  const NINJA_WEAPON_SPRITES = new Set(['sword','axe','bow','spear','greatsword','scythe','dagger','rapier','hammer','katana','magicstaff','chakram','harpoon','guardian','minebag','sniper','flamethrower','gauntlet']);
   weaponCards.forEach(card => {
     const w = card.dataset.weapon;
     const iconBox = card.querySelector('div');
@@ -137,20 +154,7 @@ function setupWeaponSelector() {
     iconBox.style.height = 'auto';
     iconBox.style.aspectRatio = '1 / 1';
     iconBox.style.maxWidth = '5.25rem';
-    if (NINJA_WEAPON_SPRITES.has(w)) {
-      // 16px item icon — upright, scaled up crisp.
-      iconBox.innerHTML =
-        `<img src="/assets/ninja/weapon/${w}.png" alt="${w}" draggable="false" ` +
-        `class="w-full h-full object-contain" style="image-rendering:pixelated;padding:14%" />`;
-    } else {
-      // legacy procedural PNG (firearms / gauntlet) — keep the old upright rotation.
-      let rot = 'transform:rotate(90deg);';
-      if (w === 'bow') rot = '';
-      else if (w === 'greatsword') rot = 'transform:rotate(270deg);';
-      iconBox.innerHTML =
-        `<img src="/assets/weapons/${w}.png?v=${WEAPON_ICON_VERSION}" alt="${w}" draggable="false" ` +
-        `class="w-full h-full object-contain" style="image-rendering:pixelated;${rot}" />`;
-    }
+    iconBox.innerHTML = weaponIconMarkup(w);
   });
 
   // Pre-select default sword
@@ -206,8 +210,101 @@ function displayWeaponStats(weaponType) {
       <span class="min-w-0 whitespace-nowrap">${uiIcon('speed')}이동속도: <strong class="text-white">${moveSpeedLabel}</strong></span>
       <span class="min-w-0 break-keep whitespace-normal">${extraDetails}</span>
     </div>
-    <p class="mt-2 pt-2 border-t border-gray-700 text-[10px] leading-snug break-keep whitespace-normal" style="color:${cfg.color}">${cfg.skill || ''}</p>
+    <div class="skill-preview mt-2 pt-2 border-t border-gray-700 text-[10px] leading-snug break-keep">${renderSkillPreview(cfg.skill)}</div>
   `;
+
+  if (weaponPreview) setWeaponPreview(weaponType, cfg);
+}
+
+// Animated weapon preview: a character sprite swinging the selected weapon on a
+// loop, so the picker shows the weapon "in use". Falls back gracefully (empty-
+// handed swing) if a weapon sprite is missing.
+let _previewRAF = 0;
+const _previewImgCache = {};
+function _previewImg(src) {
+  let img = _previewImgCache[src];
+  if (!img) { img = new Image(); img.src = src; _previewImgCache[src] = img; }
+  return img;
+}
+function setWeaponPreview(weaponType, cfg) {
+  if (!weaponPreview) return;
+  cancelAnimationFrame(_previewRAF);
+  weaponPreview.innerHTML = '';
+  const cv = document.createElement('canvas');
+  cv.width = 200; cv.height = 200;
+  cv.style.cssText = 'width:100%;max-width:280px;aspect-ratio:1/1;image-rendering:pixelated';
+  const cap = document.createElement('div');
+  cap.className = 'weapon-preview-caption';
+  cap.style.marginTop = '0.5rem';
+  cap.innerHTML = `<div class="weapon-preview-name">${escapeHtml(cfg.name)}</div>` +
+    `<div class="weapon-preview-desc">${escapeHtml(cfg.description || '')}</div>`;
+  weaponPreview.appendChild(cv);
+  weaponPreview.appendChild(cap);
+
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const body = _previewImg('/assets/ninja/char/Boy.png');
+  const wpn = _previewImg(`/assets/ninja/weapon/${weaponType}.png`);
+  const start = performance.now();
+  const aim = 0; // face right so the swing reads
+
+  const frame = (t) => {
+    const el = (t - start) / 1000;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const cx = cv.width * 0.42, cy = cv.height * 0.52;
+    // foot shadow
+    ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#0d0a06';
+    ctx.beginPath(); ctx.ellipse(cx, cy + 36, 30, 10, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    // character body (right-facing row 3), gentle idle bob
+    if (body.complete && body.naturalWidth) {
+      const S = 84; const bob = Math.round(Math.sin(el * 3) * 1.5);
+      ctx.drawImage(body, 0, 3 * 16, 16, 16, Math.round(cx - S / 2), Math.round(cy - S / 2 + bob), S, S);
+    }
+    // attack cycle: windup → swing → recover
+    const T = 1.5, c = el % T;
+    let ang = aim + 0.25, reach = 0, slash = 0;
+    if (c < 0.3) { ang = aim + 0.25 - (c / 0.3) * 0.9; }
+    else if (c < 0.5) { const k = (c - 0.3) / 0.2; ang = aim - 0.65 + k * 1.5; reach = Math.sin(k * Math.PI) * 16; slash = Math.sin(k * Math.PI); }
+    else { const k = Math.min(1, (c - 0.5) / 0.6); ang = aim + 0.85 - k * 0.6; }
+    const hand = 40 + reach;
+    const hx = cx + Math.cos(ang) * hand, hy = cy + Math.sin(ang) * hand;
+    // slash arc during the swing
+    if (slash > 0.05) {
+      ctx.save(); ctx.strokeStyle = `rgba(235,242,250,${0.7 * slash})`; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(cx, cy, hand, ang - 0.8, ang + 0.15); ctx.stroke(); ctx.restore();
+    }
+    // weapon sprite at the hand (icon points up-right → rotate aim+45°, grip lower-left)
+    if (wpn.complete && wpn.naturalWidth) {
+      const sz = 56; ctx.save(); ctx.imageSmoothingEnabled = false;
+      ctx.translate(Math.round(hx), Math.round(hy)); ctx.rotate(ang + Math.PI / 4);
+      ctx.drawImage(wpn, -sz * 0.28, -sz * 0.82, sz, sz); ctx.restore();
+    }
+    _previewRAF = requestAnimationFrame(frame);
+  };
+  _previewRAF = requestAnimationFrame(frame);
+}
+
+function renderSkillPreview(skillText = '') {
+  return String(skillText || '').split('\n').filter(Boolean).map(line => {
+    const match = line.match(/^(F|R|LMB):(.*)$/);
+    if (!match) {
+      return `<div class="skill-preview-line skill-preview-line-plain"><span class="skill-preview-body">${highlightSkillValues(line)}</span></div>`;
+    }
+    const key = match[1];
+    return [
+      '<div class="skill-preview-line">',
+      `<span class="skill-preview-label skill-preview-label-${key.toLowerCase()}">${key}:</span>`,
+      `<span class="skill-preview-body">${highlightSkillValues(match[2].trimStart())}</span>`,
+      '</div>'
+    ].join('');
+  }).join('');
+}
+
+function highlightSkillValues(text) {
+  return escapeHtml(text).replace(
+    /([+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)*(?:\/s)?(?:\s?(?:초|ms|px|도|%|배|개|발))?|∞|벽까지)/g,
+    '<span class="skill-preview-value">$1</span>'
+  );
 }
 
 function formatSpeedRatio(value) {
@@ -663,14 +760,16 @@ function setupLobbyTabs() {
     if (el) el.classList.toggle('lobby-tab-hidden', on);
   };
 
-  // Desktop shows all three columns at once; on mobile each tab reveals exactly
-  // one. Weapon + create share the middle column, so they also toggle inside it.
+  // Desktop shows all columns at once; on mobile the tab bar chooses the active
+  // lobby workflow. Weapon details live in the right column, while create/join
+  // share the middle column.
   function setTab(tab) {
     setHidden('lobbyAccount', tab !== 'mypage');                         // col 1
-    setHidden('lobbyLeft', tab !== 'weapon' && tab !== 'create');        // col 2
-    setHidden('lobbyRight', tab !== 'join');                             // col 3
+    setHidden('lobbyLeft', tab !== 'weapon' && tab !== 'create' && tab !== 'join');
+    setHidden('lobbyRight', tab !== 'weapon');                           // weapon details / preview
     setHidden('lobbyWeapon', tab !== 'weapon');                          // inside col 2
     setHidden('lobbyCreate', tab !== 'create');
+    setHidden('lobbyJoin', tab !== 'join');
     setHidden('lobbyGuide', tab !== 'create');
     tabs.forEach(b => b.classList.toggle('lobby-tab-active', b.dataset.lobbyTab === tab));
   }

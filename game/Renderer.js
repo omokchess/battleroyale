@@ -22,6 +22,9 @@ const WEAPON_SPRITE_META = {
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
+const PROJECTILE_SPRITE_META = {
+  arrow: { src: '/assets/weapons/arrow.png', scale: 1.65, anchorX: 0.5, anchorY: 0.5, angleOffset: Math.PI / 4 }
+};
 const WEAPON_ASSET_VERSION = '20260609a';
 
 // The low-res "pixel filter" (Task 4) is disabled by user request — the world
@@ -60,6 +63,7 @@ export class Renderer {
     this.lastTime = Date.now();
     this.lastPlayersInfo = {};
     this.weaponSprites = {};
+    this.projectileSprites = {};
     this._glow = 1;     // shadowBlur multiplier — set to 0 by performance mode
     this._perf = false; // performance mode: glows + particles disabled
 
@@ -74,6 +78,7 @@ export class Renderer {
     this.offCtx = this.offscreen ? this.offscreen.getContext('2d') : null;
 
     this._initWeaponSprites();
+    this._initProjectileSprites();
 
     // Ninja Adventure sprite atlas (Task 4). Loads async + fails soft: until it
     // is ready (or if an asset 404s) every sprite draw falls back to the legacy
@@ -94,6 +99,19 @@ export class Renderer {
       this.weaponSprites[key] = { image, meta, ready: false };
       image.onload = () => {
         this.weaponSprites[key].ready = true;
+      };
+    });
+  }
+
+  _initProjectileSprites() {
+    if (typeof Image === 'undefined') return;
+    Object.entries(PROJECTILE_SPRITE_META).forEach(([key, meta]) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = `${meta.src}?v=${WEAPON_ASSET_VERSION}`;
+      this.projectileSprites[key] = { image, meta, ready: false };
+      image.onload = () => {
+        this.projectileSprites[key].ready = true;
       };
     });
   }
@@ -1287,6 +1305,8 @@ export class Renderer {
   }
 
   _drawArrow(ctx, scr, angle) {
+    if (this._drawProjectileSprite(ctx, 'arrow', scr, angle)) return;
+
     ctx.save();
     const length = 22;
 
@@ -1349,6 +1369,29 @@ export class Renderer {
       ctx.restore();
 
     ctx.restore();
+  }
+
+  _drawProjectileSprite(ctx, key, scr, angle) {
+    const sprite = this.projectileSprites?.[key];
+    if (!sprite?.ready || !sprite.image?.naturalWidth) return false;
+    const { meta, image } = sprite;
+    const size = Math.max(image.naturalWidth, image.naturalHeight) * (meta.scale || 1);
+
+    ctx.save();
+    const smoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(scr.x), Math.round(scr.y));
+    ctx.rotate(angle + (meta.angleOffset || 0));
+    ctx.drawImage(
+      image,
+      -size * (Number.isFinite(meta.anchorX) ? meta.anchorX : 0.5),
+      -size * (Number.isFinite(meta.anchorY) ? meta.anchorY : 0.5),
+      size,
+      size
+    );
+    ctx.imageSmoothingEnabled = smoothing;
+    ctx.restore();
+    return true;
   }
 
   // Harpoon bolt: a barbed head with a trailing rope back along its path.
@@ -1504,7 +1547,7 @@ export class Renderer {
     return c;
   }
 
-  // 차크람 R 맴돌이: a single disc orbiting the caster while active. Mirrors the
+  // 차크람 LMB 맴돌이: a single disc orbiting the caster while active. Mirrors the
   // host spin in _updateChakramOrbit (now/140, radius 46) so positions agree.
   _drawChakramOrbit(ctx, camera, cw, ch, players, now) {
     for (const id of Object.keys(players)) {
@@ -1517,7 +1560,7 @@ export class Renderer {
     }
   }
 
-  // 열기 방패 (flamethrower R): a pulsing ember ring around the shielded player.
+  // 열기 방패 (flamethrower LMB): a pulsing ember ring around the shielded player.
   _drawHeatShields(ctx, camera, cw, ch, players, now) {
     for (const id of Object.keys(players)) {
       const pl = players[id];
@@ -3765,6 +3808,17 @@ export class Renderer {
       ctx.shadowColor = isLocal ? '#ef4444' : p.color;
       ctx.fillStyle = p.color;
 
+      const drawWeaponFrame = () => {
+        ctx.save();
+        ctx.translate(bodyScr.x, bodyScr.y);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-bodyScr.x, -bodyScr.y);
+        this._drawPlayerWeapon(ctx, bodyScr, p, motion);
+        ctx.restore();
+      };
+      const weaponTune = WEAPON_SPRITE_TUNE[p.weapon] || WEAPON_TUNE_DEFAULT;
+      const weaponDrawOverBody = Boolean(weaponTune.drawOverBody);
+
       // Active skill-buff floor burst (axe rage / gauntlet lance).
       if (p.buffTimeLeft > 0) {
         const auraColor = p.buffType === 'axe_rage' ? '#f55555'
@@ -3773,6 +3827,10 @@ export class Renderer {
         this._drawSustainedBuffBurst(ctx, bodyScr, p.buffType, auraColor, 0.72, camera.zoom || 1, Date.now());
       }
       this._drawCostumeEffect(ctx, bodyScr, p, radius, Date.now());
+
+      // Grip-based weapons sit behind the body so the character covers the
+      // handle. Center-held weapons opt back over the body for visibility.
+      if (!weaponDrawOverBody) drawWeaponFrame();
 
       // Draw Main Player Chassis — sprite if loaded, else the legacy square.
       const bodyR = radius + motion.bodyScale;
@@ -3860,15 +3918,7 @@ export class Renderer {
         ctx.stroke();
       }
 
-      // Draw Weapon Frame — scaled about the body center by zoom so the weapon
-      // (sprite + vector fallbacks) stays proportional to the body/hitbox on
-      // every device instead of a fixed pixel size that looks huge when zoomed out.
-      ctx.save();
-      ctx.translate(bodyScr.x, bodyScr.y);
-      ctx.scale(zoom, zoom);
-      ctx.translate(-bodyScr.x, -bodyScr.y);
-      this._drawPlayerWeapon(ctx, bodyScr, p, motion);
-      ctx.restore();
+      if (weaponDrawOverBody) drawWeaponFrame();
       this._drawCostumeDecoration(ctx, bodyScr, p, radius, Date.now());
 
       // Restore style frame before text elements
@@ -4631,7 +4681,7 @@ export class Renderer {
       }
     }
     else if (weaponType === 'pistols') {
-      // 쌍권총: a compact pistol silhouette.
+      // 쇠뇌: a compact fallback silhouette.
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle);
       ctx.fillStyle = '#9ca3af';
@@ -4644,7 +4694,7 @@ export class Renderer {
       ctx.fillRect(13, -1.5, 3, 3);                  // muzzle
     }
     else if (weaponType === 'guardian') {
-      // 수호 블레이드: a short emitter blade (orbit shown separately).
+      // 디펜더: a short emitter blade (orbit shown separately).
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle);
       ctx.shadowBlur = this._glow * (active ? 8 : 4);
@@ -4705,10 +4755,9 @@ export class Renderer {
 
   /**
    * Draw the Ninja Adventure in-hand weapon sprite at the hand, oriented to the
-   * aim/swing angle. The sprite art points "up", so it is rotated by
-   * angle + 90° and flipped vertically when aiming left to stay upright. Native
-   * aspect ratio is preserved (no squaring). Returns false if no sprite for
-   * this weapon (firearms etc.) → caller falls back.
+   * aim/swing angle. The item icon art points up-right, so the base draw angle
+   * adds 45 degrees and per-weapon tune values handle centered bows/crossbows.
+   * Returns false if no sprite exists for this weapon so the caller falls back.
    */
   _drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
     const img = this.atlas?.get(`wpn/${player.weapon}`);
@@ -4718,12 +4767,14 @@ export class Renderer {
     // The icon art points UP-RIGHT (tip ≈ -45°), grip at the lower-left, so the
     // base rotation that aligns the tip with the aim is aim + 45°.
     const aim = Number.isFinite(weaponAngle) ? weaponAngle : player.angle;
-    const handDist = Math.max(radius - 2, radius + 4 + Math.max(0, reach) * 0.2);
+    const handReachScale = Number.isFinite(tune.handReachScale) ? tune.handReachScale : 0.08;
+    const baseHandDist = Number.isFinite(tune.handDistance) ? tune.handDistance : radius + 2;
+    const handDist = Math.max(0, baseHandDist + Math.max(0, reach) * handReachScale);
     const hx = scr.x + Math.cos(aim) * handDist;
     const hy = scr.y + Math.sin(aim) * handDist;
     // Integer 2× scale keeps the 16px pixels crisp. tune.scale fine-tunes.
     const size = 16 * 2 * (tune.scale || 1);
-    const ax = Number.isFinite(tune.anchorX) ? tune.anchorX : 0.28;  // grip ≈ lower-left
+    const ax = Number.isFinite(tune.anchorX) ? tune.anchorX : 0.2;  // grip ≈ lower-left
     const ay = Number.isFinite(tune.anchorY) ? tune.anchorY : 0.82;
     const isMagic = player.weapon === 'magicstaff';
 

@@ -39,7 +39,7 @@ test('launched blades suppress orbit damage and boomerang back', () => {
 
   g._launchGuardianBlades(owner, 1000);
   assert.equal(g.projectiles.filter(p => p.kind === 'guardianblade').length, Weapons.guardian.orbitCount);
-  // Launch is now the LMB aux; its cooldown is governed by the executor, so
+  // Launch is now the R aux; its cooldown is governed by the executor, so
   // _launchGuardianBlades itself no longer stamps the F skill cooldown.
 
   // While blades are out, orbit deals no damage even to an on-ring target.

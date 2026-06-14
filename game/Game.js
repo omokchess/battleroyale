@@ -603,8 +603,8 @@ export class Game {
 
           if (proj.kind === 'pistol') {
             proj.isDead = true;
-            const died = target.takeDamage(proj.damage, '쌍권총');
-            if (died) this._creditKill(proj.ownerId, target, '쌍권총으로');
+            const died = target.takeDamage(proj.damage, '쇠뇌');
+            if (died) this._creditKill(proj.ownerId, target, '쇠뇌로');
             return;
           }
 
@@ -1910,9 +1910,8 @@ export class Game {
       case 'pistols': this._firePistolBarrage(player, now); break;
       case 'guardian': this._guardianStance(player, now); break;
       case 'harpoon': this._harpoonPull(player, now); break;
-      case 'minebag': this._placeMine(player, now); break;
-      case 'flamethrower': this._throwFirePatch(player, now); break;
       case 'minebag': this._detonateAllMines(player, now); break;
+      case 'flamethrower': this._throwFirePatch(player, now); break;
       default: break;
     }
   }
@@ -3502,10 +3501,10 @@ export class Game {
     damageLeg(proj.hitBack, 'back');
   }
 
-  // --- 지뢰 가방 (mine bag): LMB plants a proximity mine ---------------------
+  // --- 지뢰 가방 (mine bag): R plants a proximity mine -----------------------
   _placeMine(player, now) {
     const sk = SkillConfig.minebag;
-    // Cooldown governed by the LMB aux executor (altSkillCdLeft).
+    // Cooldown governed by the R aux executor (altSkillCdLeft).
     const mine = {
       id: ++this._mineSeq,
       ownerId: player.id,
@@ -3530,7 +3529,7 @@ export class Game {
     this.mines = this.mines.filter(m => !m._spent);
   }
 
-  // R 예광 지뢰: stick a timed mine onto the nearest enemy (else drop in front),
+  // LMB 예광 지뢰: stick a timed mine onto the nearest enemy (else drop in front),
   // bursts after a fuse for high damage + stun.
   _placeTracerMine(player, now) {
     const sk = SkillConfig.minebag;
@@ -3726,7 +3725,7 @@ export class Game {
     });
   }
 
-  // --- 쌍권총 (dual pistols): F barrage of 8 fanned shots, then a back-hop -----
+  // --- 쇠뇌 (pistols key): F barrage of 8 fanned shots, then a back-hop -----
   _spawnPistolBullet(player, angle, damage, speed, range, now, tag) {
     const spawnDist = (player.radius || 14) + 3;
     const proj = new Projectile(
@@ -3756,7 +3755,7 @@ export class Game {
     });
   }
 
-  // --- 수호 블레이드 (guardian): orbiting blades + F launch/recall ----------
+  // --- 디펜더 (guardian): orbiting blades + F launch/recall ----------
 
   // Deterministic blade positions for a guardian player at host time `now`.
   _guardianBladePositions(player, now) {
@@ -3783,7 +3782,7 @@ export class Game {
     this._deflectProjectile(player, (Weapons.guardian.orbitRadius || 60) + (sk.stanceRadiusBonus || 0));
   }
 
-  // R 추적 칼날: detach one blade that homes the nearest enemy for a short time.
+  // LMB 추적 칼날: detach one blade that homes the nearest enemy for a short time.
   _spawnHomingBlade(player, now) {
     const sk = SkillConfig.guardian;
     const spawnDist = (player.radius || 14) + 6;
@@ -3821,12 +3820,12 @@ export class Game {
       if (Math.hypot(t.x - proj.x, t.y - proj.y) > (t.radius || 14) + proj.radius) continue;
       if ((proj.homingHits[t.id] || 0) > now) continue;
       proj.homingHits[t.id] = now + proj.hitCooldownMs;
-      const died = t.takeDamage(proj.damage, '수호 블레이드');
-      if (died) this._creditKill(proj.ownerId, t, '수호 블레이드로');
+      const died = t.takeDamage(proj.damage, '디펜더');
+      if (died) this._creditKill(proj.ownerId, t, '디펜더로');
     }
   }
 
-  // 차크람 R 맴돌이: a defensive disc orbits the caster, dealing contact damage
+  // 차크람 LMB 맴돌이: a defensive disc orbits the caster, dealing contact damage
   // with a per-target hit cooldown while active.
   _updateChakramOrbit(now) {
     Object.values(this.players).forEach(player => {
@@ -3847,7 +3846,7 @@ export class Game {
     });
   }
 
-  // 열기 방패 (flamethrower R): burns enemies that stay in contact while active.
+  // 열기 방패 (flamethrower LMB): burns enemies that stay in contact while active.
   _updateHeatShield(now) {
     Object.values(this.players).forEach(player => {
       if (player.isDead || !player.heatShieldUntil || now >= player.heatShieldUntil) return;
@@ -3880,8 +3879,8 @@ export class Game {
         const hit = blades.some(b => (b.x - target.x) ** 2 + (b.y - target.y) ** 2 <= rr * rr);
         if (hit) {
           player._guardianHits[target.id] = now;
-          const died = target.takeDamage(cfg.damage, '수호 블레이드');
-          if (died) this._creditKill(player.id, target, '수호 블레이드로');
+          const died = target.takeDamage(cfg.damage, '디펜더');
+          if (died) this._creditKill(player.id, target, '디펜더로');
         }
       });
     });
@@ -3889,7 +3888,7 @@ export class Game {
 
   _launchGuardianBlades(player, now) {
     const sk = SkillConfig.guardian;
-    // Cooldown is governed by the LMB aux executor (altSkillCdLeft), not skillCdLeft.
+    // Cooldown is governed by the R aux executor (altSkillCdLeft), not skillCdLeft.
     const blades = this._guardianBladePositions(player, now);
     blades.forEach((b, i) => {
       const proj = new Projectile(
@@ -3903,8 +3902,8 @@ export class Game {
       proj.bornAt = now;
       proj.outRange = sk.launchRange;
       proj.locksOwner = false;       // disarm is implied by the projectiles existing
-      proj.deathName = '수호 블레이드';
-      proj.hitLabel = '수호 블레이드로';
+      proj.deathName = '디펜더';
+      proj.hitLabel = '디펜더로';
       proj.hitOut = new Set();
       proj.hitBack = new Set();
       this.projectiles.push(proj);
@@ -3942,7 +3941,7 @@ export class Game {
     this.pendingPistolBursts = waiting;
   }
 
-  // 조준 사격 (pistols LMB): after the 0.4s windup, fire a piercing hitscan that
+  // 조준 사격 (pistols R): after the 0.4s windup, fire a piercing hitscan that
   // damages every enemy along the aim line (stopped only by walls/cover).
   _processAimedShots(now) {
     if (!this.pendingAimedShots?.length) return;
@@ -3960,7 +3959,7 @@ export class Game {
         const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, t.x, t.y, t.radius);
         if (d === null || d > maxDist) continue;
         const died = t.takeDamage(s.damage, player.nickname);
-        if (died) this._creditKill(player.id, t, '쌍권총으로');
+        if (died) this._creditKill(player.id, t, '쇠뇌로');
       }
       this.effects.push({
         id: `${player.id}-aimshot-${now}`, attackerId: player.id,

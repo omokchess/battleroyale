@@ -57,8 +57,8 @@
     </div>
 
     <!-- MAIN LOBBY/START MENU -->
-    <div id="lobbyMenu" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-[#14100b] bg-opacity-95 transition-all duration-300 p-3 sm:p-4 overflow-y-auto">
-      <div class="w-full max-w-6xl flex flex-col lg:flex-row gap-4 items-stretch my-auto">
+    <div id="lobbyMenu" class="hidden absolute inset-0 z-50 flex items-center justify-start bg-[#14100b] bg-opacity-95 transition-all duration-300 p-3 sm:p-4 overflow-y-auto">
+      <div id="lobbyLayout" class="w-full max-w-[1660px] flex flex-col lg:flex-row gap-4 items-stretch my-auto">
 
         <!-- COLUMN 1: Account / My Page (sits left of weapon + create on desktop) -->
         <div id="lobbyAccount" class="w-full lg:w-80 lg:shrink-0 flex flex-col p-5 sm:p-6 bg-[#2c2016] border-4 border-[#c9a227] rounded-none shadow-[0_0_20px_rgba(201,162,39,0.3)] overflow-y-auto max-h-[92vh]">
@@ -124,7 +124,7 @@
                     <path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 13l3 3M19 5l-2 2M18 18l3 3m-1.5-1.5l-2-2" />
                   </svg>
                 </div>
-                <span class="font-mono text-[9px] text-gray-400 capitalize">디펜더</span>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">검</span>
               </button>
 
               <!-- Axe -->
@@ -282,11 +282,9 @@
               <!-- Dual Pistols -->
               <button data-weapon="pistols" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#14100b] border-2 border-gray-600 hover:border-[#e8d5a3] transition-all cursor-pointer">
                 <div class="w-8 h-8 flex items-center justify-center text-white mb-1 font-mono">
-                  <svg class="w-6 h-6 stroke-[#fb7185]" fill="none" viewBox="0 0 24 24" stroke-width="2">
-                    <path d="M3 7h8l3 3h7M11 7v3M6 10v4M3 7v3" />
-                  </svg>
+                  <img src="/assets/ninja/weapon/pistols.png" alt="pistols" class="weapon-preview-pistols" style="width: 1.25rem; height: 1.25rem; image-rendering: pixelated; transform: rotate(90deg); transform-origin: center;" />
                 </div>
-                <span class="font-mono text-[9px] text-gray-400 capitalize">쌍권총</span>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">쇠뇌</span>
               </button>
 
               <!-- Guardian Blades -->
@@ -299,7 +297,7 @@
                     <circle cx="4" cy="12" r="1.6" fill="#2dd4bf" stroke="none" />
                   </svg>
                 </div>
-                <span class="font-mono text-[9px] text-gray-400 capitalize">수호 블레이드</span>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">디펜더</span>
               </button>
 
               <!-- Harpoon -->
@@ -333,11 +331,6 @@
                 <span class="font-mono text-[9px] text-gray-400 capitalize">화염 지팡이</span>
               </button>
 
-            </div>
-
-            <!-- Weapon Stats Info Display -->
-            <div id="weaponStats" class="mt-2 bg-[#14100b] p-3 border border-gray-700 font-mono text-xs text-gray-400 min-h-[82px] flex flex-col justify-center overflow-visible">
-              무기를 선택하여 능력치를 비교해 보세요.
             </div>
           </div>
         </div>
@@ -425,6 +418,34 @@
           </div>
         </div>
 
+        <!-- Room Browser -->
+        <div id="lobbyJoin" class="mt-6 bg-[#14100b] border-2 border-gray-700 p-4">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-mono text-xs text-[#e8d5a3] uppercase font-bold">방 목록</span>
+            <button id="refreshRoomsBtn" class="bg-[#2c2016] border border-gray-600 hover:border-[#e8d5a3] text-[#e8d5a3] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all">새로고침</button>
+          </div>
+          <div id="roomListStatus" class="font-mono text-[9px] text-gray-500 mb-2">연결 중...</div>
+
+          <div id="roomListContainer" class="overflow-y-auto min-h-[120px] max-h-[210px] space-y-2 pr-1">
+            <div class="text-gray-500 font-mono text-[11px] text-center py-8">열려 있는 방이 없습니다.<br>왼쪽에서 방을 만들어 보세요!</div>
+          </div>
+
+          <div class="mt-4 bg-[#0d0a06] border-2 border-gray-700 p-3">
+            <span class="font-mono text-xs text-[#e8d5a3] uppercase">코드로 참가</span>
+            <div class="flex gap-2 mt-2">
+              <input type="text" id="joinRoomInput" maxlength="10" placeholder="방 코드 입력"
+                class="flex-1 min-w-0 bg-[#0d0a06] border-2 border-gray-600 focus:border-[#c9a227] text-white px-3 py-2 rounded-none font-mono text-xs focus:outline-none uppercase" />
+              <button id="joinBtn" class="bg-gradient-to-r from-[#cda833] to-[#7a5e1e] hover:from-[#e6c75a] hover:to-[#5a4320] border-2 border-[#e6c75a] text-white font-mono text-xs px-5 py-2 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform whitespace-nowrap">
+                참가
+              </button>
+            </div>
+          </div>
+
+          <div id="statusMsg" class="mt-3 p-2 bg-[#310a14] border border-red-800 text-red-300 font-mono text-[11px] text-center hidden">
+            Error Message Here
+          </div>
+        </div>
+
         <!-- Controls Guide -->
         <div id="lobbyGuide" class="mt-6 bg-[#14100b] border-2 border-gray-700 p-4 font-mono text-[10px] text-gray-400">
           <p class="font-bold text-gray-300 mb-1 inline-flex items-center gap-1">
@@ -449,36 +470,21 @@
 
         </div><!-- /LEFT -->
 
-        <!-- RIGHT: Room Browser -->
-        <div id="lobbyRight" class="w-full lg:w-80 flex flex-col p-5 sm:p-6 bg-[#2c2016] border-4 border-[#e8d5a3] rounded-none shadow-[0_0_20px_rgba(201,162,39,0.2)] max-h-[92vh]">
+        <!-- RIGHT: Weapon Details + Preview -->
+        <div id="lobbyRight" class="w-full lg:w-[36rem] flex flex-col gap-4 p-5 sm:p-6 bg-[#2c2016] border-4 border-[#e8d5a3] rounded-none shadow-[0_0_20px_rgba(201,162,39,0.2)] max-h-[92vh]">
 
-          <div class="flex-1 flex flex-col min-h-0 bg-[#14100b] border-2 border-gray-700 p-3">
-            <div class="flex items-center justify-between mb-1">
-              <span class="font-mono text-sm text-[#e8d5a3] uppercase font-bold">방 목록</span>
-              <button id="refreshRoomsBtn" class="bg-[#2c2016] border border-gray-600 hover:border-[#e8d5a3] text-[#e8d5a3] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all">새로고침</button>
-            </div>
-            <div id="roomListStatus" class="font-mono text-[9px] text-gray-500 mb-2">연결 중...</div>
-
-            <div id="roomListContainer" class="flex-1 overflow-y-auto min-h-[180px] space-y-2 pr-1">
-              <div class="text-gray-500 font-mono text-[11px] text-center py-8">열려 있는 방이 없습니다.<br>왼쪽에서 방을 만들어 보세요!</div>
+          <div id="weaponDetailPanel" class="bg-[#14100b] border-2 border-gray-700 p-4">
+            <span class="font-mono text-sm text-[#e8d5a3] uppercase font-bold">무기 설명</span>
+            <div id="weaponStats" class="mt-3 font-mono text-xs text-gray-400 min-h-[180px] overflow-visible">
+              무기를 선택하여 능력치를 비교해 보세요.
             </div>
           </div>
 
-          <!-- Join by code -->
-          <div class="mt-4 bg-[#14100b] border-2 border-gray-700 p-4">
-            <span class="font-mono text-xs text-[#e8d5a3] uppercase">코드로 참가</span>
-            <div class="flex gap-2 mt-2">
-              <input type="text" id="joinRoomInput" maxlength="10" placeholder="방 코드 입력"
-                class="flex-1 min-w-0 bg-[#0d0a06] border-2 border-gray-600 focus:border-[#c9a227] text-white px-3 py-2 rounded-none font-mono text-xs focus:outline-none uppercase" />
-              <button id="joinBtn" class="bg-gradient-to-r from-[#cda833] to-[#7a5e1e] hover:from-[#e6c75a] hover:to-[#5a4320] border-2 border-[#e6c75a] text-white font-mono text-xs px-5 py-2 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform whitespace-nowrap">
-                참가
-              </button>
+          <div id="weaponPreviewPanel" class="flex-1 min-h-[300px] bg-[#14100b] border-2 border-gray-700 p-4 flex flex-col">
+            <span class="font-mono text-sm text-[#e8d5a3] uppercase font-bold">무기 프리뷰</span>
+            <div id="weaponPreview" class="flex-1 min-h-0 mt-3 flex flex-col items-center justify-center text-center">
+              <div class="text-gray-500 font-mono text-[11px]">무기를 선택하면 프리뷰가 표시됩니다.</div>
             </div>
-          </div>
-
-          <!-- Error / Status -->
-          <div id="statusMsg" class="mt-3 p-2 bg-[#310a14] border border-red-800 text-red-300 font-mono text-[11px] text-center hidden">
-            Error Message Here
           </div>
         </div><!-- /RIGHT -->
 

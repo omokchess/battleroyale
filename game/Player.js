@@ -56,10 +56,10 @@ export class Player {
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
     this.chakramOut = false;  // true while a thrown chakram hasn't returned (disarmed)
-    this.chakramOrbitUntil = 0; // ms timestamp until which the R 맴돌이 defensive disc orbits
-    this.heatShieldUntil = 0; // ms timestamp until which 열기 방패 (flamethrower R) is active
+    this.chakramOrbitUntil = 0; // ms timestamp until which the LMB 맴돌이 defensive disc orbits
+    this.heatShieldUntil = 0; // ms timestamp until which 열기 방패 (flamethrower LMB) is active
     this.guardianStanceUntil = 0; // ms timestamp until which 수호 태세 (guardian F) widens the orbit
-    this.pistolReloadUntil = 0; // ms timestamp until which 구르기 장전 (pistols R) speeds up fire
+    this.pistolReloadUntil = 0; // ms timestamp until which 구르기 장전 (pistols LMB) speeds up fire
     this.slowTimeLeft = 0;    // seconds of a movement slow (harpoon pull) — can still attack
     // Flamethrower fuel state (host-driven; flameSpraying is synced for visuals).
     this.flameFuel = (Weapons.flamethrower?.fuelMs) || 3000;
@@ -311,7 +311,7 @@ export class Player {
     const weaponConfig = getEffectiveWeapon(this.weapon, this.buffType);
     if (weaponConfig.automaticAttack === false) return false;
     let cd = weaponConfig.cooldown;
-    // 구르기 장전 (pistols R): +30% fire rate for a short window.
+    // 구르기 장전 (pistols LMB): +30% fire rate for a short window.
     if (this.weapon === 'pistols' && this.pistolReloadUntil && now < this.pistolReloadUntil) cd *= 0.7;
     return (now - this.lastAttackTime) >= cd;
   }
@@ -328,7 +328,7 @@ export class Player {
     if (this.isDead || (!ignoreIframe && this.isInvincible())) return false;
 
     let dmg = amount;
-    // 열기 방패 (flamethrower R): flat 30% damage reduction while active.
+    // 열기 방패 (flamethrower LMB): flat 30% damage reduction while active.
     if (this.heatShieldUntil && Date.now() < this.heatShieldUntil) dmg *= 0.7;
     this.hp -= dmg;
     if (this.hp <= 0) {

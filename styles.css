@@ -270,6 +270,22 @@ html, body {
 }
 
 /* Custom selection borders & neon pulses for weapon cards */
+@media (min-width: 1024px) {
+  #lobbyLayout {
+    margin-left: 0;
+    margin-right: auto;
+  }
+
+  #lobbyLeft {
+    flex: 0 1 39rem;
+  }
+
+  #lobbyRight {
+    flex: 1 1 34rem;
+    min-width: 26rem;
+  }
+}
+
 #weaponCards {
   /* Auto-fit columns sized to a generous minimum so the weapon art is large on
      every screen (≈3 cols on phones, ≈5 on desktop) instead of tiny 5-up cells. */
@@ -296,10 +312,120 @@ html, body {
   height: 2rem;
 }
 
+#weaponCards .weapon-preview-pistols {
+  width: 1.25rem;
+  height: 1.25rem;
+  image-rendering: pixelated;
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
 #weaponCards .weapon-card span {
   font-size: 0.7rem;
   line-height: 1;
   white-space: nowrap;
+}
+
+.skill-preview {
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.skill-preview-line {
+  color: #f8fafc;
+  display: grid;
+  grid-template-columns: 2.65rem minmax(0, 1fr);
+  column-gap: 0.35rem;
+  align-items: start;
+}
+
+.skill-preview-line-plain {
+  grid-template-columns: 1fr;
+}
+
+.skill-preview-label {
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.skill-preview-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.skill-preview-label-f {
+  color: #facc15;
+}
+
+.skill-preview-label-r {
+  color: #60a5fa;
+}
+
+.skill-preview-label-lmb {
+  color: #34d399;
+}
+
+.skill-preview-value {
+  color: #fde047;
+  font-weight: 800;
+  text-shadow: 0 0 8px rgba(250, 204, 21, 0.28);
+}
+
+#weaponPreviewPanel {
+  overflow: hidden;
+}
+
+#weaponPreview {
+  gap: 1rem;
+}
+
+.weapon-preview-frame {
+  width: min(20rem, 82%);
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #0d0a06;
+  background-image:
+    linear-gradient(rgba(232, 213, 163, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 213, 163, 0.055) 1px, transparent 1px);
+  background-size: 18px 18px;
+  border: 2px solid rgba(232, 213, 163, 0.45);
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.52),
+    0 0 18px color-mix(in srgb, var(--weapon-accent, #c9a227) 28%, transparent);
+}
+
+.weapon-preview-art {
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.35));
+}
+
+.weapon-preview-caption {
+  max-width: 24rem;
+  font-family: var(--font-mono);
+}
+
+.weapon-preview-name {
+  color: #facc15;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.weapon-preview-desc {
+  margin-top: 0.4rem;
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  word-break: keep-all;
 }
 
 .weapon-card:hover {
@@ -504,7 +630,7 @@ canvas {
 
   #weaponStats {
     font-size: 0.84rem;
-    min-height: 7rem;
+    min-height: 12rem;
   }
 }
 
@@ -526,6 +652,11 @@ canvas {
   #weaponCards .weapon-card svg {
     width: 1.7rem;
     height: 1.7rem;
+  }
+
+  #weaponCards .weapon-preview-pistols {
+    width: 1.1rem;
+    height: 1.1rem;
   }
 
   #weaponCards .weapon-card span {

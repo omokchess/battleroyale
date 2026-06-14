@@ -11,7 +11,7 @@ test('guardian base buff: 18 dmg / 400ms rehit / radius 60 / 3 blades', () => {
   assert.equal(Weapons.guardian.orbitCount, 3);
 });
 
-test('guardian aux kit: 사출(launch) on LMB, 추적칼날(homing) on R', () => {
+test('guardian aux kit: 사출(launch) on R, 추적칼날(homing) on LMB', () => {
   assert.equal(AuxSkillConfig.guardian.alt.type, 'guardian_launch');
   assert.equal(AuxSkillConfig.guardian.target.type, 'guardian_homing');
 });
@@ -29,7 +29,7 @@ test('F 수호 태세 widens the orbit and sets the buff window', () => {
   assert.ok(baseR > Weapons.guardian.orbitRadius - 0.01, 'orbit radius widened during stance');
 });
 
-test('R 추적 칼날 spawns a homing blade that chases and damages', () => {
+test('LMB 추적 칼날 spawns a homing blade that chases and damages', () => {
   const owner = new Player('o', 'Seek', 'guardian', 100, 100); owner.angle = 0;
   const foe = new Player('t', 'T', 'sword', 150, 100);
   const g = Object.create(Game.prototype);
