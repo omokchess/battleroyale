@@ -180,6 +180,11 @@ export class Renderer {
     // Grid rendering (only draw grids that are within viewport margins)
     this._drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight);
 
+    // Water lakes sit on the grass, under everything else (Task 4-E).
+    if (gameState.water && gameState.water.cells && gameState.water.cells.size) {
+      this._drawWater(ctx, camera, cw, ch, gameState.water, nowTime);
+    }
+
     // Floor particles rendering (Dust trails, projectile flows)
     this._drawParticles(ctx, camera, cw, ch, 'floor', gameState.players);
 
@@ -606,6 +611,51 @@ export class Renderer {
       ctx.lineWidth = Math.max(1, z);
       ctx.strokeRect(x + 0.5, y + 0.5, Math.ceil(w) - 1, Math.ceil(h) - 1);
     }
+    ctx.restore();
+  }
+
+  /**
+   * Water lakes (Task 4-E). Per-cell so each cell can paint a foam shoreline on
+   * any side whose neighbour is land. The surface ripples + sparkles over time.
+   * Walking is blocked by the sim; projectiles fly over (purely visual here).
+   */
+  _drawWater(ctx, camera, cw, ch, water, now) {
+    const { cells, cell } = water;
+    const z = camera.zoom || 1;
+    const t = (now || 0) / 1000;
+    ctx.save();
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    const size = Math.ceil(cell * z) + 1;
+    const fw = Math.max(2, Math.round(size * 0.16));   // foam band thickness
+    for (const key of cells) {
+      const ci = key.indexOf(',');
+      const c = +key.slice(0, ci), r = +key.slice(ci + 1);
+      const wx = c * cell, wy = r * cell;
+      const s = camera.toScreen(wx, wy, cw, ch);
+      const x = Math.round(s.x), y = Math.round(s.y);
+      if (x + size < -10 || x > cw + 10 || y + size < -10 || y > ch + 10) continue;
+
+      // Base water + an animated lighter band so the surface looks alive.
+      ctx.fillStyle = '#2c6a8d';
+      ctx.fillRect(x, y, size, size);
+      const wave = (Math.sin(wx * 0.05 + wy * 0.035 + t * 1.7) + 1) * 0.5;
+      ctx.fillStyle = wave > 0.5 ? '#3d88ad' : '#27607f';
+      ctx.fillRect(x, y + Math.round(size * (0.25 + 0.4 * wave)), size, Math.max(1, Math.round(size * 0.16)));
+      // Drifting sparkle.
+      if (((c * 7 + r * 13) % 5) === (Math.floor(t * 2) % 5)) {
+        ctx.fillStyle = 'rgba(223,247,255,0.6)';
+        const q = Math.max(1, Math.round(size * 0.13));
+        ctx.fillRect(x + Math.round(size * 0.58), y + Math.round(size * 0.42), q, q);
+      }
+      // Foam shoreline on land-facing edges.
+      ctx.fillStyle = '#cdeef8';
+      if (!cells.has(`${c},${r - 1}`)) ctx.fillRect(x, y, size, fw);
+      if (!cells.has(`${c},${r + 1}`)) ctx.fillRect(x, y + size - fw, size, fw);
+      if (!cells.has(`${c - 1},${r}`)) ctx.fillRect(x, y, fw, size);
+      if (!cells.has(`${c + 1},${r}`)) ctx.fillRect(x + size - fw, y, fw, size);
+    }
+    ctx.imageSmoothingEnabled = prevSmooth;
     ctx.restore();
   }
 
