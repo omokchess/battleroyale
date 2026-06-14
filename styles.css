@@ -239,20 +239,21 @@ h1 {
 }
 ::selection { background: rgba(201, 162, 39, 0.45); color: #fff; }
 
-/* ---- Stone-brick panels (Task 4) -------------------------------------------
-   The big framed panels (.border-4) are a tiled stone-brick wall with a
-   chiselled stone frame. The surface is dark, so the original light text
-   (white / gray / gold / parchment) reads directly — no per-panel overrides. */
+/* ---- Dark-wood panels (Task 4-G) -------------------------------------------
+   The big framed panels (.border-4) are dark wooden planks in a brass frame —
+   a warm medieval-RPG UI that matches the sprite world. The surface stays dark
+   so the existing light text (white / gray / gold / parchment) reads directly. */
 .bg-\[\#2c2016\].border-4 {
-  background-color: #5f5b53 !important;
-  background-image: url('/assets/stone.svg') !important;
-  background-repeat: repeat !important;
-  background-size: 144px 96px !important;
-  border-color: #1f1d1a !important;                 /* dark outer mortar line */
+  background-color: #3a2a1a !important;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255, 224, 168, 0.045) 0 1px, transparent 1px 3px),       /* fine grain */
+    repeating-linear-gradient(90deg, transparent 0 46px, rgba(0, 0, 0, 0.30) 46px 48px),           /* plank seams */
+    linear-gradient(180deg, #46331f, #2b1f12) !important;
+  border-color: #1c140a !important;
   box-shadow:
-    inset 0 0 0 2px #847d72,                          /* chiselled light edge */
-    inset 0 0 0 5px #3a352f,                          /* recessed dark band */
-    inset 0 0 40px rgba(0, 0, 0, 0.5),                /* interior depth */
+    inset 0 0 0 2px #b8923a,                          /* brass inner line */
+    inset 0 0 0 4px #241910,                          /* dark recess under the brass */
+    inset 0 0 34px rgba(0, 0, 0, 0.45),               /* interior depth */
     0 6px 20px rgba(0, 0, 0, 0.55) !important;
 }
 
