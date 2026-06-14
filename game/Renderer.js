@@ -1125,21 +1125,37 @@ export class Renderer {
       }
     }
 
-    // 3) Scatter grass tufts on a 32×32 block grid at random density. Each block
-    //    has a ~45% chance of a tuft; the sprite, size, and offset are all
-    //    hash-jittered so nothing reads as a grid.
+    // 3) Scatter grass tufts on a 32×32 block grid, anchored to each block's
+    //    BOTTOM-LEFT, with a minimum spacing of 2 blocks so they never crowd.
+    //    Placement is deterministic: a block gets a tuft only if its hash score
+    //    is the strict local maximum within a ±EXCL-block window. Two winners
+    //    can't sit inside each other's window, which guarantees the spacing
+    //    without any stateful RNG — every client bakes the identical field.
     if (tufts) {
       const SRC = 16;
       const COUNT = Math.max(1, Math.floor((tufts.naturalWidth || 176) / SRC));
       const BLOCK = 32;
-      for (let by = 0, ry = 0; by < th; by += BLOCK, ry++) {
-        for (let bx = 0, rx = 0; bx < tw; bx += BLOCK, rx++) {
-          if (hash(rx + 17, ry + 31) > 0.45) continue;          // density gate
-          const idx  = (hash(rx + 7,  ry + 3)  * COUNT) | 0;
-          const size = 22 + ((hash(rx + 11, ry + 5) * 12) | 0); // 22–33px
-          const ox = bx + ((hash(rx + 1, ry + 2) - 0.5) * BLOCK);
-          const oy = by + ((hash(rx + 4, ry + 9) - 0.5) * BLOCK);
-          g.drawImage(tufts, idx * SRC, 0, SRC, SRC, ox, oy, size, size);
+      const EXCL = 2;                                  // keep-out radius in blocks
+      const score = (rx, ry) => hash(rx * 2 + 5, ry * 2 + 7);
+      const cols = Math.ceil(tw / BLOCK), rows = Math.ceil(th / BLOCK);
+      for (let ry = 0; ry < rows; ry++) {
+        for (let rx = 0; rx < cols; rx++) {
+          const s = score(rx, ry);
+          let isMax = true;
+          for (let dy = -EXCL; dy <= EXCL && isMax; dy++) {
+            for (let dx = -EXCL; dx <= EXCL; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              if (score(rx + dx, ry + dy) >= s) { isMax = false; break; }
+            }
+          }
+          if (!isMax) continue;
+          const idx  = (hash(rx + 7, ry + 3) * COUNT) | 0;
+          const size = 22 + ((hash(rx + 11, ry + 5) * 12) | 0);   // 22–33px
+          // Bottom-left anchor: sprite's bottom edge sits on the block floor,
+          // left edge on the block's left side.
+          const ax = rx * BLOCK;
+          const ay = ry * BLOCK + BLOCK - size;
+          g.drawImage(tufts, idx * SRC, 0, SRC, SRC, ax, ay, size, size);
         }
       }
     } else {
