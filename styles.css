@@ -1,5 +1,37 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   THEME PALETTE (Task 4) — medieval fantasy. Single source of truth for UI
+   colors; tune the theme here. The four legacy neon roles map to:
+     --c-bg      (was var(--c-bg))  deep near-black, warm
+     --c-panel   (was var(--c-panel))  dark wood panel
+     --c-accent  (was var(--c-accent))  gold (borders/accents)
+     --c-accent2 (was var(--c-accent2))  parchment (headings/highlights)
+   index.html mirrors these literal values in its Tailwind arbitrary classes
+   (opacity modifiers like /85 don't work on var() colors).
+   ========================================================================== */
+:root {
+  --c-bg:        #14100b;   /* deep warm black */
+  --c-bg-deep:   #0d0a06;   /* darkest (beyond the arena / shadows) */
+  --c-panel:     #2c2016;   /* dark wood panel */
+  --c-panel-2:   #3a2a18;   /* lighter wood */
+  --c-wood-frame:#1a120a;   /* frame timber */
+  --c-accent:    #c9a227;   /* gold */
+  --c-accent2:   #e8d5a3;   /* parchment / light gold */
+  --c-parchment: #e8d5a3;
+  --c-ink:       #3a2e1f;   /* dark ink on parchment */
+  --c-iron:      #7a7f87;   /* steel/iron secondary */
+  --c-gold:      #c9a227;
+  --c-blood:     #8f2020;   /* health bar */
+  /* Grass-field tones (used by the canvas renderer in 4-2). */
+  --c-grass:     #5a8f3c;
+  --c-grass-dk:  #4e7d34;
+  --c-grass-lt:  #6da04a;
+  --c-grass-blade:#87b35c;
+  --c-dirt:      #8a6a3f;
+  --c-stone:     #8b8c8e;
+}
+
 .hidden { display: none !important; }
 
 /* In-game weapon switch: a vertical bar in the arena's right gutter.
@@ -80,7 +112,7 @@
   line-height: 1;
   padding: 0.14rem 0.34rem;
   border-radius: 3px;
-  color: #0b0c10;
+  color: var(--c-bg);
 }
 
 #mobileActionCluster {
@@ -157,37 +189,37 @@
   border-radius: 9999px !important;
 }
 
-/* ---- Medieval + modern "neon dungeon" theme (visual only — no markup/logic) ---- */
-/* Full-screen layers get a dark stone backdrop lit by a warm torch glow (medieval)
-   and a cool neon glow (modern), with a faint stone grain. */
+/* ---- Medieval fantasy theme (visual only — no markup/logic) ---- */
+/* Full-screen layers get a deep warm-black backdrop lit by a torch-amber glow and
+   a faint blood-red corner, with a subtle timber grain. */
 body,
 #authScreen,
 #lobbyMenu {
-  background-color: #0c0a12 !important;
+  background-color: var(--c-bg-deep) !important;
   background-image:
-    radial-gradient(110% 75% at 10% -8%, rgba(251, 146, 60, 0.14), transparent 55%),
-    radial-gradient(110% 75% at 92% 108%, rgba(139, 46, 46, 0.13), transparent 55%),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 6px),
-    linear-gradient(160deg, #16121d, #0a0810) !important;
+    radial-gradient(110% 75% at 10% -8%, rgba(201, 162, 39, 0.12), transparent 55%),
+    radial-gradient(110% 75% at 92% 108%, rgba(143, 32, 32, 0.12), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(255, 240, 200, 0.015) 0 1px, transparent 1px 6px),
+    linear-gradient(160deg, #1a130b, #0d0a06) !important;
 }
 
-/* Stone panels: warm the slate, framed with an ornate brass inner border. */
-.bg-\[\#1f2833\] {
-  background-color: #1b1622 !important;
+/* Wood panels: warm timber framed with an ornate brass inner border. */
+.bg-\[\#2c2016\] {
+  background-color: var(--c-panel) !important;
   box-shadow:
     inset 0 0 0 2px rgba(201, 162, 39, 0.30),
-    inset 0 0 0 3px rgba(10, 8, 16, 0.9),
+    inset 0 0 0 3px rgba(13, 10, 6, 0.9),
     inset 0 3px 16px rgba(0, 0, 0, 0.55) !important;
 }
 
-/* Antique brass replaces the neon-cyan borders (the medieval metal layer). */
-.border-\[\#45f3ff\] { border-color: #a8842c !important; }
+/* Antique brass borders (the medieval metal layer). */
+.border-\[\#c9a227\] { border-color: #a8842c !important; }
 
-/* No cyber-cyan left: recolor every neon accent to gold / parchment / brass. */
-.text-\[\#45f3ff\], .text-\[\#66fcf1\] { color: #d8b24a !important; }
+/* Gold / parchment / brass accents. */
+.text-\[\#c9a227\], .text-\[\#e8d5a3\] { color: #d8b24a !important; }
 .text-\[\#22d3ee\] { color: #c99a3a !important; }
-.bg-\[\#45f3ff\] { background-color: #b8902f !important; }
-.border-\[\#22d3ee\], .border-\[\#66fcf1\] { border-color: #a8842c !important; }
+.bg-\[\#c9a227\] { background-color: #b8902f !important; }
+.border-\[\#22d3ee\], .border-\[\#e8d5a3\] { border-color: #a8842c !important; }
 
 /* Gilded titles + torch-amber warmth on primary actions. Cyan text accents remain = modern hint. */
 h1 {
@@ -207,6 +239,24 @@ h1 {
 }
 ::selection { background: rgba(201, 162, 39, 0.45); color: #fff; }
 
+/* ---- Dark-wood panels (Task 4-G) -------------------------------------------
+   The big framed panels (.border-4) are dark wooden planks in a brass frame —
+   a warm medieval-RPG UI that matches the sprite world. The surface stays dark
+   so the existing light text (white / gray / gold / parchment) reads directly. */
+.bg-\[\#2c2016\].border-4 {
+  background-color: #3a2a1a !important;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255, 224, 168, 0.045) 0 1px, transparent 1px 3px),       /* fine grain */
+    repeating-linear-gradient(90deg, transparent 0 46px, rgba(0, 0, 0, 0.30) 46px 48px),           /* plank seams */
+    linear-gradient(180deg, #46331f, #2b1f12) !important;
+  border-color: #1c140a !important;
+  box-shadow:
+    inset 0 0 0 2px #b8923a,                          /* brass inner line */
+    inset 0 0 0 4px #241910,                          /* dark recess under the brass */
+    inset 0 0 34px rgba(0, 0, 0, 0.45),               /* interior depth */
+    0 6px 20px rgba(0, 0, 0, 0.55) !important;
+}
+
 /* Base style setups */
 html, body {
   margin: 0;
@@ -220,6 +270,22 @@ html, body {
 }
 
 /* Custom selection borders & neon pulses for weapon cards */
+@media (min-width: 1024px) {
+  #lobbyLayout {
+    margin-left: 0;
+    margin-right: auto;
+  }
+
+  #lobbyLeft {
+    flex: 0 1 39rem;
+  }
+
+  #lobbyRight {
+    flex: 1 1 34rem;
+    min-width: 26rem;
+  }
+}
+
 #weaponCards {
   /* Auto-fit columns sized to a generous minimum so the weapon art is large on
      every screen (≈3 cols on phones, ≈5 on desktop) instead of tiny 5-up cells. */
@@ -228,8 +294,8 @@ html, body {
 }
 
 .weapon-card {
-  border: 2px solid #374151;
-  background-color: #0b0c10;
+  border: 2px solid #5a4326;          /* warm wood slot, not cool steel */
+  background-color: #271a0e;          /* dark walnut (icons still read) */
   min-height: 6rem;
   padding: 0.5rem 0.3rem;
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -246,10 +312,165 @@ html, body {
   height: 2rem;
 }
 
+#weaponCards .weapon-preview-pistols {
+  width: 1.25rem;
+  height: 1.25rem;
+  image-rendering: pixelated;
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
 #weaponCards .weapon-card span {
   font-size: 0.7rem;
   line-height: 1;
   white-space: nowrap;
+}
+
+.skill-preview {
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.skill-preview-line {
+  color: #f8fafc;
+  display: grid;
+  grid-template-columns: 2.65rem minmax(0, 1fr);
+  column-gap: 0.35rem;
+  align-items: start;
+}
+
+.skill-preview-line-plain {
+  grid-template-columns: 1fr;
+}
+
+.skill-preview-label {
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.skill-preview-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.skill-preview-label-f {
+  color: #facc15;
+}
+
+.skill-preview-label-r {
+  color: #60a5fa;
+}
+
+.skill-preview-label-lmb {
+  color: #34d399;
+}
+
+.skill-preview-value {
+  color: #fde047;
+  font-weight: 800;
+  text-shadow: 0 0 8px rgba(250, 204, 21, 0.28);
+}
+
+#weaponPreviewPanel {
+  overflow: hidden;
+  min-height: 31rem;
+}
+
+#weaponPreview {
+  gap: 0.85rem;
+}
+
+.weapon-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.weapon-preview-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.weapon-preview-stage canvas {
+  flex: 0 0 400px;
+}
+
+@media (min-width: 1536px) {
+  #lobbyRight {
+    flex: 0 0 42rem;
+  }
+}
+
+.weapon-preview-action {
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 2px solid #8a6a22;
+  background: #1a120a;
+  color: #facc15;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weapon-preview-action[hidden] {
+  display: none !important;
+}
+
+.weapon-preview-action:hover {
+  border-color: #facc15;
+  background: #2c2016;
+}
+
+.weapon-preview-action:active {
+  transform: scale(0.96);
+}
+
+.weapon-preview-frame {
+  width: min(20rem, 82%);
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #0d0a06;
+  background-image:
+    linear-gradient(rgba(232, 213, 163, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 213, 163, 0.055) 1px, transparent 1px);
+  background-size: 18px 18px;
+  border: 2px solid rgba(232, 213, 163, 0.45);
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.52),
+    0 0 18px color-mix(in srgb, var(--weapon-accent, #c9a227) 28%, transparent);
+}
+
+.weapon-preview-art {
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.35));
+}
+
+.weapon-preview-name {
+  color: #facc15;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 .weapon-card:hover {
@@ -259,16 +480,16 @@ html, body {
 }
 
 .weapon-card.selected {
-  background-color: #241c2c;
+  background-color: #3a2614;          /* warm selected walnut */
   border-color: #d4af37 !important;
   color: #f0c34d;
-  box-shadow: 0 0 12px rgba(212, 175, 55, 0.55), inset 0 0 0 1px rgba(240, 195, 77, 0.35);
+  box-shadow: inset 0 0 0 2px rgba(212, 175, 55, 0.6), 0 3px 8px rgba(60, 40, 10, 0.5);
   transform: scale(1.05);
 }
 
 .weapon-card.selected svg {
   stroke: #f0c34d;
-  filter: drop-shadow(0 0 4px rgba(240, 195, 77, 0.85));
+  filter: drop-shadow(0 1px 1px rgba(60, 40, 10, 0.7));
 }
 
 /* Custom canvas crisp render */
@@ -454,7 +675,7 @@ canvas {
 
   #weaponStats {
     font-size: 0.84rem;
-    min-height: 7rem;
+    min-height: 12rem;
   }
 }
 
@@ -476,6 +697,11 @@ canvas {
   #weaponCards .weapon-card svg {
     width: 1.7rem;
     height: 1.7rem;
+  }
+
+  #weaponCards .weapon-preview-pistols {
+    width: 1.1rem;
+    height: 1.1rem;
   }
 
   #weaponCards .weapon-card span {
@@ -821,18 +1047,18 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
   text-transform: uppercase;
   padding: 7px 2px;
   border: 2px solid #374151;        /* gray-700 */
-  background: #0b0c10;
+  background: var(--c-bg);
   color: #9ca3af;                   /* gray-400 */
   cursor: pointer;
   white-space: nowrap;
   transition: transform 0.05s ease, border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
 }
-.cfg-opt:hover { border-color: #45f3ff; color: #e5e7eb; }
+.cfg-opt:hover { border-color: var(--c-accent); color: #e5e7eb; }
 .cfg-opt:active { transform: scale(0.95); }
 .cfg-opt.selected {
-  border-color: #45f3ff;
+  border-color: var(--c-accent);
   background: rgba(69, 243, 255, 0.12);
-  color: #66fcf1;
+  color: var(--c-accent2);
   box-shadow: inset 0 0 0 1px rgba(69, 243, 255, 0.45);
   font-weight: 700;
 }

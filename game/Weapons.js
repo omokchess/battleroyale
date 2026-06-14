@@ -7,71 +7,79 @@
 export const Weapons = {
   sword: {
     name: '검',
-    damage: 24,
+    damage: 25,    // 밸런스의 영점 (DPS 48) — 모든 무기는 이 무기 대비 장단점이 명확
     maxHp: 120,
-    cooldown: 550, // milliseconds
+    cooldown: 520, // milliseconds
     moveSpeed: 1.1,
     range: 70,     // pixels
     angle: 110,    // degrees
     type: 'melee_arc',
     hitMode: 'melee_blade_sweep',  // hit along the swept blade, like the greatsword
     bladeHalfWidth: 12,
-    description: '공수 밸런스가 뛰어난 무기입니다. 준수한 사거리와 공격 속도를 자랑합니다.',
-    skill: 'F 스킬: 0.25초 간격으로 검기 3회 발사 (벽·적 명중 시 폭발) · 쿨타임 4초',
+    description: '공수 밸런스가 뛰어난 기준점 무기입니다. 상태이상이나 조건부 보상은 없지만 모든 면이 안정적입니다.',
+    skill: 'F: 0.25초 간격으로 검기 3회 발사(직격 24, 폭발 20/반경 70) · 쿨타임 4초\nR: 회전 베기(22 피해, 360도, 넉백) · 쿨타임 4.5초\nLMB: 전방 돌진 찌르기(30 피해, 사거리 115px, 넉백) · 쿨타임 4초',
     color: '#45f3ff'
   },
   axe: {
     name: '도끼',
-    damage: 40,
-    maxHp: 150,
-    cooldown: 900,
-    moveSpeed: 0.8,
+    damage: 38,
+    maxHp: 155,
+    cooldown: 850,
+    moveSpeed: 0.85,
     range: 58,
     angle: 360,    // Full circle
     type: 'melee_circle',
-    description: '파괴적인 360도 회전 공격을 펼칩니다. 자신 주변의 모든 적에게 피해를 줍니다.',
-    skill: 'F 스킬: 4초간 제자리에서 100px·120도 부채꼴 베기로 전환(이동·대시 불가), 0.3초마다 공격 · 쿨타임 버프 종료 후 6초',
+    onHitBleed: true,            // 명중 시 출혈 — 난전에서 다수에게 도트를 묻힌다
+    description: '파괴적인 360도 회전 공격을 펼칩니다. 자신 주변의 모든 적에게 피해를 주고 출혈을 입힙니다.',
+    skill: 'F: 4초간 이동·대시 불가, 0.3초마다 100px·120도 광폭 베기(50 피해) · 종료 후 쿨타임 6초\nR: 지진 내려찍기(44 피해 + 충격파 36, 0.5초 기절, 넉백) · 쿨타임 6.5초\nLMB: 전방 도끼질(38 피해, 90도, 돌진+넉백) · 쿨타임 5초',
     color: '#f55555'
   },
   bow: {
     name: '활',
-    damage: 33,
-    maxHp: 80,
+    damage: 30,
+    maxHp: 85,
     cooldown: 800,
     moveSpeed: 1,
     range: Infinity,
     speed: 640,    // Projectile speed (px/s)
     type: 'projectile',
-    description: '벽에 닿을 때까지 날아가는 장거리 무기입니다. 강력한 피해를 주지만 조준이 까다롭습니다.',
-    skill: 'F 스킬: 화살 적중마다 스택 +1(최대 5), 사용 시 스택 수만큼 0.25초 간격 레일건 발사 · 쿨타임 8초',
+    closeRange: 120,            // 근접 감쇠 시작 거리
+    closeDamage: 20,           // 120px 이내 명중 시 피해
+    description: '벽에 닿을 때까지 날아가는 장거리 무기입니다. 멀수록 강하지만 120px 이내 근접에서는 피해가 20으로 약해집니다.',
+    skill: 'F: 화살 적중 스택(최대 5)을 소모해 스택 수만큼 레일건 발사(각 60 피해, 0.25초 간격) · 쿨타임 8초\nR: 3연발 화살(각 26 피해, 사거리 320px, 10도 분산) · 쿨타임 5초\nLMB: 강궁 화살(45 피해, 벽까지 관통 조준) · 쿨타임 4.5초',
     color: '#a3ff45'
   },
   spear: {
     name: '창',
-    damage: 17,
-    maxHp: 100,
+    damage: 20,
+    maxHp: 105,
     cooldown: 500,
     moveSpeed: 1,
-    range: 120,
+    range: 130,
     width: 16,     // Width of straight thrust box
     type: 'melee_line',
-    description: '직선으로 가하는 찌르기 공격입니다. 사거리가 길고 좌우 범위가 좁습니다.',
-    skill: 'F 스킬: 벽까지 즉시 투창 후 돌아오며 닿는 적 전체에게 35 피해 · 쿨타임 회수 후 2초',
+    tipRange: 30,              // 선단 명중 구간(사거리 끝 30px)
+    tipDamage: 28,
+    tipSlowMs: 500,
+    description: '직선으로 가하는 찌르기 공격입니다. 사거리가 길고 좌우가 좁으며, 끝 30px(선단)에 맞히면 28 피해 + 둔화로 거리를 다시 벌립니다.',
+    skill: 'F: 벽까지 즉시 투창 후 회수, 왕복 경로의 적에게 35 피해 · 회수 후 쿨타임 2초\nR: 꿰뚫기(28 피해, 사거리 170px, 넉백) · 쿨타임 4.5초\nLMB: 돌진 찌르기(32 피해, 사거리 150px, 넉백) · 쿨타임 4.5초',
     color: '#ffa345'
   },
   gauntlet: {
-    name: '건틀릿',
-    damage: 16,            // balance: 19→16 (DPS 79→67) — was a clear outlier (+40%
-                           // over the next cluster) and overlapped guardian's niche
+    name: '대가위',
+    damage: 15,
     maxHp: 110,
-    cooldown: 240,
+    cooldown: 220,
     moveSpeed: 1.3,
     range: 58,
     width: 24,
     punchConvergeOffset: 8,
     type: 'melee_line',
-    description: '쉴 새 없는 연속 펀치 공격입니다. 사거리는 극도로 짧지만 공격 속도가 무시무시합니다.',
-    skill: 'F 스킬: 4초간 공격이 창처럼 직선으로 뻗어 사거리 115px로 늘어납니다(피해 20) · 쿨타임 버프 종료 후 7초',
+    uppercutEvery: 4,         // 같은 적 4타째
+    uppercutDamage: 25,
+    uppercutKnockback: 30,
+    description: '쉴 새 없는 연속 펀치 무기입니다. 사거리는 극도로 짧지만 공속이 무시무시하며, 같은 적 4타째 어퍼컷으로 25 피해 + 넉백을 줍니다.',
+    skill: 'F: 4초간 직선 찌르기 강화(20 피해, 사거리 115px, 폭 22px) · 종료 후 쿨타임 7초\nR: 충격파 펀치(24 피해, 360도, 0.26초 기절, 큰 넉백) · 쿨타임 4.2초\nLMB: 전진 펀치(30 피해, 사거리 94px, 돌진+넉백) · 쿨타임 3.6초',
     color: '#ff45db'
   },
   greatsword: {
@@ -85,8 +93,8 @@ export const Weapons = {
     angle: 210,
     fixedSwingDirection: 1,
     type: 'melee_arc',
-    description: '평타 없이 F 스킬 차징으로만 공격하는 중량 무기입니다. 차징 시간에 따라 피해량이 달라집니다.',
-    skill: 'F 홀드: 최대 1초 예열 후 넓은 강베기로 1~70 피해를 줍니다.',
+    description: '평타 없이 F 차징으로만 공격하는 중량 무기입니다. 차징 시간에 따라 15~75 피해를 주고, 풀차징(1초) 명중 시 둔화까지 겁니다.',
+    skill: 'F: 홀드 최대 1초 차징 후 강베기(15~75 피해, 풀차징 시 0.8초 둔화) · 쿨타임 0.8초\nR: 내려찍기(42 피해 + 충격파 34, 0.45초 기절, 넉백) · 쿨타임 5초\nLMB: 묵직한 직선 베기(58 피해, 사거리 165px, 지연 타격+넉백) · 쿨타임 6초',
     color: '#8bd3ff'
   },
   scythe: {
@@ -100,33 +108,35 @@ export const Weapons = {
     innerRange: 52,
     angle: 190,
     pull: 24,
+    sweetBleed: true,          // 바깥날 명중 시 출혈
     fixedSwingDirection: 1,
     type: 'melee_sweet_arc',
     hitMode: 'melee_blade_sweep',  // hit along the swept blade, like the greatsword
     bladeHalfWidth: 16,
-    description: '안쪽보다 바깥날이 강한 초승달 공격입니다. 바깥쪽에 맞은 적은 끌려옵니다.',
-    skill: 'F 스킬: 더 넓은 수확 베기로 바깥날 피해와 끌어당김을 강화합니다.',
+    description: '안쪽보다 바깥날이 강한 초승달 공격입니다. 바깥날에 맞은 적은 끌려오며 출혈을 입습니다.',
+    skill: 'F: 수확 베기 강화(안쪽 24, 바깥날 46 피해, 사거리 130px, 끌어당김 48) · 쿨타임 6.5초\nR: 넓은 수확(안쪽 20, 바깥날 42 피해, 260도, 끌어당김 64) · 쿨타임 5.2초\nLMB: 전진 수확(안쪽 22, 바깥날 40 피해, 돌진+끌어당김) · 쿨타임 4.4초',
     color: '#d946ef'
   },
   dagger: {
     name: '단검',
-    damage: 14,
+    damage: 13,
     maxHp: 90,
     cooldown: 300,
     moveSpeed: 1.35,
     range: 58,
     width: 1,
-    critDamage: 20,
+    backstabDamage: 22,        // 등 뒤 90° 명중
+    backstabAngle: 90,
+    backstabBleed: true,
     hitCooldownRefundMs: 40,
     type: 'melee_precise_line',
-    description: '레이피어처럼 얇은 직선 판정으로 빠르게 찌르는 암살 무기입니다.',
-    skill: 'F 스킬: 가장 가까운 적과 0.7초간 사슬을 잇고, 원 타이밍에 F를 누르면 배후 공격으로 70 피해를 줍니다.',
+    description: '얇은 직선 판정의 암살 무기입니다. 정면은 약하지만, 대상의 등 뒤 90°에서 찌르면 22 피해 + 출혈을 입힙니다. 포지셔닝이 전부입니다.',
+    skill: 'F: 가까운 적과 QTE 사슬 연결, 타이밍 성공 시 배후 공격 70 피해(실패 시 자해 10+기절) · 쿨타임 5초\nR: 처형 찌르기(18 피해, 배후/중심 44 피해, 긴 돌진) · 쿨타임 3.6초\nLMB: 암습 돌진(16 피해, 배후/중심 38 피해, 돌진) · 쿨타임 3.2초',
     color: '#f8fafc'
   },
   rapier: {
     name: '레이피어',
     damage: 20,
-    critDamage: 24,
     maxHp: 100,
     cooldown: 430,
     moveSpeed: 1.15,
@@ -135,52 +145,41 @@ export const Weapons = {
     hitCooldownRefundMs: 120,
     missPenaltyMs: 150,
     type: 'melee_precise_line',
-    description: '1px짜리 바늘 같은 찌르기 무기입니다. 평타 5타째에 강하게 내지르고, 명중 시 템포가 빨라집니다.',
-    skill: 'F 스킬: 5초간 연격 태세 — 공속·사거리·명중 환급 강화, 빗나감 패널티 제거 · 쿨타임 버프 종료 후 6초',
+    description: '바늘 같은 찌르기 무기입니다. 5타째 피니셔로 30 피해 + 둔화를 넣고, 명중 시 템포가 빨라지는 리듬형입니다.',
+    skill: 'F: 5초간 연격 태세(공속 250ms, 사거리 105px, 폭 6px, 명중 환급 180ms, 빗나감 패널티 제거) · 종료 후 쿨타임 6초\nR: 리포스트 찌르기(22 피해, 중심 48 피해, 돌진+명중 환급) · 쿨타임 3.8초\nLMB: 정밀 돌진(20 피해, 중심 42 피해, 사거리 132px) · 쿨타임 3.6초',
     color: '#facc15'
   },
   hammer: {
     name: '망치',
-    damage: 36,
-    maxHp: 145,
-    cooldown: 1150,
-    moveSpeed: 0.75,
+    damage: 34,
+    maxHp: 150,
+    cooldown: 1100,
+    moveSpeed: 0.78,
     range: 78,
     innerRange: 36,
     angle: 360,
     knockback: 68,
+    onHitSlowMs: 1000,         // 평타 명중 시 1초 둔화 — 다음 타를 보장
     type: 'melee_slam',
-    description: '묵직한 원형 내려찍기 무기입니다. 맞은 적을 크게 밀어냅니다.',
-    skill: 'F 스킬: 1초 예열 후 점점 커지는 충격파 3연발 (피해 20·40·52, 스턴 동반). 시전~종료까지 평타 불가 · 쿨타임 8.5초',
+    description: '묵직한 원형 내려찍기 무기입니다. 맞은 적을 크게 밀어내고 1초간 둔화시켜, 느린 만큼 적을 묶어 다음 타를 보장합니다.',
+    skill: 'F: 1초 예열 후 충격파 3연발(피해 20/40/52, 반경 60/123/156, 기절 동반) · 쿨타임 8.5초\nR: 강타(38 피해 + 충격파 30, 0.65초 기절, 큰 넉백) · 쿨타임 6.2초\nLMB: 짧은 내려찍기(32 피해 + 충격파 24, 0.42초 기절) · 쿨타임 5.2초',
     color: '#fb923c'
   },
-  matchlock: {
-    name: '화승총',
-    damage: Infinity,       // 확정킬(즉사) — actual hit resolves via SkillConfig.matchlock
-    maxHp: 80,
-    cooldown: 10000,        // F-triggered only (automaticAttack false)
-    automaticAttack: false,
-    moveSpeed: 0.9,
-    range: Infinity,
-    speed: 50000,           // label only — fires as an instant hitscan
-    type: 'projectile',     // draws an aim line to the wall as the preview
-    description: 'F 키로 직선상의 첫 적을 즉사시키는 화기입니다. 조준선이 닿으면 즉시 처치하지만 쿨타임이 깁니다.',
-    skill: 'F 키: 조준 직선상의 첫 적을 즉사(확정킬) · 쿨타임 10초',
-    color: '#ef4444'
-  },
   katana: {
-    name: '카타나',
-    damage: 24,
+    name: '커틀레스',
+    damage: 18,
     maxHp: 100,             // 검(120)보다 낮은 체력으로 역할 분리
-    cooldown: 430,          // 검(550)보다 빠른 평타
+    cooldown: 400,          // 검(520)보다 빠른 평타
     moveSpeed: 1.2,
     range: 70,
     angle: 110,
+    chainHits: 3,             // 같은 적 3타째부터
+    chainDamage: 24,
     type: 'melee_arc',
     hitMode: 'melee_blade_sweep',
     bladeHalfWidth: 12,
-    description: '검보다 빠르게 휘두르지만 체력이 낮은 쾌속 도검입니다. 빠른 평타와 발도술로 압박합니다.',
-    skill: 'F: 기존 2회 베기 그대로 ·  R 홀드: 1초간 발도술 차징 후 전방 40px 폭 직선을 베어 80 피해',
+    description: '빠르게 휘두르는 쾌속 도검입니다. 같은 적에게 연속 명중하면 3타째부터 피해가 24로 오르는 연참형 — 첫 교환은 검보다 약하고 들러붙으면 강합니다.',
+    skill: 'F: 전방 돌진 2연속 베기(직격 40, 검기 30, 총 돌진 150px) · 쿨타임 7초\nR: 홀드 1초 발도술 차징 후 직선 베기(70 피해, 사거리 150px, 출혈) · 쿨타임 3초\nLMB: 전진 일격(44 피해, 사거리 132px, 넉백) · 쿨타임 3.8초',
     color: '#f43f5e'
   },
   magicstaff: {
@@ -193,12 +192,12 @@ export const Weapons = {
     range: Infinity,
     speed: 540,             // shown as cast speed
     type: 'projectile',     // idle preview draws the aim line
-    description: '세 가지 주문을 상황에 맞게 따로 쓰는 마법 지팡이입니다.',
-    skill: 'F: 파이어볼 발사 ·  좌클릭: 조준 지점에 아이스 샤드 ·  R: 자가 회복  (주문마다 개별 쿨타임 2초)',
+    description: '세 가지 주문을 상황에 맞게 쓰는 마법 지팡이입니다. 파이어볼은 화상, 아이스 샤드는 둔화를 겁니다.',
+    skill: 'F: 파이어볼(직격 32 + 화상 6/s 3초) · 쿨타임 2초\nR: 생명 결속으로 자가 회복 25 · 쿨타임 6초\nLMB: 지정 위치에 아이스 샤드 4발(각 14 피해 + 1.5초 둔화) · 쿨타임 2초',
     color: '#a855f7'
   },
   sniper: {
-    name: '스나이퍼',
+    name: '강궁',
     damage: Infinity,       // 즉사 (actual shot resolves as a 9999 hitscan)
     maxHp: 90,
     cooldown: 2000,
@@ -207,100 +206,102 @@ export const Weapons = {
     range: Infinity,
     speed: Infinity,        // instant hitscan
     type: 'projectile',     // idle preview draws the aim line
-    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 저격총입니다. F로 0.5초간 조준선을 노출한 뒤 직선상 첫 적을 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
-    skill: 'F: 0.5초 조준선 노출(텔레그래프) 후 직선상 첫 적 즉사 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)',
-    color: '#22c55e'
+    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 초강력 활입니다. F로 0.5초간 시위를 당겨 조준선을 노출한 뒤 직선상 첫 적을 일격에 꿰뚫고(즉사), R로 지정 위치에 순간이동합니다.',
+    skill: 'F: 0.5초 시위 당김(텔레그래프) 후 직선상 첫 적 즉사 · 쿨타임 2초\nR: 지정 위치로 순간이동(현재 위치 기준 최대 1000px, 맵 밖 이동 불가) · 쿨타임 1.5초\nLMB: 즉발 저격(55 피해, 벽까지) · 쿨타임 6초',
+    color: '#c9a227'
   },
   chakram: {
-    name: '차크람',
-    damage: 22,             // applied once per leg (outbound + return) per target
+    name: '부메랑',
+    damage: 26,             // applied once per leg (outbound + return) per target
     maxHp: 100,
-    cooldown: 900,          // measured from when the disk returns to hand
+    cooldown: 750,          // measured from when the disk returns to hand
     moveSpeed: 1.1,
     range: 280,             // outbound distance before it boomerangs back
     speed: 640,             // outbound flight speed (px/s)
+    wallReflect: 1,         // bounces off a wall once before returning (extra hit chance)
     type: 'projectile',
     projectileKind: 'chakram',
-    description: '던지면 날아갔다가 부메랑처럼 돌아오는 원반입니다. 나가는 길과 돌아오는 길 양쪽에 피해를 주지만, 원반이 떠 있는 동안은 비무장 상태가 됩니다.',
-    skill: 'F 스킬: 부채꼴 3방향으로 동시에 차크람을 던집니다(각 18 피해) · 쿨타임 6초',
-    color: '#38bdf8'
+    description: '자동으로 날아갔다 돌아오는 원반(벽 1회 반사). 원반이 떠 있는 동안은 비무장.',
+    skill: 'F: 부채꼴 3방향 차크람 투척(각 22 피해 + 출혈) · 쿨타임 4.5초\nR: 3연발 차크람(각 18 피해, 적 투사체 상쇄) · 쿨타임 0.7초\nLMB: 맴돌이 원반(1.5초 공전, 접촉 14 피해, 반경 46px) · 쿨타임 6초',
+    color: '#c2cad6'
   },
   pistols: {
-    name: '쌍권총',
-    damage: 9,
+    name: '쇠뇌',
+    damage: 11,
     maxHp: 90,
-    cooldown: 200,          // rapid fire
+    cooldown: 180,          // rapid fire
     moveSpeed: 1.25,        // full speed while shooting (no move penalty)
-    range: 260,             // bullets vanish past this distance
+    range: 290,             // bullets vanish past this distance
     speed: 520,             // projectile speed (px/s)
-    spreadDeg: 4,           // slight per-shot spread → weak at max range
+    spreadDeg: 3,           // slight per-shot spread → weak at max range
     type: 'projectile',
     projectileKind: 'pistol',
-    description: '사거리가 제한된 빠른 탄을 연사하는 유일한 일반 총기입니다. 이동 패널티 없이 무빙샷이 가능하지만, 단발 화력이 낮고 탄퍼짐 탓에 최대 사거리에서는 명중률이 떨어집니다.',
-    skill: 'F 스킬: 0.6초간 8발 부채꼴 난사 후 뒤로 짧게 점프(이탈) · 쿨타임 6초',
+    description: '사거리 제한된 빠른 탄을 자동 연사하는 총기. 이동 패널티 없이 무빙샷이 강하지만 단발 화력이 낮고 최대 사거리 명중률이 떨어집니다.',
+    skill: 'F: 난사(0.6초간 10발, 70도 부채꼴, 각 11 피해) 후 90px 후퇴 · 쿨타임 5초\nR: 조준 사격(0.4초 예고 후 관통 26 피해, 사거리 520px) · 쿨타임 2.5초\nLMB: 구르기 장전(무적 회피 + 2초간 연사 속도 증가) · 쿨타임 6초',
     color: '#fb7185'
   },
   guardian: {
-    name: '수호 블레이드',
-    damage: 16,             // orbit contact damage (per target, re-hit every 500ms)
+    name: '디펜더',
+    damage: 18,             // orbit contact damage (per target, re-hit every 400ms)
     maxHp: 110,
     cooldown: 500,          // unused (no manual attack) but kept for the stats card
     automaticAttack: false, // damage comes from the orbiting blades, not a swing
     moveSpeed: 1.2,
     range: 55,              // orbit radius == effective reach
     type: 'orbit',
-    orbitCount: 2,
-    orbitRadius: 55,
+    orbitCount: 3,
+    orbitRadius: 60,
     orbitPeriodMs: 1100,    // one full revolution
-    rehitMs: 500,           // min gap between hits on the same target
+    rehitMs: 400,           // min gap between hits on the same target
     bladeRadius: 9,
-    description: '칼날 두 개가 몸 주위를 공전하며 닿는 적을 자동으로 벱니다. 조준이 없어 무빙과 거리 조절이 전부이며, 사거리가 몸 둘레뿐이라 긴 사거리 무기에 접근하기 어렵습니다.',
-    skill: 'F 스킬: 칼날 2개를 바깥으로 발사(각 24 피해)했다가 회수하며, 회수 전까지 비무장 · 쿨타임 5초',
+    description: '칼날 3개가 몸 주위를 공전하며 닿는 적을 자동으로 벱니다(조준 없음). 사거리가 몸 둘레뿐이라 긴 사거리 무기엔 접근이 까다롭습니다.',
+    skill: 'F: 수호 태세(1.5초간 공전 속도 1.8배, 반경 +16px, 적 투사체 1개 차단) · 쿨타임 6초\nR: 칼날 사출(칼날 전부 발사, 각 24 피해, 사거리 200px) · 쿨타임 4초\nLMB: 추적 칼날(가까운 적 1.5초 추적, 14 피해, 0.4초 재타격 간격) · 쿨타임 6초',
     color: '#2dd4bf'
   },
   harpoon: {
     name: '작살',
-    damage: 12,
+    damage: 16,
     maxHp: 105,
     cooldown: 1100,
     moveSpeed: 1.0,
-    range: 200,             // throw distance
+    range: 230,             // throw distance
     speed: 700,
     type: 'projectile',
     projectileKind: 'harpoon',
-    description: '중거리로 작살을 던져 명중한 적을 자신 앞으로 끌어옵니다. 끌어온 직후 짧은 경직을 주지만 본인 평타가 약해, 마무리할 다음 수가 필요한 시동기입니다.',
-    skill: 'F 스킬: 조준 방향의 적 또는 벽으로 자신이 끌려가는 이동기(피해 없음) · 쿨타임 5초',
-    color: '#60a5fa'
+    description: '자동으로 작살을 던져 명중한 적을 앞으로 끌어옵니다(경직 0.4초+둔화). 본인 평타가 약해 마무리 수가 필요한 시동기.',
+    skill: 'F: 당겨가기(조준 방향 적/벽으로 최대 360px 이동, 도착 반경 80px 적 0.6초 둔화) · 쿨타임 4초\nR: 갈고리 마무리(30 피해, 사거리 74px, 넉백) · 쿨타임 1초\nLMB: 사슬 휘감기(8 피해, 사거리 92px, 0.5초 기절) · 쿨타임 7초',
+    color: '#9aa2ad'
   },
   minebag: {
     name: '지뢰 가방',
-    damage: 12,
+    damage: 14,
     maxHp: 115,
-    cooldown: 500,
+    cooldown: 450,
     moveSpeed: 1.15,
     range: 55,
     angle: 90,
     type: 'melee_arc',
-    description: '평타는 약한 근접 베기지만, F로 지뢰를 깔아 길목을 장악하는 두뇌형 무기입니다. 정면 교전이 가장 약하니 설치할 틈을 만들며 싸워야 합니다.',
-    skill: 'F 스킬: 발밑에 지뢰 설치(1초 후 활성화, 폭발 38·반경 60, 최대 3개) · 설치 쿨타임 2.5초',
+    description: '평타는 약한 근접 베기. 지뢰를 깔아 길목을 장악하는 두뇌형 무기로, 정면 교전이 가장 약합니다.',
+    skill: 'F: 원격 기폭(설치한 지뢰 전부 즉시 폭발, 반경 60px, 42 피해+둔화) · 쿨타임 4초\nR: 지뢰 설치(1초 후 활성, 최대 3개) · 쿨타임 2.5초\nLMB: 예광 지뢰(적에게 점착, 2초 후 30 피해+0.5초 기절) · 쿨타임 8초',
     color: '#f59e0b'
   },
   flamethrower: {
-    name: '화염방사기',
-    damage: 6,              // per tick (5 ticks/s → DPS 30)
+    name: '화염 지팡이',
+    damage: 7,              // per tick (5 ticks/s → DPS 35)
     maxHp: 130,
     cooldown: 200,          // tick reference (no manual swing)
     automaticAttack: false, // sprays continuously via its own updater
     moveSpeed: 0.95,        // while recharging / not spraying
     sprayMoveSpeed: 0.55,   // dragged down while spraying
-    range: 90,
+    range: 105,
     angle: 60,              // cone width (degrees)
     type: 'cone',
     tickMs: 200,
-    fuelMs: 3000,           // 3s of continuous spray
+    burn: true,             // spray refreshes 화상 on hit
+    fuelMs: 3500,           // 3.5s of continuous spray
     rechargeMs: 2000,       // 2s to refill once fully spent
-    description: '전방 부채꼴에 불을 지속 분사하는 근접 무기입니다. 조준이 후해 모바일에 강하지만 사거리가 짧고 분사 중에는 굼떠지며, 연료가 바닥나면 재충전 동안 무장 해제됩니다.',
-    skill: 'F 스킬: 전방에 2초간 타오르는 화염 장판을 던집니다(초당 10 피해) · 쿨타임 7초',
+    description: '전방 부채꼴에 불을 자동 분사하는 근접 무기(명중 시 화상). 조준이 후하지만 사거리가 짧고 분사 중 굼뜨며, 연료가 바닥나면 재충전 동안 무장 해제.',
+    skill: 'F: 화염 장판(2.5초, 반경 55px, 초당 12 피해+화상) · 쿨타임 6초\nR: 점화(전방 88px 화염탄 폭발, 반경 50px, 28 피해+화상) · 쿨타임 2.5초\nLMB: 열기 방패(1.5초간 받는 피해 30% 감소 + 접촉 화상) · 쿨타임 8초',
     color: '#fb923c'
   }
 };
@@ -354,18 +355,19 @@ export const SkillConfig = {
     returnMs: 1800
   },
   chakram: {
-    cooldownMs: 6000,
+    cooldownMs: 4500,
     fanCount: 3,           // simultaneous discs
     fanSpreadDeg: 34,      // total angular spread of the fan
-    damage: 18,            // per disc, per leg
+    damage: 22,            // per disc, per leg
+    bleed: true,           // direct hits bleed
     range: 280,
     speed: 640,
     returnSpeed: 720
   },
   pistols: {
-    cooldownMs: 6000,
-    burstCount: 8,
-    burstMs: 600,          // 8 shots spread across 0.6s
+    cooldownMs: 5000,
+    burstCount: 10,
+    burstMs: 600,          // shots spread across 0.6s
     fanSpreadDeg: 70,      // total fan width of the barrage
     damage: 11,            // per barrage bullet
     speed: 560,
@@ -373,33 +375,53 @@ export const SkillConfig = {
     hopDistance: 90        // backward escape hop after the barrage
   },
   guardian: {
-    cooldownMs: 5000,
-    launchDamage: 24,      // per launched blade, per leg
-    launchRange: 200,      // outward flight before the blade returns
-    launchSpeed: 560
+    // F 수호 태세 (buff): faster/wider orbit + blocks one incoming projectile.
+    cooldownMs: 6000,
+    stanceMs: 1500,
+    stanceSpeedMul: 1.8,
+    stanceRadiusBonus: 16,
+    // R 사출 (launch) params, reused by the alt aux.
+    launchDamage: 24,
+    launchRange: 200,
+    launchSpeed: 560,
+    // LMB 추적 칼날 (homing) params.
+    homingDamage: 14,
+    homingDurationMs: 1500,
+    homingSpeed: 360,
+    homingHitCooldownMs: 400
   },
   harpoon: {
-    cooldownMs: 5000,
+    cooldownMs: 4000,      // F 당겨가기 self-pull
     pullRange: 360,        // max self-pull distance toward enemy/wall
     stopGap: 32,           // stop short of the contact point
     pullToFront: 50,       // basic-attack pulls the target this far in front
-    slowMs: 300            // brief drag on a hooked target (not a stun)
+    slowMs: 400,           // drag on a hooked target
+    pullStunMs: 400,       // brief 경직 when the hook lands
+    arrivalSlowMs: 600,    // F: slow enemies near the landing spot
+    arrivalRadius: 80
   },
   minebag: {
-    cooldownMs: 2500,      // place cooldown
+    cooldownMs: 2500,      // R place cooldown
+    detonateCooldownMs: 4000, // F 원격 기폭
     armMs: 1000,           // delay before a mine becomes live
     blastRadius: 60,
     triggerRadius: 46,     // enemy proximity that detonates an armed mine
-    damage: 38,
-    maxMines: 3            // per player; placing a 4th removes the oldest
+    damage: 42,
+    blastSlowMs: 600,      // 둔화 applied to anyone caught in a blast
+    maxMines: 3,           // per player; placing a 4th removes the oldest
+    tracerFuseMs: 2000,    // LMB 예광 지뢰 fuse
+    tracerDamage: 30,
+    tracerStunMs: 500,
+    tracerStickRange: 220  // how far the LMB mine looks for an enemy to stick to
   },
   flamethrower: {
-    cooldownMs: 7000,
+    cooldownMs: 6000,
     patchRange: 76,        // how far in front the patch lands
     patchRadius: 55,
-    patchMs: 2000,         // burn duration
+    patchMs: 2500,         // burn duration
     patchTickMs: 250,      // damage cadence
-    patchDamage: 2.5       // per tick (≈10/s)
+    patchDamage: 3,        // per tick (≈12/s)
+    burn: true             // patch ticks also refresh 화상
   },
   gauntlet: {
     cooldownMs: 7000,      // starts AFTER the buff ends
@@ -413,9 +435,10 @@ export const SkillConfig = {
     cooldownMs: 800,
     chargeMaxMs: 1000,
     chargeThreshold: 0.5,
-    minDamage: 1,
-    thresholdDamage: 35,
-    damage: 70,
+    minDamage: 15,         // bumped from 1 so a short charge is still a real option
+    thresholdDamage: 38,
+    damage: 75,
+    fullChargeSlowMs: 800, // full-charge hit also slows
     // Hit only along the swept blade (its arc band + blade thickness), not the
     // whole fan — the visual cleave arc and the hit test now match. The reach is
     // scaled by charge (see _releaseGreatswordCharge) so a half charge cuts only
@@ -474,12 +497,6 @@ export const SkillConfig = {
       { range: 156, damage: 52, stunMs: 1100, knockback: 100 }
     ]
   },
-  matchlock: {
-    cooldownMs: 10000,
-    telegraphMs: 500,       // aim-line preview before the shot fires
-    damage: 9999,           // instakill
-    speed: 50000            // label only — instant hitscan
-  },
   katana: {
     cooldownMs: 7000,
     dashDistance: 150,      // total forward lunge across the two slashes
@@ -493,7 +510,7 @@ export const SkillConfig = {
     attackLockMs: 250,
     iaijutsuCooldownMs: 3000,
     iaijutsuChargeMs: 1000,
-    iaijutsuDamage: 80,
+    iaijutsuDamage: 70,    // 80→70, now also applies bleed (see _releaseKatanaIaijutsu)
     iaijutsuRange: 150,
     iaijutsuWidth: 40
   },
@@ -594,8 +611,8 @@ export const ComboConfig = {
       type: 'melee_precise_line',
       range: 130,
       width: 6,
-      damage: 24,
-      critDamage: 36,
+      damage: 30,          // 5타째 피니셔
+      onHitSlowMs: 500,    // + 0.5초 둔화
       knockback: 30,
       cooldown: 430
     }
@@ -619,9 +636,9 @@ export const ComboConfig = {
 // --- Magic staff spell tuning ------------------------------------------------
 export const MagicConfig = {
   cooldownMs: 2000,
-  fireball:  { cooldownMs: 2000, damage: 40, speed: 540, radius: 9, burnDps: 2, burnDurationMs: 4000 },
-  iceShard:  { cooldownMs: 2000, count: 4, damage: 12, speed: 740, radius: 6, intervalMs: 120 },
-  lifebound: { cooldownMs: 2000, heal: 30 }
+  fireball:  { cooldownMs: 2000, damage: 32, speed: 540, radius: 9, burnDps: 6, burnDurationMs: 3000, slowMs: 0 },
+  iceShard:  { cooldownMs: 2000, count: 4, damage: 14, speed: 740, radius: 6, intervalMs: 120, slowMs: 1500 },
+  lifebound: { cooldownMs: 6000, heal: 25 }
 };
 
 // --- R / LMB auxiliary skill tuning ----------------------------------------
@@ -629,6 +646,7 @@ export const MagicConfig = {
 //   R: sniper targeted blink, magicstaff lifebound, katana iaijutsu
 //   LMB: magicstaff targeted ice shard
 // Everything listed here uses the generic auxiliary skill executor in Game.js.
+// `alt` is bound to R. `target` is bound to LMB / target-cast.
 export const AuxSkillConfig = {
   sword: {
     alt: { label: 'SPIN', cooldownMs: 4500, type: 'melee_circle', damage: 22, range: 74, angle: 360, knockback: 22 },
@@ -670,15 +688,49 @@ export const AuxSkillConfig = {
     alt: { label: 'CRUSH', cooldownMs: 6200, type: 'melee_slam', damage: 38, shockwaveDamage: 30, range: 118, innerRange: 52, knockback: 105, stunMs: 650 },
     target: { cooldownMs: 5200, type: 'melee_slam', damage: 32, shockwaveDamage: 24, range: 92, innerRange: 40, knockback: 70, stunMs: 420 }
   },
-  matchlock: {
-    alt: { label: 'BAYONET', cooldownMs: 8000, type: 'melee_line', damage: 36, range: 105, width: 24, knockback: 58 },
-    target: { cooldownMs: 6500, type: 'hitscan', damage: 48, range: Infinity }
-  },
   katana: {
     target: { cooldownMs: 3800, type: 'melee_heavy_line', damage: 44, range: 132, width: 26, lungeDistance: 42, knockback: 42 }
   },
   sniper: {
     target: { cooldownMs: 6000, type: 'hitscan', damage: 55, range: Infinity }
+  },
+  // --- New-weapon kits (Task 1 revised). 'alt' = R, 'target' = LMB. ----------
+  chakram: {
+    // 쳐내기: hurl 3 discs in a tight forward burst (non-disarming) that also
+    // deflects the nearest incoming enemy projectile.
+    alt: { label: 'TRIPLE', cooldownMs: 700, type: 'chakram_throw', count: 3, spreadDeg: 18, damage: 18, range: 240, speed: 680, deflectProjectile: true },
+    // 맴돌이: a defensive disc orbits the player for a short time (bespoke).
+    target: { label: 'ORBIT', cooldownMs: 6000, type: 'chakram_orbit', durationMs: 1500, orbitDamage: 14, orbitRadius: 46, hitCooldownMs: 400 }
+  },
+  flamethrower: {
+    // 점화: a forward fire bomb that bursts for AoE damage + burn.
+    alt: { label: 'IGNITE', cooldownMs: 2500, type: 'fire_bomb', range: 88, radius: 50, damage: 28, burn: true },
+    // 열기 방패: a brief 30% damage shield that burns adjacent enemies (bespoke).
+    target: { label: 'SHIELD', cooldownMs: 8000, type: 'heat_shield', durationMs: 1500, contactRadius: 34 }
+  },
+  harpoon: {
+    // 갈고리 마무리: a heavy short-range strike to finish a pulled target.
+    alt: { label: 'GAFF', cooldownMs: 1000, type: 'melee_line', damage: 30, range: 74, width: 24, knockback: 24 },
+    // 사슬 휘감기: a short chain lash that stuns for 0.5s.
+    target: { label: 'CHAIN', cooldownMs: 7000, type: 'melee_line', damage: 8, range: 92, width: 18, stunMs: 500 }
+  },
+  guardian: {
+    // 사출: launch all orbiting blades outward (bespoke; reuses _launchGuardianBlades).
+    alt: { label: 'LAUNCH', cooldownMs: 4000, type: 'guardian_launch' },
+    // 추적 칼날: detach one blade to home the nearest enemy (bespoke).
+    target: { label: 'SEEK', cooldownMs: 6000, type: 'guardian_homing' }
+  },
+  minebag: {
+    // 지뢰 설치 (moved from F): a proximity mine at the player's feet.
+    alt: { label: 'PLANT', cooldownMs: 2500, type: 'place_mine' },
+    // 예광 지뢰: a sticky/timed mine that fuses for 2s then bursts + stuns.
+    target: { label: 'TRACER', cooldownMs: 8000, type: 'tracer_mine' }
+  },
+  pistols: {
+    // 조준 사격: 0.4s aim, then a piercing shot (hits everyone in the line).
+    alt: { label: 'AIMED', cooldownMs: 2500, type: 'aimed_shot', windupMs: 400, damage: 26, range: 520, speed: 1100 },
+    // 구르기 장전: an iframe dodge roll + a 2s rapid-fire buff (bespoke).
+    target: { label: 'ROLL', cooldownMs: 6000, type: 'dodge_reload', reloadMs: 2000 }
   }
 };
 

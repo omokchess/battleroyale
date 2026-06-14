@@ -4,6 +4,7 @@
  */
 
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
+import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW, WEAPON_SPRITE_TUNE, WEAPON_TUNE_DEFAULT } from './SpriteAtlas.js';
 
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
@@ -21,11 +22,21 @@ const WEAPON_SPRITE_META = {
   magicstaff: { src: '/assets/weapons/magicstaff.png', scale: 0.62, anchorX: 0.2, anchorY: 0.5, angleOffset: 0 },
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
+const PROJECTILE_SPRITE_META = {
+  arrow: { src: '/assets/weapons/arrow.png', scale: 1.65, anchorX: 0.5, anchorY: 0.5, angleOffset: Math.PI / 4 }
+};
 const WEAPON_ASSET_VERSION = '20260609a';
 
 // The low-res "pixel filter" (Task 4) is disabled by user request — the world
 // renders crisp at full resolution. Flip to true to bring the chunky look back.
 const PIXEL_ART_ENABLED = false;
+
+// Fantasy lighting rule (Task 4-4): only arcane casts bloom. Effects of these
+// types keep their glow; every other combat effect (steel arcs, powder shots)
+// renders flat so it reads as physical rather than neon.
+const MAGIC_EFFECT_TYPES = new Set([
+  'explosion', 'lifebound_heal', 'icicle_load',
+]);
 
 // Only greatsword uses an idle angle offset; other idle weapons point at aim.
 const WEAPON_IDLE_POSE = {
@@ -52,6 +63,7 @@ export class Renderer {
     this.lastTime = Date.now();
     this.lastPlayersInfo = {};
     this.weaponSprites = {};
+    this.projectileSprites = {};
     this._glow = 1;     // shadowBlur multiplier — set to 0 by performance mode
     this._perf = false; // performance mode: glows + particles disabled
 
@@ -66,6 +78,16 @@ export class Renderer {
     this.offCtx = this.offscreen ? this.offscreen.getContext('2d') : null;
 
     this._initWeaponSprites();
+    this._initProjectileSprites();
+
+    // Ninja Adventure sprite atlas (Task 4). Loads async + fails soft: until it
+    // is ready (or if an asset 404s) every sprite draw falls back to the legacy
+    // shape rendering, so the game is always playable.
+    this.atlas = new SpriteAtlas('/assets/ninja');
+    this.atlas.load(SPRITE_MANIFEST).catch(() => {});
+    this._charTintCache = {};   // tinted body frames keyed by skin+color
+    this._charPrev = {};        // last positions, to detect movement for the walk cycle
+    this._charAnim = {};        // per-player walk frame state
   }
 
   _initWeaponSprites() {
@@ -77,6 +99,19 @@ export class Renderer {
       this.weaponSprites[key] = { image, meta, ready: false };
       image.onload = () => {
         this.weaponSprites[key].ready = true;
+      };
+    });
+  }
+
+  _initProjectileSprites() {
+    if (typeof Image === 'undefined') return;
+    Object.entries(PROJECTILE_SPRITE_META).forEach(([key, meta]) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = `${meta.src}?v=${WEAPON_ASSET_VERSION}`;
+      this.projectileSprites[key] = { image, meta, ready: false };
+      image.onload = () => {
+        this.projectileSprites[key].ready = true;
       };
     });
   }
@@ -133,7 +168,7 @@ export class Renderer {
     }
 
     // Clear Screen (dark beyond the arena walls)
-    ctx.fillStyle = '#0a0910';
+    ctx.fillStyle = '#0d0a06';
     ctx.fillRect(0, 0, cw, ch);
 
     const shake = typeof camera.getShakeOffset === 'function'
@@ -175,6 +210,8 @@ export class Renderer {
       this._drawPlayers(ctx, camera, cw, ch, gameState.players, localPlayerId, activeEffects, mapWidth, mapHeight, visualSettings);
       // Orbiting guardian blades (deterministic from time; suppressed while launched).
       this._drawGuardianOrbits(ctx, camera, cw, ch, gameState.players, gameState.projectiles, nowTime);
+      this._drawChakramOrbit(ctx, camera, cw, ch, gameState.players, nowTime);
+      this._drawHeatShields(ctx, camera, cw, ch, gameState.players, nowTime);
       // Flamethrower cones for anyone actively spraying.
       this._drawFlameCones(ctx, camera, cw, ch, gameState.players, nowTime);
     }
@@ -407,6 +444,57 @@ export class Renderer {
   }
 
   /**
+   * Small status-effect badges above a player (bleed/burn/slow/stun). Pixel
+   * icons with a dark outline so they read on any background.
+   */
+  _drawStatusIcons(ctx, bodyScr, p, radius) {
+    const active = [];
+    if (p.bleedTimeLeft > 0) active.push('bleed');
+    if (p.burnTimeLeft > 0) active.push('burn');
+    if (p.slowTimeLeft > 0) active.push('slow');
+    if (p.stunTimeLeft > 0) active.push('stun');
+    if (!active.length) return;
+
+    const s = 8;                  // icon box
+    const gap = 2;
+    const total = active.length * (s + gap) - gap;
+    let x = bodyScr.x - total / 2;
+    const y = bodyScr.y - radius - 40;
+    const blink = (Math.sin(Date.now() / 160) + 1) / 2;
+    ctx.save();
+    for (const kind of active) {
+      ctx.fillStyle = 'rgba(11,12,16,0.8)';
+      ctx.fillRect(x - 1, y - 1, s + 2, s + 2);  // dark backing for contrast
+      const cx = x + s / 2, cy = y + s / 2;
+      if (kind === 'bleed') {
+        ctx.fillStyle = '#c0392b';                // red droplet
+        ctx.beginPath(); ctx.arc(cx, cy + 1, 2.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx, cy - 3.5); ctx.lineTo(cx - 2.2, cy + 0.5); ctx.lineTo(cx + 2.2, cy + 0.5); ctx.closePath(); ctx.fill();
+      } else if (kind === 'burn') {
+        ctx.fillStyle = '#fb923c';                // flame
+        ctx.beginPath(); ctx.moveTo(cx, cy - 4); ctx.lineTo(cx + 3, cy + 3); ctx.lineTo(cx - 3, cy + 3); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(cx - 1, cy, 2, 3);
+      } else if (kind === 'slow') {
+        ctx.strokeStyle = '#67e8f9';              // snowflake
+        ctx.lineWidth = 1.3;
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI;
+          ctx.beginPath();
+          ctx.moveTo(cx - Math.cos(a) * 3.5, cy - Math.sin(a) * 3.5);
+          ctx.lineTo(cx + Math.cos(a) * 3.5, cy + Math.sin(a) * 3.5);
+          ctx.stroke();
+        }
+      } else { // stun
+        ctx.fillStyle = `rgba(250,204,21,${0.6 + 0.4 * blink})`; // blinking stars
+        for (const dx of [-2.5, 0, 2.5]) ctx.fillRect(cx + dx - 0.8, cy - 1.6, 1.6, 1.6);
+      }
+      x += s + gap;
+    }
+    ctx.restore();
+  }
+
+  /**
    * Floating pixel-font damage numbers that rise and fade above a character.
    * Color/size encode the hit tier; your own damage is always red so you can
    * tell at a glance that YOU got hit. Each number drifts on its own random
@@ -433,6 +521,7 @@ export class Renderer {
       if (tier === 'big') fill = '#ff9d3a';
       if (tier === 'lethal') fill = '#ff5d5d';
       if (d.isLocal) fill = '#ff5555';
+      if (d.dotColor) fill = d.dotColor; // bleed/burn tick color overrides
 
       const anchor = camera.toScreen(d.x, d.y, cw, ch);
       const rise = 14 + life * 30;                    // drift upward (screen px)
@@ -897,7 +986,7 @@ export class Renderer {
 
     // 4. Bow arrows trace stardust sparkling trails
     if (gameState.projectiles) {
-      const trailColors = { arrow: '#a3ff45', swordwave: '#45f3ff', thrownspear: '#ffa345' };
+      const trailColors = { arrow: '#a3ff45', swordwave: '#dce4ee', thrownspear: '#ffa345' };
       gameState.projectiles.forEach(proj => {
         if (!proj.isDead && Math.random() < 0.35) {
           this.particles.push({
@@ -961,78 +1050,135 @@ export class Renderer {
   }
 
   /**
-   * Draw modular pixelated grid background
+   * Draw the arena floor: a grassy field (Task 4).
+   *
+   * The grass is baked ONCE into an offscreen canvas at full world resolution
+   * (deterministic from world position, so every client renders the exact same
+   * field — no sync needed) and then blitted with the camera transform. Baking
+   * once keeps per-frame cost to a single scaled drawImage.
    */
-  // Arena floor: cobblestone tiles (medieval) laced with neon energy seams (modern).
   _drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight) {
     ctx.save();
-    const gridSize = 60;
-    const cell = gridSize * (camera.zoom || 1);
     const tl = camera.toScreen(0, 0, cw, ch);
     const br = camera.toScreen(mapWidth, mapHeight, cw, ch);
+    const dw = br.x - tl.x, dh = br.y - tl.y;
 
-    // Stone floor base.
-    ctx.fillStyle = '#1e1b26';
-    ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-
-    // Cobblestone tiles (checker-shaded), skipping off-screen ones.
-    const cols = Math.ceil(mapWidth / gridSize);
-    const rows = Math.ceil(mapHeight / gridSize);
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < cols; gx++) {
-        const p = camera.toScreen(gx * gridSize, gy * gridSize, cw, ch);
-        if (p.x > cw || p.x + cell < 0 || p.y > ch || p.y + cell < 0) continue;
-        ctx.fillStyle = (gx + gy) % 2 === 0 ? '#232029' : '#1a1822';
-        ctx.fillRect(p.x, p.y, cell + 1, cell + 1);
-      }
+    const grass = this._getGrassField(mapWidth, mapHeight);
+    if (grass) {
+      const prevSmooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;            // keep blades chunky when upscaled
+      ctx.drawImage(grass, 0, 0, grass.width, grass.height, tl.x, tl.y, dw, dh);
+      ctx.imageSmoothingEnabled = prevSmooth;
+    } else {
+      // SSR / no canvas: flat grass fill.
+      ctx.fillStyle = '#5a8f3c';
+      ctx.fillRect(tl.x, tl.y, dw, dh);
     }
 
-    const vline = (x, color, lw) => {
-      const a = camera.toScreen(x, 0, cw, ch), b = camera.toScreen(x, mapHeight, cw, ch);
-      ctx.strokeStyle = color; ctx.lineWidth = lw;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    };
-    const hline = (y, color, lw) => {
-      const a = camera.toScreen(0, y, cw, ch), b = camera.toScreen(mapWidth, y, cw, ch);
-      ctx.strokeStyle = color; ctx.lineWidth = lw;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    };
-
-    // Dark mortar seams between stones.
-    for (let x = 0; x <= mapWidth; x += gridSize) vline(x, '#141119', 2);
-    for (let y = 0; y <= mapHeight; y += gridSize) hline(y, '#141119', 2);
-
-    // Faint torch-gilded accent seams every 3rd line (warm gold, no neon).
-    const gild = this._hexToRGB('#c9a227', 0.10);
-    for (let x = 0; x <= mapWidth; x += gridSize * 3) vline(x, gild, 1);
-    for (let y = 0; y <= mapHeight; y += gridSize * 3) hline(y, gild, 1);
-
-    // Center heraldic emblem (crossed swords on a stone medallion).
+    // Center heraldic emblem (crossed swords) — a faint trampled-grass medallion.
     const ec = camera.toScreen(mapWidth / 2, mapHeight / 2, cw, ch);
     this._drawArenaEmblem(ctx, ec.x, ec.y, camera.zoom || 1);
 
     ctx.restore();
   }
 
-  // A faint floor crest: a square stone medallion with brass crossed swords.
+  /**
+   * Lazily bake (and cache) the grass field for the current map size. Baked at
+   * a fixed world->texel scale so large maps don't blow up memory, then upscaled
+   * at blit time. Deterministic: a position-seeded PRNG drives every tuft, so
+   * the field is identical on every client without any network sync.
+   */
+  _getGrassField(mapWidth, mapHeight) {
+    if (typeof document === 'undefined') return null;
+    const key = `${mapWidth}x${mapHeight}`;
+    if (this._grassKey === key && this._grassField) return this._grassField;
+
+    // ~1 texel per 1.5 world units keeps even a 2000px map under ~1.8M texels.
+    const scale = 1 / 1.5;
+    const tw = Math.max(1, Math.round(mapWidth * scale));
+    const th = Math.max(1, Math.round(mapHeight * scale));
+    const cv = this._grassField || document.createElement('canvas');
+    cv.width = tw; cv.height = th;
+    const g = cv.getContext('2d');
+
+    // mulberry32 PRNG — fast, deterministic, seeded per call.
+    let s = 0x9e3779b9 >>> 0;
+    const rng = () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
+    // 1) Base grass.
+    g.fillStyle = '#5a8f3c';
+    g.fillRect(0, 0, tw, th);
+
+    // 2) Patchy shading: 4px cells flipped between three green tones so the field
+    //    reads as a mosaic, not a flat slab.
+    const tones = ['#5a8f3c', '#4e7d34', '#6da04a'];
+    const cell = 4;
+    for (let y = 0; y < th; y += cell) {
+      for (let x = 0; x < tw; x += cell) {
+        const r = rng();
+        if (r < 0.62) continue;                 // most cells keep the base tone
+        g.fillStyle = tones[(r * 3) | 0];
+        g.fillRect(x, y, cell, cell);
+      }
+    }
+
+    // 3) Scattered blade flecks — short 1px highlights/shadows for texture.
+    const blades = Math.round(tw * th * 0.012);
+    for (let i = 0; i < blades; i++) {
+      const x = (rng() * tw) | 0;
+      const y = (rng() * th) | 0;
+      const r = rng();
+      g.fillStyle = r < 0.5 ? '#87b35c' : '#436b2c';
+      const h = 1 + ((rng() * 2) | 0);
+      g.fillRect(x, y, 1, h);
+    }
+
+    // 4) A few bare dirt patches for variety.
+    const patches = Math.max(3, Math.round((tw * th) / 90000));
+    for (let i = 0; i < patches; i++) {
+      const px = (rng() * tw) | 0;
+      const py = (rng() * th) | 0;
+      const pr = 6 + ((rng() * 10) | 0);
+      g.fillStyle = '#8a6a3f';
+      g.beginPath(); g.ellipse(px, py, pr, pr * 0.7, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#765a35';
+      g.beginPath(); g.ellipse(px, py, pr * 0.55, pr * 0.4, 0, 0, Math.PI * 2); g.fill();
+    }
+
+    // 5) Vignette so the field edges sink toward the dark walls.
+    const grd = g.createRadialGradient(tw / 2, th / 2, Math.min(tw, th) * 0.35,
+      tw / 2, th / 2, Math.max(tw, th) * 0.62);
+    grd.addColorStop(0, 'rgba(0,0,0,0)');
+    grd.addColorStop(1, 'rgba(20,30,12,0.45)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, tw, th);
+
+    this._grassField = cv;
+    this._grassKey = key;
+    return cv;
+  }
+
+  // A faint floor crest: trampled-grass medallion with brass crossed swords.
   _drawArenaEmblem(ctx, cx, cy, zoom) {
     ctx.save();
     const r = 40 * zoom;
-    ctx.fillStyle = 'rgba(15, 12, 22, 0.55)';
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    ctx.strokeStyle = this._hexToRGB('#3a3447', 0.8);
-    ctx.lineWidth = 3;
-    ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
-    ctx.strokeStyle = this._hexToRGB('#c9a227', 0.4);
+    // Lighter, trodden grass ring rather than a stone slab.
+    ctx.fillStyle = this._hexToRGB('#6da04a', 0.30);
+    ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = this._hexToRGB('#c9a227', 0.35);
     ctx.lineWidth = 2;
-    ctx.strokeRect(cx - r + 6, cy - r + 6, r * 2 - 12, r * 2 - 12);
+    ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.92, r * 0.78, 0, 0, Math.PI * 2); ctx.stroke();
 
-    ctx.shadowBlur = this._glow * 6;
-    ctx.shadowColor = '#c9a227';
     ctx.lineCap = 'round';
     const s = r * 0.58;
-    // Two blades.
-    ctx.strokeStyle = this._hexToRGB('#d4af37', 0.5);
+    // Two brass blades.
+    ctx.strokeStyle = this._hexToRGB('#d4af37', 0.45);
     ctx.lineWidth = 4 * zoom;
     ctx.beginPath(); ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s); ctx.stroke();
@@ -1059,12 +1205,12 @@ export class Renderer {
     if (br.x < cw) ctx.fillRect(br.x, tl.y, cw - br.x, ch - tl.y);
     if (br.y < ch) ctx.fillRect(0, br.y, cw, ch - br.y);
 
-    // Stone wall (thick) + lighter capstone edge.
+    // Stone wall (thick) + lighter capstone edge — warm castle masonry.
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#3a3447';
+    ctx.strokeStyle = '#5b5048';
     ctx.lineWidth = 8;
     ctx.strokeRect(tl.x, tl.y, w, h);
-    ctx.strokeStyle = '#4b4359';
+    ctx.strokeStyle = '#7a6b58';
     ctx.lineWidth = 2;
     ctx.strokeRect(tl.x - 3, tl.y - 3, w + 6, h + 6);
 
@@ -1091,12 +1237,12 @@ export class Renderer {
     ctx.restore();
   }
 
-  // A corner wall torch: iron sconce + flickering amber flame with neon-style glow.
+  // A corner wall torch: iron sconce + flickering amber flame with a warm glow.
   _drawTorch(ctx, x, y, now) {
     ctx.save();
-    ctx.fillStyle = '#2b2730';
+    ctx.fillStyle = '#2a2018';
     ctx.fillRect(x - 4, y - 4, 8, 8);
-    ctx.strokeStyle = '#5b5468';
+    ctx.strokeStyle = '#5b5044';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x - 4, y - 4, 8, 8);
     const flick = Math.sin(now / 90 + x * 0.5) * 2 + Math.sin(now / 47 + y) * 1;
@@ -1146,7 +1292,7 @@ export class Renderer {
         this._drawChakram(ctx, scr, zoom);
       } else if (p.kind === 'pistol') {
         this._drawPistolBullet(ctx, scr, angle, zoom);
-      } else if (p.kind === 'guardianblade') {
+      } else if (p.kind === 'guardianblade' || p.kind === 'guardianhoming') {
         this._drawGuardianBlade(ctx, scr, zoom);
       } else if (p.kind === 'harpoon') {
         this._drawHarpoon(ctx, scr, angle, zoom);
@@ -1159,6 +1305,8 @@ export class Renderer {
   }
 
   _drawArrow(ctx, scr, angle) {
+    if (this._drawProjectileSprite(ctx, 'arrow', scr, angle)) return;
+
     ctx.save();
     const length = 22;
 
@@ -1223,6 +1371,29 @@ export class Renderer {
     ctx.restore();
   }
 
+  _drawProjectileSprite(ctx, key, scr, angle) {
+    const sprite = this.projectileSprites?.[key];
+    if (!sprite?.ready || !sprite.image?.naturalWidth) return false;
+    const { meta, image } = sprite;
+    const size = Math.max(image.naturalWidth, image.naturalHeight) * (meta.scale || 1);
+
+    ctx.save();
+    const smoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(scr.x), Math.round(scr.y));
+    ctx.rotate(angle + (meta.angleOffset || 0));
+    ctx.drawImage(
+      image,
+      -size * (Number.isFinite(meta.anchorX) ? meta.anchorX : 0.5),
+      -size * (Number.isFinite(meta.anchorY) ? meta.anchorY : 0.5),
+      size,
+      size
+    );
+    ctx.imageSmoothingEnabled = smoothing;
+    ctx.restore();
+    return true;
+  }
+
   // Harpoon bolt: a barbed head with a trailing rope back along its path.
   _drawHarpoon(ctx, scr, angle, zoom) {
     const len = 20 * (0.7 + zoom * 0.3);
@@ -1230,7 +1401,7 @@ export class Renderer {
     const tailY = scr.y - Math.sin(angle) * len;
     ctx.save();
     // rope
-    ctx.strokeStyle = 'rgba(96,165,250,0.5)';
+    ctx.strokeStyle = 'rgba(150,130,96,0.55)';
     ctx.lineWidth = 2;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -1241,9 +1412,9 @@ export class Renderer {
     // head
     ctx.translate(scr.x, scr.y);
     ctx.rotate(angle);
-    ctx.shadowColor = '#60a5fa';
-    ctx.shadowBlur = this._glow ? 6 : 0;
-    ctx.fillStyle = '#bfdbfe';
+    ctx.shadowColor = '#9aa2ad';
+    ctx.shadowBlur = this._glow ? 4 : 0;
+    ctx.fillStyle = '#c2cad6';
     ctx.beginPath();
     ctx.moveTo(7, 0); ctx.lineTo(-3, -5); ctx.lineTo(0, 0); ctx.lineTo(-3, 5);
     ctx.closePath();
@@ -1300,6 +1471,88 @@ export class Renderer {
   }
 
   // Two blades orbiting each guardian player, unless their blades are launched.
+  /**
+   * Draw the player body as a Ninja Adventure character sprite (Task 4-C).
+   * Returns false if the atlas isn't ready / the skin failed to load, so the
+   * caller falls back to the legacy square. Hitbox is unchanged — this is
+   * purely cosmetic and centered on the player's logical position.
+   */
+  _drawCharacterSprite(ctx, scr, player, radius, isLocal) {
+    if (!this.atlas) return false;
+    const skin = this._charSkinKey(player);
+    const sheet = this.atlas.get(skin);
+    if (!sheet || !sheet.naturalWidth) return false;
+
+    // Direction row from aim angle (y-down). right/down/left/up.
+    const a = ((player.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    let row = CHAR_ROW.right;
+    if (a >= Math.PI * 0.25 && a < Math.PI * 0.75) row = CHAR_ROW.down;
+    else if (a >= Math.PI * 0.75 && a < Math.PI * 1.25) row = CHAR_ROW.left;
+    else if (a >= Math.PI * 1.25 && a < Math.PI * 1.75) row = CHAR_ROW.up;
+
+    // Walk frame: advance only while the player is moving.
+    const now = Date.now();
+    const prev = this._charPrev[player.id];
+    const moving = prev ? (Math.abs(prev.x - player.x) + Math.abs(prev.y - player.y)) > 0.4 : false;
+    this._charPrev[player.id] = { x: player.x, y: player.y };
+    let anim = this._charAnim[player.id];
+    if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now };
+    if (moving) {
+      if (now - anim.at > 130) { anim.frame = (anim.frame + 1) % CHAR_COLS; anim.at = now; }
+    } else { anim.frame = 0; anim.at = now; }
+    const col = anim.frame;
+
+    const sx = col * CHAR_FRAME, sy = row * CHAR_FRAME;
+    const size = Math.round(radius * 2.7);
+    const dx = Math.round(scr.x - size / 2);
+    const dy = Math.round(scr.y - size / 2);
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(sheet, sx, sy, CHAR_FRAME, CHAR_FRAME, dx, dy, size, size);
+    ctx.imageSmoothingEnabled = prevSmooth;
+    return true;
+  }
+
+  // Which body sheet a player uses. Cosmetic skin if set, else a stable default.
+  _charSkinKey(player) {
+    const want = player.bodySkin ? `char/${player.bodySkin}` : 'char/Boy';
+    return this.atlas.has(want) ? want : 'char/Boy';
+  }
+
+  // 차크람 LMB 맴돌이: a single disc orbiting the caster while active. Mirrors the
+  // host spin in _updateChakramOrbit (now/140, radius 46) so positions agree.
+  _drawChakramOrbit(ctx, camera, cw, ch, players, now) {
+    for (const id of Object.keys(players)) {
+      const pl = players[id];
+      if (!pl || pl.isDead || !(pl.chakramOrbitUntil > now)) continue;
+      const ang = (now / 140) % (Math.PI * 2);
+      const wx = pl.x + Math.cos(ang) * 46;
+      const wy = pl.y + Math.sin(ang) * 46;
+      this._drawChakram(ctx, camera.toScreen(wx, wy, cw, ch), camera.zoom || 1);
+    }
+  }
+
+  // 열기 방패 (flamethrower LMB): a pulsing ember ring around the shielded player.
+  _drawHeatShields(ctx, camera, cw, ch, players, now) {
+    for (const id of Object.keys(players)) {
+      const pl = players[id];
+      if (!pl || pl.isDead || !(pl.heatShieldUntil > now)) continue;
+      const scr = camera.toScreen(pl.x, pl.y, cw, ch);
+      const z = camera.zoom || 1;
+      const r = (pl.radius || 14) * z + 8 + Math.sin(now / 90) * 2;
+      ctx.save();
+      ctx.shadowColor = '#fb923c';
+      ctx.shadowBlur = this._glow ? 14 : 0;
+      ctx.strokeStyle = this._hexToRGB('#fb923c', 0.85);
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = this._hexToRGB('#fde68a', 0.5);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, r - 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   _drawGuardianOrbits(ctx, camera, cw, ch, players, projectiles, now) {
     const cfg = Weapons.guardian;
     const launched = new Set();
@@ -1312,14 +1565,37 @@ export class Renderer {
       const pl = players[id];
       if (!pl || pl.isDead || pl.weapon !== 'guardian' || launched.has(id)) continue;
       const base = (now / period) * Math.PI * 2;
+      const stance = pl.guardianStanceUntil && now < pl.guardianStanceUntil;
+      const radius = cfg.orbitRadius + (stance ? (cfg.stanceRadiusBonus || 0) : 0);
+      const z = camera.zoom || 1;
+      const blade = this.atlas?.get('wpn/guardian');   // use the weapon sprite if loaded
       for (let i = 0; i < n; i++) {
         const a = base + (i / n) * Math.PI * 2;
-        const wx = pl.x + Math.cos(a) * cfg.orbitRadius;
-        const wy = pl.y + Math.sin(a) * cfg.orbitRadius;
+        const wx = pl.x + Math.cos(a) * radius;
+        const wy = pl.y + Math.sin(a) * radius;
         const scr = camera.toScreen(wx, wy, cw, ch);
-        this._drawGuardianBlade(ctx, scr, camera.zoom || 1, a * 2);
+        if (blade && blade.naturalWidth) {
+          // Draw with the blade tip outward and the handle toward the player.
+          const sz = Math.round((pl.radius || 14) * 1.9 * z);
+          ctx.save();
+          ctx.imageSmoothingEnabled = false;
+          ctx.translate(Math.round(scr.x), Math.round(scr.y));
+          ctx.rotate(a + Math.PI * 0.75);   // guardian icon tip points up-left; grip stays inward.
+          ctx.drawImage(blade, -sz / 2, -sz / 2, sz, sz);
+          ctx.restore();
+        } else {
+          this._drawGuardianBlade(ctx, scr, z, a * 2);
+        }
       }
     }
+  }
+
+  _visualSwingDirection(weaponType, rawDirection) {
+    const tune = WEAPON_SPRITE_TUNE[weaponType] || null;
+    if (tune?.asymmetric && Number.isFinite(tune.swingDirection)) {
+      return tune.swingDirection < 0 ? -1 : 1;
+    }
+    return rawDirection === -1 ? -1 : 1;
   }
 
   // Spinning chakram disc — a bladed ring that rotates over time.
@@ -1329,10 +1605,10 @@ export class Renderer {
     ctx.save();
     ctx.translate(scr.x, scr.y);
     ctx.rotate(spin);
-    ctx.shadowColor = '#38bdf8';
-    ctx.shadowBlur = this._glow ? 8 : 0;
+    ctx.shadowColor = '#c2cad6';
+    ctx.shadowBlur = this._glow ? 5 : 0;
     // Outer ring
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#c2cad6';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1352,7 +1628,7 @@ export class Renderer {
       ctx.restore();
     }
     // Hub
-    ctx.fillStyle = '#0ea5e9';
+    ctx.fillStyle = '#8d99a8';
     ctx.beginPath();
     ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
     ctx.fill();
@@ -1595,19 +1871,19 @@ export class Renderer {
     ctx.save();
     ctx.translate(scr.x, scr.y);
     ctx.rotate(angle);
-    ctx.shadowBlur = this._glow *14;
-    ctx.shadowColor = '#45f3ff';
+    ctx.shadowBlur = this._glow * 6;
+    ctx.shadowColor = '#e8eef6';
     ctx.lineCap = 'round';
 
     // Pizza-slice blade energy: the projectile sits on the far edge of the sword arc.
-    ctx.fillStyle = 'rgba(69, 243, 255, 0.16)';
+    ctx.fillStyle = 'rgba(220, 228, 238, 0.16)';
     ctx.beginPath();
     ctx.moveTo(apexX, 0);
     ctx.arc(apexX, 0, radius, -halfAngle, halfAngle);
     ctx.closePath();
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(69, 243, 255, 0.72)';
+    ctx.strokeStyle = 'rgba(220, 228, 238, 0.78)';
     ctx.lineWidth = 5.5;
     ctx.beginPath();
     ctx.arc(apexX, 0, radius, -halfAngle, halfAngle);
@@ -1663,7 +1939,11 @@ export class Renderer {
         return;
       }
 
-      ctx.shadowBlur = this._glow *(minimized ? 4 : 14) * alpha;
+      // Fantasy lighting: only magic blooms. Steel (melee) and powder (ranged)
+      // effects read as physical, so the default glow is suppressed for them and
+      // reserved for arcane fire/frost/heal casts.
+      const isMagicFx = MAGIC_EFFECT_TYPES.has(e.type) || baseWeapon.type === 'magic';
+      ctx.shadowBlur = isMagicFx ? (this._glow * (minimized ? 4 : 14) * alpha) : 0;
       ctx.shadowColor = weapon.color;
 
       if (e.type === 'melee_heavy_arc') {
@@ -1845,7 +2125,7 @@ export class Renderer {
     const endAngle = isFullCircleSlash ? fullCircleStart + Math.PI * 2 : e.angle + halfAngleRad;
     const swingDirection = isFullCircleSlash && e.weapon === 'sword'
       ? 1
-      : (e.swingDirection === -1 ? -1 : 1);
+      : this._visualSwingDirection(e.weapon, e.swingDirection);
     const arcSize = endAngle - startAngle;
     const angleAt = t => swingDirection > 0
       ? startAngle + arcSize * t
@@ -2195,7 +2475,7 @@ export class Renderer {
     const sweetR = weapon.range;
     const innerR = Math.max(8, weapon.innerRange || sweetR * 0.58);
     const sweep = easeOutCubic(clamp01(progress / 0.65));
-    const dir = e.swingDirection === -1 ? -1 : 1;
+    const dir = this._visualSwingDirection(e.weapon, e.swingDirection);
     const head = dir > 0 ? start + (end - start) * sweep : end - (end - start) * sweep;
     const tail = dir > 0 ? Math.max(start, head - (end - start) * 0.26) : Math.min(end, head + (end - start) * 0.26);
 
@@ -3315,14 +3595,14 @@ export class Renderer {
       const windupPortion = isGreatsword ? 0.16 : 0.45;
       const chargeT = motionProgress < windupPortion ? easeOutCubic(motionProgress / windupPortion) : 1;
       const releaseT = progress < windupPortion ? 0 : easeOutBack((progress - windupPortion) / (1 - windupPortion));
-      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       lunge = (isGreatsword ? -7 : -8) * chargeT + (isGreatsword ? 21 : 13) * releaseT;
       weaponReach = (isGreatsword ? -14 : -12) * chargeT + (isGreatsword ? 36 : 20) * releaseT;
       weaponAngle = angle + swingDirection * ((isGreatsword ? -2.18 : -1.15) * chargeT + (isGreatsword ? 3.85 : 2.25) * releaseT);
       bodyScale = 2.1 * Math.sin(Math.PI * clamp01(progress));
 
     } else if (effect.type === 'melee_sweet_arc') {
-      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       const sweep = easeOutCubic(clamp01(progress / 0.92));
       lunge = 5 * Math.sin(Math.PI * progress);
       weaponReach = 20 * Math.sin(Math.PI * progress);
@@ -3385,7 +3665,7 @@ export class Renderer {
       const halfAngle = (angleDeg * Math.PI) / 360;
       const startAngle = angle - halfAngle;
       const endAngle = angleDeg >= 359 ? startAngle + Math.PI * 2 : angle + halfAngle;
-      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       const sweep = easeOutCubic(clamp01(progress / 0.58));
       weaponAngle = swingDirection > 0
         ? startAngle + (endAngle - startAngle) * sweep
@@ -3412,7 +3692,7 @@ export class Renderer {
       bodyScale = 1.2 * thrust * finisherBoost;
 
     } else {
-      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       const motionProgress = effect.weapon === 'sword' ? clamp01((progress + 0.1) / 0.62) : progress;
       const slashProgress = effect.weapon === 'sword' ? clamp01((progress + 0.06) / 0.72) : clamp01(motionProgress * 0.95);
       const slash = Math.sin(Math.PI * slashProgress);
@@ -3428,7 +3708,7 @@ export class Renderer {
       effectType: effect.type,
       attackProgress: progress,
       isFinisher: Boolean(effect.comboFinisher),
-      swingDirection: effect.swingDirection === -1 ? -1 : 1,
+      swingDirection: this._visualSwingDirection(effect.weapon, effect.swingDirection),
       bodyX: Math.cos(angle) * lunge,
       bodyY: Math.sin(angle) * lunge,
       bodyScale,
@@ -3490,12 +3770,32 @@ export class Renderer {
         this._drawPlayerAttackRange(ctx, camera, cw, ch, scr, p, isLocal, Boolean(activeAttack), mapWidth, mapHeight, activeAttack);
       }
 
+      // Ground/foot shadow: a soft dark ellipse under the player's actual
+      // position (not the lunge offset) so sprites read as standing ON the
+      // grass rather than floating over it.
       ctx.save();
-      
-      // Glow and Shadow under player
-      ctx.shadowBlur = this._glow * (isLocal ? 15 : 4);
-      ctx.shadowColor = isLocal ? '#ef4444' : p.color;
+      ctx.globalAlpha = 0.32;
+      ctx.fillStyle = '#0d0a06';
+      ctx.beginPath();
+      ctx.ellipse(scr.x, scr.y + radius * 0.78, radius * 1.05, radius * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+
+      ctx.shadowBlur = 0;
       ctx.fillStyle = p.color;
+
+      const drawWeaponFrame = () => {
+        ctx.save();
+        ctx.translate(bodyScr.x, bodyScr.y);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-bodyScr.x, -bodyScr.y);
+        this._drawPlayerWeapon(ctx, bodyScr, p, motion);
+        ctx.restore();
+      };
+      const weaponTune = WEAPON_SPRITE_TUNE[p.weapon] || WEAPON_TUNE_DEFAULT;
+      const weaponDrawOverBody = Boolean(weaponTune.drawOverBody);
 
       // Active skill-buff floor burst (axe rage / gauntlet lance).
       if (p.buffTimeLeft > 0) {
@@ -3506,36 +3806,25 @@ export class Renderer {
       }
       this._drawCostumeEffect(ctx, bodyScr, p, radius, Date.now());
 
-      // Draw Main Player Chassis (square — pixel theme)
-      const bodyR = radius + motion.bodyScale;
-      ctx.fillRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
+      // Grip-based weapons sit behind the body so the character covers the
+      // handle. Center-held weapons opt back over the body for visibility.
+      if (!weaponDrawOverBody) drawWeaponFrame();
 
-      // Outline
-      ctx.shadowBlur = this._glow *0;
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = isLocal ? '#ef4444' : '#0b0c10';
-      ctx.strokeRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
+      // Draw Main Player Chassis — sprite if loaded, else the legacy square.
+      const bodyR = radius + motion.bodyScale;
+      const drewSprite = this._drawCharacterSprite(ctx, bodyScr, p, radius, isLocal);
+      if (!drewSprite) {
+        ctx.fillRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
+        // Outline
+        ctx.shadowBlur = this._glow *0;
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isLocal ? '#ef4444' : '#0d0a06';
+        ctx.strokeRect(bodyScr.x - bodyR, bodyScr.y - bodyR, bodyR * 2, bodyR * 2);
+      }
 
       // Magic staff status overlays: fire DoT flames + loaded ice shards orbiting.
       if (p.burnTimeLeft > 0) this._drawBurnFlames(ctx, bodyScr, radius, camera.zoom || 1);
       if (p.pendingIcicles > 0) this._drawLoadedIcicles(ctx, bodyScr, p.pendingIcicles, radius, camera.zoom || 1);
-
-      // Dash i-frame white highlight — bright flash that fades as the
-      // invulnerability window expires.
-      if (p.iframeTimeLeft > 0) {
-        const iAlpha = clamp01(p.iframeTimeLeft / (DashConfig.iframeMs / 1000));
-        ctx.save();
-        ctx.shadowBlur = this._glow *16 * iAlpha;
-        ctx.shadowColor = '#ffffff';
-        ctx.fillStyle = this._hexToRGB('#ffffff', 0.85 * iAlpha);
-        const ir = radius + motion.bodyScale;
-        ctx.fillRect(bodyScr.x - ir, bodyScr.y - ir, ir * 2, ir * 2);
-        ctx.strokeStyle = this._hexToRGB('#ffffff', iAlpha);
-        ctx.lineWidth = 2;
-        const ir2 = ir + 3 + 5 * (1 - iAlpha);
-        ctx.strokeRect(bodyScr.x - ir2, bodyScr.y - ir2, ir2 * 2, ir2 * 2);
-        ctx.restore();
-      }
 
       // Local Player Highlight Marker Ring
       if (isLocal) {
@@ -3545,60 +3834,13 @@ export class Renderer {
         ctx.save();
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 3;
-        ctx.shadowColor = '#ef4444';
-        ctx.shadowBlur = this._glow *12;
+        ctx.shadowBlur = 0;
         const lr = radius + pulse;
         ctx.strokeRect(bodyScr.x - lr, bodyScr.y - lr, lr * 2, lr * 2);
         ctx.restore();
-
-        // High intensity floating indicator arrow pointing directly to player
-        const arrowOffset = radius + 22 + Math.sin(Date.now() / 120) * 4;
-        ctx.save();
-        ctx.fillStyle = '#ef4444';
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(bodyScr.x - 7, bodyScr.y - arrowOffset);
-        ctx.lineTo(bodyScr.x + 7, bodyScr.y - arrowOffset);
-        ctx.lineTo(bodyScr.x, bodyScr.y - arrowOffset + 9);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
       }
 
-      if (p.weapon !== 'axe') {
-        // Draw Sight Pointer / Helmet Visor face vector direction
-        ctx.strokeStyle = '#0b0c10';
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(bodyScr.x, bodyScr.y);
-        ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
-        ctx.stroke();
-
-        // Highlight core represent eye visor
-        ctx.strokeStyle = p.accentColor;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        // Side ticks showing helmet look direction
-        const leftVisor = p.angle - 0.4;
-        const rightVisor = p.angle + 0.4;
-        ctx.moveTo(bodyScr.x + Math.cos(leftVisor) * (radius - 4), bodyScr.y + Math.sin(leftVisor) * (radius - 4));
-        ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
-        ctx.lineTo(bodyScr.x + Math.cos(rightVisor) * (radius - 4), bodyScr.y + Math.sin(rightVisor) * (radius - 4));
-        ctx.stroke();
-      }
-
-      // Draw Weapon Frame — scaled about the body center by zoom so the weapon
-      // (sprite + vector fallbacks) stays proportional to the body/hitbox on
-      // every device instead of a fixed pixel size that looks huge when zoomed out.
-      ctx.save();
-      ctx.translate(bodyScr.x, bodyScr.y);
-      ctx.scale(zoom, zoom);
-      ctx.translate(-bodyScr.x, -bodyScr.y);
-      this._drawPlayerWeapon(ctx, bodyScr, p, motion);
-      ctx.restore();
+      if (weaponDrawOverBody) drawWeaponFrame();
       this._drawCostumeDecoration(ctx, bodyScr, p, radius, Date.now());
 
       // Restore style frame before text elements
@@ -3625,6 +3867,9 @@ export class Renderer {
         ctx.fillStyle = p.title.color || '#facc15';
         ctx.fillText(p.title.text, bodyScr.x, bodyScr.y - radius - 27);
       }
+
+      // Status-effect icons (bleed/burn/slow/stun) above the HP bar.
+      this._drawStatusIcons(ctx, bodyScr, p, radius);
 
       // Mini floating HP bars (hovering above head)
       const barW = 32;
@@ -3722,7 +3967,7 @@ export class Renderer {
     if (!decoration) return;
     const upX = scr.x;
     const upY = scr.y - radius - 4;
-    const accent = player.accentColor || '#66fcf1';
+    const accent = player.accentColor || '#e8d5a3';
 
     ctx.save();
     ctx.shadowBlur = this._glow * 7;
@@ -3811,6 +4056,14 @@ export class Renderer {
     ctx.shadowColor = weaponInk;
 
     const weaponType = player.weapon;
+    // Ninja Adventure in-hand weapon sprite (Task 4-D) — preferred. Follows the
+    // same motion (weaponAngle/reach) so swings/thrusts move the sprite; the
+    // attack hitbox geometry is unchanged. Falls back to the legacy PNG, then
+    // to the procedural drawings below.
+    if (this._drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active)) {
+      ctx.restore();
+      return;
+    }
     if (this._drawWeaponSprite(ctx, scr, player, motion, radius, weaponAngle, reach, active)) {
       ctx.restore();
       return;
@@ -4339,10 +4592,10 @@ export class Renderer {
       // 차크람: a held spinning ring with four blade spikes.
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle + (Date.now() / 120) % (Math.PI * 2));
-      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeStyle = '#c2cad6';
       ctx.lineWidth = 2.4;
       ctx.beginPath(); ctx.arc(6, 0, 7, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#bae6fd';
+      ctx.fillStyle = '#e8eef6';
       for (let i = 0; i < 4; i++) {
         ctx.save(); ctx.translate(6, 0); ctx.rotate(i * Math.PI / 2);
         ctx.beginPath(); ctx.moveTo(5, -2); ctx.lineTo(10, 0); ctx.lineTo(5, 2); ctx.closePath(); ctx.fill();
@@ -4350,7 +4603,7 @@ export class Renderer {
       }
     }
     else if (weaponType === 'pistols') {
-      // 쌍권총: a compact pistol silhouette.
+      // 쇠뇌: a compact fallback silhouette.
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle);
       ctx.fillStyle = '#9ca3af';
@@ -4363,7 +4616,7 @@ export class Renderer {
       ctx.fillRect(13, -1.5, 3, 3);                  // muzzle
     }
     else if (weaponType === 'guardian') {
-      // 수호 블레이드: a short emitter blade (orbit shown separately).
+      // 디펜더: a short emitter blade (orbit shown separately).
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle);
       ctx.shadowBlur = this._glow * (active ? 8 : 4);
@@ -4377,12 +4630,12 @@ export class Renderer {
       // 작살: a launcher with a barbed bolt.
       ctx.translate(wX, wY);
       ctx.rotate(weaponAngle);
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#5b4a32';
       ctx.fillRect(-9, -3, 6, 6);                    // launcher body
-      ctx.strokeStyle = '#60a5fa';
+      ctx.strokeStyle = '#9aa2ad';
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(16, 0); ctx.stroke(); // shaft
-      ctx.fillStyle = '#bfdbfe';
+      ctx.fillStyle = '#c2cad6';
       ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(14, -5); ctx.lineTo(16, 0); ctx.lineTo(14, 5); ctx.closePath(); ctx.fill(); // barbed head
     }
     else if (weaponType === 'minebag') {
@@ -4420,6 +4673,43 @@ export class Renderer {
     }
 
     ctx.restore();
+  }
+
+  /**
+   * Draw the Ninja Adventure in-hand weapon sprite at the hand, oriented to the
+   * aim/swing angle. The item icon art points up-right, so the base draw angle
+   * adds 45 degrees and per-weapon tune values handle centered bows/crossbows.
+   * Returns false if no sprite exists for this weapon so the caller falls back.
+   */
+  _drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
+    const img = this.atlas?.get(`wpn/${player.weapon}`);
+    if (!img || !img.naturalWidth) return false;     // no sprite for this key → fallback
+
+    const tune = WEAPON_SPRITE_TUNE[player.weapon] || WEAPON_TUNE_DEFAULT;
+    // The icon art points UP-RIGHT (tip ≈ -45°), grip at the lower-left, so the
+    // base rotation that aligns the tip with the aim is aim + 45°.
+    const aim = Number.isFinite(weaponAngle) ? weaponAngle : player.angle;
+    const handReachScale = Number.isFinite(tune.handReachScale) ? tune.handReachScale : 0.08;
+    const baseHandDist = Number.isFinite(tune.handDistance) ? tune.handDistance : radius + 2;
+    const handDist = Math.max(0, baseHandDist + Math.max(0, reach) * handReachScale);
+    const hx = scr.x + Math.cos(aim) * handDist;
+    const hy = scr.y + Math.sin(aim) * handDist;
+    // Integer 2× scale keeps the 16px pixels crisp. tune.scale fine-tunes.
+    const size = 16 * 2 * (tune.scale || 1);
+    const ax = Number.isFinite(tune.anchorX) ? tune.anchorX : 0.2;  // grip ≈ lower-left
+    const ay = Number.isFinite(tune.anchorY) ? tune.anchorY : 0.82;
+    const isMagic = player.weapon === 'magicstaff';
+
+    ctx.save();
+    const smoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(hx), Math.round(hy));
+    ctx.rotate(aim + Math.PI / 4 + (tune.rot || 0));
+    if (isMagic) { ctx.shadowBlur = this._glow * (active ? 8 : 3); ctx.shadowColor = player.accentColor || '#a855f7'; }
+    ctx.drawImage(img, -size * ax, -size * ay, size, size);   // grip at the hand
+    ctx.imageSmoothingEnabled = smoothing;
+    ctx.restore();
+    return true;
   }
 
   _drawWeaponSprite(ctx, scr, player, motion, radius, weaponAngle, reach, active) {

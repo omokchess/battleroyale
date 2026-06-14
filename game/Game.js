@@ -16,6 +16,7 @@ import { normalizeRoomConfig, arenaDimensions, HEAL_RATES } from './RoomConfig.j
 import { Sound } from './Sound.js';
 import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, coverClearOfPoint, coverBlocksCircle } from './Cover.js';
 import { Zone } from './Zone.js';
+import { STATUS } from './Status.js';
 
 // Time a dead player waits before respawning.
 const RESPAWN_MS = 500;
@@ -451,6 +452,8 @@ export class Game {
     this._updateZone(now, deltaTime);
     this._updateHealingItems(now);
     this._updateGuardianBlades(now);
+    this._updateChakramOrbit(now);
+    this._updateHeatShield(now);
     this._updateMines(now);
     this._updateFlamethrower(now, deltaTime);
     this._updateFirePatches(now);
@@ -492,6 +495,7 @@ export class Game {
     this._processDaggerQtes(now);
     this._processHammerSlams(now);
     this._processPistolBursts(now);
+    this._processAimedShots(now);
 
     // 3. Process Automatic attack queues
     Object.keys(this.players).forEach(id => {
@@ -508,7 +512,7 @@ export class Game {
     });
 
     // 3b. Tick fire DoT (magic staff fireball burns).
-    this._tickBurns(deltaTime, now);
+    this._tickStatuses(deltaTime, now);
 
     // 4. Update and check projectile hits
     this.projectiles.forEach(proj => {
@@ -522,6 +526,11 @@ export class Game {
       // Chakram + launched guardian blades boomerang out then back.
       if (proj.kind === 'chakram' || proj.kind === 'guardianblade') {
         this._updateChakram(proj, deltaTime, now);
+        return;
+      }
+      // 추적 칼날 (guardian R): homes the nearest enemy for a short lifetime.
+      if (proj.kind === 'guardianhoming') {
+        this._updateHomingBlade(proj, deltaTime, now);
         return;
       }
 
@@ -587,14 +596,15 @@ export class Game {
           if (proj.kind === 'iceshard') {
             proj.isDead = true;
             const died = target.takeDamage(proj.damage, '아이스 샤드');
+            if (!died) this._applySlow(target, MagicConfig.iceShard.slowMs || 1500); // 둔화
             if (died) this._creditKill(proj.ownerId, target, '아이스 샤드로');
             return;
           }
 
           if (proj.kind === 'pistol') {
             proj.isDead = true;
-            const died = target.takeDamage(proj.damage, '쌍권총');
-            if (died) this._creditKill(proj.ownerId, target, '쌍권총으로');
+            const died = target.takeDamage(proj.damage, '쇠뇌');
+            if (died) this._creditKill(proj.ownerId, target, '쇠뇌로');
             return;
           }
 
@@ -610,7 +620,8 @@ export class Game {
               target.y = attacker.y + Math.sin(a) * (hk.pullToFront || 50);
               Collision.clampToMap(target, this.mapWidth, this.mapHeight);
               if (this.cover.length) resolveCover(this.cover, target, target.radius || 14);
-              target.slowTimeLeft = (hk.slowMs || 300) / 1000;
+              this._applySlow(target, hk.slowMs || 300);
+              if (hk.pullStunMs) this._applyStun(target, hk.pullStunMs, Date.now());
               target.prevX = target.x; // discontinuous move — don't let melee sweep it
               target.prevY = target.y;
             }
@@ -619,10 +630,17 @@ export class Game {
           }
 
           proj.isDead = true;
+          let arrowDmg = proj.damage;
           if (proj.kind === 'arrow') {
             this._awardBowArrowStack(this.players[proj.ownerId]);
+            // Close-range falloff: a bow that lets you fight at melee is too safe.
+            const bow = Weapons.bow;
+            if (bow.closeRange) {
+              const flew = Math.hypot(proj.x - proj.startX, proj.y - proj.startY);
+              if (flew < bow.closeRange) arrowDmg = bow.closeDamage ?? arrowDmg;
+            }
           }
-          const died = target.takeDamage(proj.damage, proj.kind === 'greatswordwave' ? 'greatswordwave' : 'arrow');
+          const died = target.takeDamage(arrowDmg, proj.kind === 'greatswordwave' ? 'greatswordwave' : 'arrow');
           if (died) this._creditKill(proj.ownerId, target, '활로');
         }
       });
@@ -676,7 +694,10 @@ export class Game {
           p.y = spawnP.y;
           p.respawnTime = 0;
           p.respawnRemainingMs = 0;
-          p.clearCombatTimers();
+          p.clearCombatTimers(); // also clears bleed/burn DoTs
+          // Respawn protection: brief status-immunity window (matches i-frames).
+          p.statusImmuneUntil = now + (p.iframeTimeLeft > 0 ? Math.round(p.iframeTimeLeft * 1000) : 600);
+          p.stunImmuneUntil = 0;
           // Cosmetic respawn effect (equipped), synced to all.
           if (p.respawnFxColor) {
             this.effects.push({
@@ -905,14 +926,18 @@ export class Game {
 
     Object.keys(this.players).forEach(tid => {
       const target = this.players[tid];
-      const hit = this._resolveMeleeHitResult(attacker, target, attackConfig);
+      const hit = this._resolveMeleeHitResult(attacker, target, attackConfig, now);
       if (!hit) return;
 
       hitCount++;
       this._applyMeleeHitMovement(attacker, target, hit);
       const died = target.takeDamage(hit.damage, attacker.nickname);
-      if (!died && hit.stunMs) {
-        target.stunTimeLeft = Math.max(target.stunTimeLeft || 0, hit.stunMs / 1000);
+      if (!died) {
+        // Conditional status effects carried on the hit result (Task 10).
+        if (hit.stunMs) this._applyStun(target, hit.stunMs, now);
+        if (hit.slowMs) this._applySlow(target, hit.slowMs);
+        if (hit.bleed) this._applyBleed(target, attacker.id);
+        if (hit.burn) this._applyBurn(target, attacker.id);
       }
       if (died) this._creditKill(attacker.id, target);
     });
@@ -927,7 +952,7 @@ export class Game {
     return hitCount;
   }
 
-  _resolveMeleeHitResult(attacker, target, weapon) {
+  _resolveMeleeHitResult(attacker, target, weapon, now = Date.now()) {
     if (!target || target.isInvincible?.()) return null;
     if (!Collision.checkMeleeHit(attacker, target, weapon)) return null;
     // A cover tile between attacker and target blocks the strike.
@@ -941,12 +966,14 @@ export class Game {
     let damage = weapon.damage || 0;
     let pull = 0;
     let knockback = weapon.knockback || 0;
+    let slowMs = 0, bleed = false, burn = false;
 
     if (weapon.type === 'melee_sweet_arc') {
       const sweetDistance = weapon.innerRange || weapon.range * 0.58;
       if (dist >= sweetDistance) {
         damage = weapon.sweetDamage || damage;
         pull = weapon.pull || 0;
+        if (weapon.sweetBleed) bleed = true;        // scythe outer blade → bleed
       }
     } else if (weapon.type === 'melee_backstab') {
       const fromTargetToAttacker = Math.atan2(attacker.y - target.y, attacker.x - target.x);
@@ -959,9 +986,20 @@ export class Game {
       const uX = Math.cos(attacker.angle);
       const uY = Math.sin(attacker.angle);
       const perpDiff = Math.abs(dx * uY - dy * uX);
-      const critWidth = Math.max(5, (weapon.width || 0) * 0.55) + (target.radius || 14) * 0.25;
-      if (perpDiff <= critWidth) {
-        damage = weapon.critDamage || damage;
+      // Centerline crit (only weapons that declare critDamage, e.g. combo finishers).
+      if (weapon.critDamage) {
+        const critWidth = Math.max(5, (weapon.width || 0) * 0.55) + (target.radius || 14) * 0.25;
+        if (perpDiff <= critWidth) damage = weapon.critDamage;
+      }
+      // Dagger backstab: hit from the target's rear 90° → bonus + bleed.
+      if (weapon.backstabDamage) {
+        const fromTargetToAttacker = Math.atan2(attacker.y - target.y, attacker.x - target.x);
+        const behindAngle = (target.angle || 0) + Math.PI;
+        const win = ((weapon.backstabAngle || 90) * Math.PI) / 360;
+        if (angleDistance(fromTargetToAttacker, behindAngle) <= win) {
+          damage = weapon.backstabDamage;
+          if (weapon.backstabBleed) bleed = true;
+        }
       }
     } else if (weapon.type === 'melee_slam') {
       const inner = weapon.innerRange || weapon.range * 0.45;
@@ -970,7 +1008,41 @@ export class Game {
       }
     }
 
-    return { damage, pull, knockback, stunMs: weapon.stunMs || 0 };
+    // Spear tip hit: the far 30px of the thrust → bonus + slow.
+    if (weapon.tipDamage && weapon.type === 'melee_line') {
+      const proj = dx * Math.cos(attacker.angle) + dy * Math.sin(attacker.angle);
+      if (proj >= (weapon.range - (weapon.tipRange || 30))) {
+        damage = weapon.tipDamage;
+        if (weapon.tipSlowMs) slowMs = Math.max(slowMs, weapon.tipSlowMs);
+      }
+    }
+
+    // Consecutive same-target chain (katana ramp / gauntlet uppercut). Tracked on
+    // the LIVE attacker; bonuses only raise damage (never lower a finisher).
+    const live = this.players[attacker.id];
+    if (live && (weapon.chainHits || weapon.uppercutEvery)) {
+      if (live._chainTargetId === target.id && now - (live._chainAt || 0) <= 2000) {
+        live._chainCount = (live._chainCount || 1) + 1;
+      } else {
+        live._chainCount = 1;
+        live._chainTargetId = target.id;
+      }
+      live._chainAt = now;
+      if (weapon.chainHits && live._chainCount >= weapon.chainHits) {
+        damage = Math.max(damage, weapon.chainDamage || damage);
+      }
+      if (weapon.uppercutEvery && live._chainCount % weapon.uppercutEvery === 0) {
+        damage = Math.max(damage, weapon.uppercutDamage || damage);
+        knockback = Math.max(knockback, weapon.uppercutKnockback || 0);
+      }
+    }
+
+    // Unconditional on-hit status (axe bleed, hammer slow, finisher slow…).
+    if (weapon.onHitBleed) bleed = true;
+    if (weapon.onHitBurn) burn = true;
+    if (weapon.onHitSlowMs) slowMs = Math.max(slowMs, weapon.onHitSlowMs);
+
+    return { damage, pull, knockback, stunMs: weapon.stunMs || 0, slowMs, bleed, burn };
   }
 
   _applyMeleeHitMovement(attacker, target, hit) {
@@ -1045,6 +1117,101 @@ export class Game {
       return;
     }
 
+    if (cfg.type === 'aimed_shot') {
+      if (!this.pendingAimedShots) this.pendingAimedShots = [];
+      const fireAt = now + (cfg.windupMs || 400);
+      this.pendingAimedShots.push({ playerId: player.id, fireAt, damage: cfg.damage || 26, range: cfg.range || 520, speed: cfg.speed || 1100 });
+      // windup telegraph beam in the aim direction
+      const dist = cfg.range || 520;
+      this.effects.push({
+        id: `${player.id}-aimwind-${now}`, attackerId: player.id,
+        x: player.x, y: player.y,
+        x2: player.x + Math.cos(player.angle) * dist, y2: player.y + Math.sin(player.angle) * dist,
+        angle: player.angle, weapon: 'pistols', type: 'matchlock_telegraph',
+        beamDist: dist, progress: 0, timestamp: now, lifetime: cfg.windupMs || 400
+      });
+      return;
+    }
+
+    if (cfg.type === 'dodge_reload') {
+      // An iframe roll independent of the spacebar dash cooldown, then a buff.
+      const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+      player.dashDirX = dirX; player.dashDirY = dirY;
+      player.dashTimeLeft = DashConfig.durationMs / 1000;
+      player.iframeTimeLeft = Math.max(player.iframeTimeLeft || 0, DashConfig.iframeMs / 1000);
+      player.pistolReloadUntil = now + (cfg.reloadMs || 2000);
+      return;
+    }
+
+    if (cfg.type === 'place_mine') {
+      this._placeMine(player, now);
+      return;
+    }
+
+    if (cfg.type === 'tracer_mine') {
+      this._placeTracerMine(player, now);
+      return;
+    }
+
+    if (cfg.type === 'guardian_launch') {
+      this._launchGuardianBlades(player, now);
+      return;
+    }
+
+    if (cfg.type === 'guardian_homing') {
+      this._spawnHomingBlade(player, now);
+      return;
+    }
+
+    if (cfg.type === 'fire_bomb') {
+      const bx = Math.max(8, Math.min(this.mapWidth - 8, player.x + Math.cos(player.angle) * (cfg.range || 88)));
+      const by = Math.max(8, Math.min(this.mapHeight - 8, player.y + Math.sin(player.angle) * (cfg.range || 88)));
+      const r = cfg.radius || 50;
+      Object.values(this.players).forEach(t => {
+        if (t.id === player.id || t.isDead || t.isInvincible()) return;
+        if ((t.x - bx) ** 2 + (t.y - by) ** 2 > (r + (t.radius || 14)) ** 2) return;
+        const died = t.takeDamage(cfg.damage || 28, player.nickname);
+        if (!died && cfg.burn) this._applyBurn(t, player.id);
+        if (died) this._creditKill(player.id, t, '점화로');
+      });
+      this.effects.push({
+        attackerId: player.id, x: bx, y: by, weapon: 'flamethrower',
+        type: 'explosion', radius: r, progress: 0, timestamp: now, lifetime: 360
+      });
+      return;
+    }
+
+    if (cfg.type === 'heat_shield') {
+      player.heatShieldUntil = now + (cfg.durationMs || 1500);
+      player.heatShieldRadius = cfg.contactRadius || 34;
+      return;
+    }
+
+    if (cfg.type === 'chakram_throw') {
+      const n = Math.max(1, cfg.count || 3);
+      const spread = ((cfg.spreadDeg || 18) * Math.PI) / 180;
+      for (let i = 0; i < n; i++) {
+        const off = n === 1 ? 0 : (i - (n - 1) / 2) * (spread / (n - 1));
+        this._spawnChakram(player, player.angle + off, cfg.damage || 18, cfg.range || 240, cfg.speed || 680, now, `lmb-${now}-${i}`, true);
+      }
+      this.effects.push({
+        attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+        weapon: 'chakram', type: 'projectile_shot', projectileKind: 'chakram',
+        progress: 0, timestamp: now, lifetime: 220
+      });
+      if (cfg.deflectProjectile) this._deflectProjectile(player, 70);
+      return;
+    }
+
+    if (cfg.type === 'chakram_orbit') {
+      player.chakramOrbitUntil = now + (cfg.durationMs || 1500);
+      player.chakramOrbitDamage = cfg.orbitDamage || 14;
+      player.chakramOrbitRadius = cfg.orbitRadius || 46;
+      player.chakramOrbitHitCd = cfg.hitCooldownMs || 400;
+      player.chakramOrbitHits = {};
+      return;
+    }
+
     const base = getEffectiveWeapon(player.weapon, player.buffType);
     const attackConfig = {
       ...base,
@@ -1081,6 +1248,26 @@ export class Game {
 
     const hitCount = this._queueOrApplyMeleeHit(player, attackConfig, now);
     if (hitCount !== null) this._applyAttackTempoResult(player, attackConfig, hitCount, now);
+
+    // 쳐내기: knock out the nearest incoming enemy projectile in front of the player.
+    if (cfg.deflectProjectile) this._deflectProjectile(player, attackConfig.range || 60);
+  }
+
+  // Destroy one enemy projectile within reach in front of the player (chakram 쳐내기).
+  _deflectProjectile(player, reach) {
+    let best = null, bestD = Infinity;
+    for (const proj of this.projectiles) {
+      if (!proj || proj.isDead || proj.ownerId === player.id) continue;
+      const dx = proj.x - player.x, dy = proj.y - player.y;
+      const d = Math.hypot(dx, dy);
+      if (d > reach + (proj.radius || 6)) continue;
+      if (Math.cos(player.angle) * dx + Math.sin(player.angle) * dy < 0) continue; // must be in front
+      if (d < bestD) { bestD = d; best = proj; }
+    }
+    if (best) {
+      best.isDead = true;
+      if (best.locksOwner) { const o = this.players[best.ownerId]; if (o) o.chakramOut = false; }
+    }
   }
 
   _spawnAuxProjectiles(player, cfg, now) {
@@ -1717,14 +1904,13 @@ export class Game {
       case 'dagger': this._startDaggerQte(player, now); break;
       case 'rapier': this._startBuff(player, 'rapier_riposte', SkillConfig.rapier.buffMs, now); break;
       case 'hammer': this._castHammerSkill(player, now); break;
-      case 'matchlock': this._fireMatchlock(player, now); break;
       case 'katana': this._castKatanaSkill(player, now); break;
       case 'sniper': this._fireSniperShot(player, now); break;
       case 'chakram': this._throwChakramFan(player, now); break;
       case 'pistols': this._firePistolBarrage(player, now); break;
-      case 'guardian': this._launchGuardianBlades(player, now); break;
+      case 'guardian': this._guardianStance(player, now); break;
       case 'harpoon': this._harpoonPull(player, now); break;
-      case 'minebag': this._placeMine(player, now); break;
+      case 'minebag': this._detonateAllMines(player, now); break;
       case 'flamethrower': this._throwFirePatch(player, now); break;
       default: break;
     }
@@ -1848,7 +2034,9 @@ export class Game {
       range: effectiveRange,
       damage,
       cooldown: Weapons.greatsword.cooldown,
-      chargeRatio
+      chargeRatio,
+      // Full charge also slows (Task 10).
+      onHitSlowMs: chargeRatio >= 0.99 ? (sk.fullChargeSlowMs || 0) : 0
     };
 
     const effect = {
@@ -2471,11 +2659,13 @@ export class Game {
       ...Weapons.katana,
       type: 'melee_heavy_line',
       hitMode: null,
-      damage: sk.iaijutsuDamage || 80,
+      damage: sk.iaijutsuDamage || 70,
       range: sk.iaijutsuRange || 150,
       width: sk.iaijutsuWidth || 40,
       cooldown: 0,
-      knockback: 58
+      knockback: 58,
+      onHitBleed: true,        // R 발도술 → 출혈
+      chainHits: 0             // don't let the basic-attack chain bonus apply here
     };
     const attacker = {
       ...this._snapshotMeleeAttacker(player),
@@ -2690,31 +2880,68 @@ export class Game {
     this.pendingMagicShards = this.pendingMagicShards.filter(shard => shard.playerId !== playerId);
   }
 
+  // --- Status effects (Task 10-1): bleed/burn DoTs, slow, stun -----------------
+
+  // New status can't be applied during respawn protection or dash i-frames;
+  // existing DoTs keep ticking regardless.
+  _canApplyStatus(target) {
+    if (!target || target.isDead) return false;
+    if (Date.now() < (target.statusImmuneUntil || 0)) return false;
+    if (target.isInvincible && target.isInvincible()) return false;
+    return true;
+  }
+
   _applyBurn(target, sourceId, dps, durationMs) {
-    if (!target || target.isDead) return;
-    target.burnTimeLeft = Math.max(target.burnTimeLeft || 0, (durationMs || 4000) / 1000);
-    target.burnDps = dps || 2;
+    if (!this._canApplyStatus(target)) return;
+    const c = STATUS.burn;
+    target.burnTimeLeft = Math.max(target.burnTimeLeft || 0, (durationMs || c.durationMs) / 1000);
+    target.burnDps = dps || c.dps;
     target.burnSourceId = sourceId;
     if (!(target.burnTickLeft > 0)) target.burnTickLeft = 1; // first tick 1s after ignition
   }
 
-  _tickBurns(deltaTime, now) {
-    Object.keys(this.players).forEach(id => {
-      const p = this.players[id];
-      if (!p || p.isDead || !(p.burnTimeLeft > 0)) return;
-      p.burnTimeLeft = Math.max(0, p.burnTimeLeft - deltaTime);
-      p.burnTickLeft -= deltaTime;
-      if (p.burnTickLeft <= 0 && !p.isDead) {
-        p.burnTickLeft += 1;
-        const died = p.takeDamage(p.burnDps || 2, '화염');
-        if (died) this._creditKill(p.burnSourceId, p, '화염으로');
+  _applyBleed(target, sourceId, dps, durationMs) {
+    if (!this._canApplyStatus(target)) return;
+    const c = STATUS.bleed;
+    target.bleedTimeLeft = Math.max(target.bleedTimeLeft || 0, (durationMs || c.durationMs) / 1000);
+    target.bleedDps = dps || c.dps;
+    target.bleedSourceId = sourceId;
+    if (!(target.bleedTickLeft > 0)) target.bleedTickLeft = 1;
+  }
+
+  // Slow magnitude is fixed (−30%); a longer remaining duration wins.
+  _applySlow(target, durationMs) {
+    if (!this._canApplyStatus(target)) return;
+    target.slowTimeLeft = Math.max(target.slowTimeLeft || 0, (durationMs || 1500) / 1000);
+  }
+
+  // Stun, with a post-stun immunity window so a target can't be chain-stunned.
+  _applyStun(target, durationMs, now = Date.now()) {
+    if (!this._canApplyStatus(target)) return;
+    if (now < (target.stunImmuneUntil || 0)) return;
+    const ms = durationMs || 400;
+    target.stunTimeLeft = Math.max(target.stunTimeLeft || 0, ms / 1000);
+    target.stunImmuneUntil = now + ms + STATUS.stun.immuneMs;
+  }
+
+  // Tick both DoTs (host). Slow/stun timers decay in Player._tickTimers.
+  _tickStatuses(deltaTime, now) {
+    const tickDot = (p, key) => {
+      const tl = key + 'TimeLeft', tk = key + 'TickLeft', dp = key + 'Dps', src = key + 'SourceId';
+      if (!(p[tl] > 0)) return;
+      p[tl] = Math.max(0, p[tl] - deltaTime);
+      p[tk] -= deltaTime;
+      if (p[tk] <= 0 && !p.isDead) {
+        p[tk] += 1;
+        const died = p.takeDamage(p[dp] || STATUS[key].dps, STATUS[key].deathName, true);
+        if (died) this._creditKill(p[src], p, STATUS[key].viaLabel);
       }
-      if (p.burnTimeLeft <= 0) {
-        p.burnTimeLeft = 0;
-        p.burnTickLeft = 0;
-        p.burnDps = 0;
-        p.burnSourceId = null;
-      }
+      if (p[tl] <= 0) { p[tl] = 0; p[tk] = 0; p[dp] = 0; p[src] = null; }
+    };
+    Object.values(this.players).forEach(p => {
+      if (!p || p.isDead) return;
+      tickDot(p, 'burn');
+      tickDot(p, 'bleed');
     });
   }
 
@@ -2779,7 +3006,7 @@ export class Game {
 
     if (hitTarget) {
       const died = hitTarget.takeDamage(9999, player.nickname); // instakill
-      if (died) this._creditKill(player.id, hitTarget, '스나이퍼로');
+      if (died) this._creditKill(player.id, hitTarget, '강궁으로');
     }
 
     this.effects.push({
@@ -3166,8 +3393,8 @@ export class Game {
     proj.bornAt = now;
     proj.outRange = outRange;
     proj.locksOwner = !isSkill;     // only the basic throw disarms until return
-    proj.deathName = '차크람';
-    proj.hitLabel = '차크람으로';
+    proj.deathName = '부메랑';
+    proj.hitLabel = '부메랑으로';
     proj.hitOut = new Set();
     proj.hitBack = new Set();
     this.projectiles.push(proj);
@@ -3175,9 +3402,10 @@ export class Game {
   }
 
   _throwChakram(player, cfg, now) {
-    player.lastAttackTime = now;    // re-stamped on return so the 900ms cd starts then
+    player.lastAttackTime = now;    // re-stamped on return so the cooldown starts then
     player.chakramOut = true;
-    this._spawnChakram(player, player.angle, cfg.damage, cfg.range, cfg.speed, now, `${now}`, false);
+    const p = this._spawnChakram(player, player.angle, cfg.damage, cfg.range, cfg.speed, now, `${now}`, false);
+    p.wallBouncesLeft = cfg.wallReflect || 0;
     this.effects.push({
       attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
       weapon: 'chakram', type: 'projectile_shot', projectileKind: 'chakram',
@@ -3194,7 +3422,8 @@ export class Game {
     const spread = ((sk.fanSpreadDeg || 34) * Math.PI) / 180;
     for (let i = 0; i < n; i++) {
       const off = n === 1 ? 0 : (i - (n - 1) / 2) * (spread / (n - 1));
-      this._spawnChakram(player, player.angle + off, sk.damage, sk.range, sk.speed, now, `fan-${now}-${i}`, true);
+      const p = this._spawnChakram(player, player.angle + off, sk.damage, sk.range, sk.speed, now, `fan-${now}-${i}`, true);
+      p.bleed = Boolean(sk.bleed);
     }
     this.effects.push({
       attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
@@ -3217,8 +3446,9 @@ export class Game {
         if (target.id === proj.ownerId || target.isDead || target.isInvincible() || hitSet.has(target.id)) return;
         if (Collision.checkProjectileHit(proj, target)) {
           hitSet.add(target.id);
-          const died = target.takeDamage(proj.damage, proj.deathName || '차크람');
-          if (died) this._creditKill(proj.ownerId, target, proj.hitLabel || '차크람으로');
+          const died = target.takeDamage(proj.damage, proj.deathName || '부메랑');
+          if (!died && proj.bleed) this._applyBleed(target, proj.ownerId);
+          if (died) this._creditKill(proj.ownerId, target, proj.hitLabel || '부메랑으로');
         }
       });
     };
@@ -3231,6 +3461,17 @@ export class Game {
       const hitWall = proj.x <= proj.radius || proj.x >= this.mapWidth - proj.radius ||
                       proj.y <= proj.radius || proj.y >= this.mapHeight - proj.radius;
       const hitCover = this.cover.length && coverBlocksCircle(this.cover, proj.x, proj.y, proj.radius);
+      // Wall reflect: bounce off the arena edge once (extra hit chance) before returning.
+      if (hitWall && !hitCover && flew < proj.outRange && (proj.wallBouncesLeft || 0) > 0) {
+        proj.wallBouncesLeft -= 1;
+        if (proj.x <= proj.radius || proj.x >= this.mapWidth - proj.radius) proj.vx = -proj.vx;
+        if (proj.y <= proj.radius || proj.y >= this.mapHeight - proj.radius) proj.vy = -proj.vy;
+        proj.x = Math.max(proj.radius, Math.min(this.mapWidth - proj.radius, proj.x));
+        proj.y = Math.max(proj.radius, Math.min(this.mapHeight - proj.radius, proj.y));
+        proj.angle = Math.atan2(proj.vy, proj.vx);
+        proj.hitOut.clear();        // allow re-hitting after the bounce
+        return;
+      }
       if (flew >= proj.outRange || hitWall || hitCover) {
         proj.x = Math.max(proj.radius, Math.min(this.mapWidth - proj.radius, proj.x));
         proj.y = Math.max(proj.radius, Math.min(this.mapHeight - proj.radius, proj.y));
@@ -3260,11 +3501,10 @@ export class Game {
     damageLeg(proj.hitBack, 'back');
   }
 
-  // --- 지뢰 가방 (mine bag): F places a proximity mine -----------------------
+  // --- 지뢰 가방 (mine bag): R plants a proximity mine -----------------------
   _placeMine(player, now) {
     const sk = SkillConfig.minebag;
-    player.skillCdLeft = (sk.cooldownMs || 2500) / 1000;
-    // Cap mines per player — placing over the cap drops the oldest.
+    // Cooldown governed by the R aux executor (altSkillCdLeft).
     const mine = {
       id: ++this._mineSeq,
       ownerId: player.id,
@@ -3272,12 +3512,63 @@ export class Game {
       armAt: now + (sk.armMs || 1000)
     };
     this.mines.push(mine);
-    const own = this.mines.filter(m => m.ownerId === player.id);
+    const own = this.mines.filter(m => m.ownerId === player.id && !m.tracer);
     const max = sk.maxMines || 3;
     if (own.length > max) {
       const oldest = own[0];
       this.mines = this.mines.filter(m => m !== oldest);
     }
+  }
+
+  // F 원격 기폭: detonate all of the player's armed proximity mines at once.
+  _detonateAllMines(player, now) {
+    const sk = SkillConfig.minebag;
+    player.skillCdLeft = (sk.detonateCooldownMs || 4000) / 1000;
+    const mine = this.mines.filter(m => m.ownerId === player.id && !m.tracer);
+    for (const m of mine) { this._explodeMine(m, now); m._spent = true; }
+    this.mines = this.mines.filter(m => !m._spent);
+  }
+
+  // LMB 예광 지뢰: stick a timed mine onto the nearest enemy (else drop in front),
+  // bursts after a fuse for high damage + stun.
+  _placeTracerMine(player, now) {
+    const sk = SkillConfig.minebag;
+    let stick = null, bestD = sk.tracerStickRange || 220;
+    for (const t of Object.values(this.players)) {
+      if (t.id === player.id || t.isDead) continue;
+      const d = Math.hypot(t.x - player.x, t.y - player.y);
+      if (d < bestD) { bestD = d; stick = t; }
+    }
+    const fx = stick ? stick.x : player.x + Math.cos(player.angle) * 60;
+    const fy = stick ? stick.y : player.y + Math.sin(player.angle) * 60;
+    this.mines.push({
+      id: ++this._mineSeq, ownerId: player.id, tracer: true,
+      stickTo: stick ? stick.id : null,
+      x: fx, y: fy,
+      armAt: now, fuseAt: now + (sk.tracerFuseMs || 2000)
+    });
+  }
+
+  // Shared blast: damage + 둔화 every non-owner in range; tracer mines also stun.
+  _explodeMine(mine, now) {
+    const sk = SkillConfig.minebag;
+    const blast = sk.blastRadius || 60;
+    const dmg = mine.tracer ? (sk.tracerDamage || 30) : sk.damage;
+    for (const t of Object.values(this.players)) {
+      if (t.id === mine.ownerId || t.isDead || t.isInvincible?.()) continue;
+      if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 > (blast + (t.radius || 14)) ** 2) continue;
+      const died = t.takeDamage(dmg, '지뢰');
+      if (!died) {
+        if (mine.tracer && sk.tracerStunMs) this._applyStun(t, sk.tracerStunMs, now);
+        else if (sk.blastSlowMs) this._applySlow(t, sk.blastSlowMs);
+      }
+      if (died) this._creditKill(mine.ownerId, t, '지뢰로');
+    }
+    this.effects.push({
+      attackerId: mine.ownerId, x: mine.x, y: mine.y,
+      weapon: 'minebag', type: 'mine_blast', range: blast,
+      progress: 0, timestamp: now, lifetime: 360
+    });
   }
 
   _updateMines(now) {
@@ -3287,6 +3578,18 @@ export class Game {
     for (const mine of this.mines) {
       const owner = this.players[mine.ownerId];
       if (!owner || owner.isDead) continue; // placer gone → mine removed
+
+      // Tracer mine: follow its stuck target, then burst on the fuse timer.
+      if (mine.tracer) {
+        if (mine.stickTo) {
+          const tgt = this.players[mine.stickTo];
+          if (tgt && !tgt.isDead) { mine.x = tgt.x; mine.y = tgt.y; }
+        }
+        if (now >= mine.fuseAt) { this._explodeMine(mine, now); continue; }
+        survivors.push(mine);
+        continue;
+      }
+
       if (now < mine.armAt) { survivors.push(mine); continue; }
       // Armed: detonate if a non-owner steps within the trigger radius.
       const trig = sk.triggerRadius || 46;
@@ -3296,20 +3599,7 @@ export class Game {
         if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 <= (trig + (t.radius || 14)) ** 2) { triggered = true; break; }
       }
       if (!triggered) { survivors.push(mine); continue; }
-      // Explode: damage every non-owner in the blast radius.
-      const blast = sk.blastRadius || 60;
-      for (const t of Object.values(this.players)) {
-        if (t.id === mine.ownerId || t.isDead || t.isInvincible?.()) continue;
-        if ((t.x - mine.x) ** 2 + (t.y - mine.y) ** 2 <= (blast + (t.radius || 14)) ** 2) {
-          const died = t.takeDamage(sk.damage, '지뢰');
-          if (died) this._creditKill(mine.ownerId, t, '지뢰로');
-        }
-      }
-      this.effects.push({
-        attackerId: mine.ownerId, x: mine.x, y: mine.y,
-        weapon: 'minebag', type: 'mine_blast', range: blast,
-        progress: 0, timestamp: now, lifetime: 360
-      });
+      this._explodeMine(mine, now);
     }
     this.mines = survivors;
   }
@@ -3343,6 +3633,7 @@ export class Game {
           if (now - last < (cfg.tickMs || 200)) return;
           player._flameHits[t.id] = now;
           const died = t.takeDamage(cfg.damage, '화염방사기');
+          if (!died && cfg.burn) this._applyBurn(t, player.id);
           if (died) this._creditKill(player.id, t, '화염방사기로');
         });
       } else {
@@ -3381,6 +3672,7 @@ export class Game {
           if (t.id === patch.ownerId || t.isDead || t.isInvincible?.()) continue;
           if ((t.x - patch.x) ** 2 + (t.y - patch.y) ** 2 <= (r + (t.radius || 14)) ** 2) {
             const died = t.takeDamage(sk.patchDamage || 2.5, '화염 장판');
+            if (!died && sk.burn) this._applyBurn(t, patch.ownerId);
             if (died) this._creditKill(patch.ownerId, t, '화염 장판으로');
           }
         }
@@ -3413,6 +3705,16 @@ export class Game {
     if (this.cover.length) resolveCover(this.cover, player, player.radius || 14);
     player.prevX = player.x; // discontinuous — avoid melee sweep across the yank
     player.prevY = player.y;
+    // Arrival: slow enemies near the landing spot.
+    if (sk.arrivalSlowMs) {
+      const ar = sk.arrivalRadius || 80;
+      Object.values(this.players).forEach(t => {
+        if (t.id === player.id || t.isDead || t.isInvincible()) return;
+        if (Math.hypot(t.x - player.x, t.y - player.y) <= ar + (t.radius || 14)) {
+          this._applySlow(t, sk.arrivalSlowMs);
+        }
+      });
+    }
     this.effects.push({
       id: `${player.id}-harpoonpull-${now}`,
       attackerId: player.id,
@@ -3423,7 +3725,7 @@ export class Game {
     });
   }
 
-  // --- 쌍권총 (dual pistols): F barrage of 8 fanned shots, then a back-hop -----
+  // --- 쇠뇌 (pistols key): F barrage of 8 fanned shots, then a back-hop -----
   _spawnPistolBullet(player, angle, damage, speed, range, now, tag) {
     const spawnDist = (player.radius || 14) + 3;
     const proj = new Projectile(
@@ -3453,19 +3755,111 @@ export class Game {
     });
   }
 
-  // --- 수호 블레이드 (guardian): orbiting blades + F launch/recall ----------
+  // --- 디펜더 (guardian): orbiting blades + F launch/recall ----------
 
   // Deterministic blade positions for a guardian player at host time `now`.
   _guardianBladePositions(player, now) {
     const cfg = Weapons.guardian;
     const base = (now / (cfg.orbitPeriodMs || 1100)) * Math.PI * 2;
     const n = cfg.orbitCount || 2;
+    // 수호 태세: widen the orbit while active (radius only — re-hit cap makes
+    // a speed change DPS-neutral, so geometry stays consistent with the client).
+    const stance = player.guardianStanceUntil && now < player.guardianStanceUntil;
+    const radius = cfg.orbitRadius + (stance ? (cfg.stanceRadiusBonus || 0) : 0);
     const out = [];
     for (let i = 0; i < n; i++) {
       const a = base + (i / n) * Math.PI * 2;
-      out.push({ x: player.x + Math.cos(a) * cfg.orbitRadius, y: player.y + Math.sin(a) * cfg.orbitRadius, angle: a });
+      out.push({ x: player.x + Math.cos(a) * radius, y: player.y + Math.sin(a) * radius, angle: a });
     }
     return out;
+  }
+
+  // F 수호 태세: widen the orbit briefly and knock out one incoming projectile.
+  _guardianStance(player, now) {
+    const sk = SkillConfig.guardian;
+    player.skillCdLeft = (sk.cooldownMs || 6000) / 1000;
+    player.guardianStanceUntil = now + (sk.stanceMs || 1500);
+    this._deflectProjectile(player, (Weapons.guardian.orbitRadius || 60) + (sk.stanceRadiusBonus || 0));
+  }
+
+  // LMB 추적 칼날: detach one blade that homes the nearest enemy for a short time.
+  _spawnHomingBlade(player, now) {
+    const sk = SkillConfig.guardian;
+    const spawnDist = (player.radius || 14) + 6;
+    const proj = new Projectile(
+      `${player.id}-ghoming-${now}`, player.id,
+      player.x + Math.cos(player.angle) * spawnDist,
+      player.y + Math.sin(player.angle) * spawnDist,
+      player.angle, sk.homingSpeed || 360, Infinity, sk.homingDamage || 14, 'guardianhoming'
+    );
+    proj.weapon = 'guardian';
+    proj.radius = 11;
+    proj.expireAt = now + (sk.homingDurationMs || 1500);
+    proj.hitCooldownMs = sk.homingHitCooldownMs || 400;
+    proj.homingHits = {};
+    this.projectiles.push(proj);
+  }
+
+  _updateHomingBlade(proj, deltaTime, now) {
+    if (now >= proj.expireAt) { proj.isDead = true; return; }
+    // steer toward the nearest living enemy
+    let best = null, bestD = Infinity;
+    for (const t of Object.values(this.players)) {
+      if (t.id === proj.ownerId || t.isDead) continue;
+      const d = Math.hypot(t.x - proj.x, t.y - proj.y);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    if (best) proj.angle = Math.atan2(best.y - proj.y, best.x - proj.x);
+    proj.vx = Math.cos(proj.angle) * proj.speed;
+    proj.vy = Math.sin(proj.angle) * proj.speed;
+    proj.x += proj.vx * deltaTime;
+    proj.y += proj.vy * deltaTime;
+    if (proj.x < 0 || proj.x > this.mapWidth || proj.y < 0 || proj.y > this.mapHeight) { proj.isDead = true; return; }
+    for (const t of Object.values(this.players)) {
+      if (t.id === proj.ownerId || t.isDead || t.isInvincible()) continue;
+      if (Math.hypot(t.x - proj.x, t.y - proj.y) > (t.radius || 14) + proj.radius) continue;
+      if ((proj.homingHits[t.id] || 0) > now) continue;
+      proj.homingHits[t.id] = now + proj.hitCooldownMs;
+      const died = t.takeDamage(proj.damage, '디펜더');
+      if (died) this._creditKill(proj.ownerId, t, '디펜더로');
+    }
+  }
+
+  // 차크람 LMB 맴돌이: a defensive disc orbits the caster, dealing contact damage
+  // with a per-target hit cooldown while active.
+  _updateChakramOrbit(now) {
+    Object.values(this.players).forEach(player => {
+      if (player.isDead || !player.chakramOrbitUntil || now >= player.chakramOrbitUntil) return;
+      const orbitR = player.chakramOrbitRadius || 46;
+      const ang = (now / 140) % (Math.PI * 2);          // deterministic spin from time
+      const ox = player.x + Math.cos(ang) * orbitR;
+      const oy = player.y + Math.sin(ang) * orbitR;
+      const hits = player.chakramOrbitHits || (player.chakramOrbitHits = {});
+      Object.values(this.players).forEach(target => {
+        if (target.id === player.id || target.isDead || target.isInvincible()) return;
+        if (Math.hypot(target.x - ox, target.y - oy) > target.radius + 12) return;
+        if ((hits[target.id] || 0) > now) return;        // per-target hit cooldown
+        hits[target.id] = now + (player.chakramOrbitHitCd || 400);
+        const died = target.takeDamage(player.chakramOrbitDamage || 14, player.nickname);
+        if (died) this._creditKill(player.id, target, '부메랑으로');
+      });
+    });
+  }
+
+  // 열기 방패 (flamethrower LMB): burns enemies that stay in contact while active.
+  _updateHeatShield(now) {
+    Object.values(this.players).forEach(player => {
+      if (player.isDead || !player.heatShieldUntil || now >= player.heatShieldUntil) return;
+      const cr = player.heatShieldRadius || 34;
+      if (!player._heatHits) player._heatHits = {};
+      Object.values(this.players).forEach(t => {
+        if (t.id === player.id || t.isDead || t.isInvincible()) return;
+        if (Math.hypot(t.x - player.x, t.y - player.y) > cr + (t.radius || 14)) return;
+        if ((player._heatHits[t.id] || 0) > now) return;
+        player._heatHits[t.id] = now + 300;
+        this._applyBurn(t, player.id);
+      });
+    });
   }
 
   _updateGuardianBlades(now) {
@@ -3485,8 +3879,8 @@ export class Game {
         const hit = blades.some(b => (b.x - target.x) ** 2 + (b.y - target.y) ** 2 <= rr * rr);
         if (hit) {
           player._guardianHits[target.id] = now;
-          const died = target.takeDamage(cfg.damage, '수호 블레이드');
-          if (died) this._creditKill(player.id, target, '수호 블레이드로');
+          const died = target.takeDamage(cfg.damage, '디펜더');
+          if (died) this._creditKill(player.id, target, '디펜더로');
         }
       });
     });
@@ -3494,7 +3888,7 @@ export class Game {
 
   _launchGuardianBlades(player, now) {
     const sk = SkillConfig.guardian;
-    player.skillCdLeft = (sk.cooldownMs || 5000) / 1000;
+    // Cooldown is governed by the R aux executor (altSkillCdLeft), not skillCdLeft.
     const blades = this._guardianBladePositions(player, now);
     blades.forEach((b, i) => {
       const proj = new Projectile(
@@ -3508,8 +3902,8 @@ export class Game {
       proj.bornAt = now;
       proj.outRange = sk.launchRange;
       proj.locksOwner = false;       // disarm is implied by the projectiles existing
-      proj.deathName = '수호 블레이드';
-      proj.hitLabel = '수호 블레이드로';
+      proj.deathName = '디펜더';
+      proj.hitLabel = '디펜더로';
       proj.hitOut = new Set();
       proj.hitBack = new Set();
       this.projectiles.push(proj);
@@ -3545,6 +3939,37 @@ export class Game {
       }
     }
     this.pendingPistolBursts = waiting;
+  }
+
+  // 조준 사격 (pistols R): after the 0.4s windup, fire a piercing hitscan that
+  // damages every enemy along the aim line (stopped only by walls/cover).
+  _processAimedShots(now) {
+    if (!this.pendingAimedShots?.length) return;
+    const waiting = [];
+    for (const s of this.pendingAimedShots) {
+      if (now < s.fireAt) { waiting.push(s); continue; }
+      const player = this.players[s.playerId];
+      if (!player || player.isDead || player.weapon !== 'pistols') continue;
+      const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+      const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
+      const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+      const maxDist = Math.min(s.range, Number.isFinite(wallDist) ? wallDist : s.range, coverDist);
+      for (const t of Object.values(this.players)) {
+        if (t.id === player.id || t.isDead || t.isInvincible()) continue;
+        const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, t.x, t.y, t.radius);
+        if (d === null || d > maxDist) continue;
+        const died = t.takeDamage(s.damage, player.nickname);
+        if (died) this._creditKill(player.id, t, '쇠뇌로');
+      }
+      this.effects.push({
+        id: `${player.id}-aimshot-${now}`, attackerId: player.id,
+        x: player.x, y: player.y,
+        x2: player.x + dirX * maxDist, y2: player.y + dirY * maxDist,
+        angle: player.angle, weapon: 'pistols', type: 'railbeam',
+        progress: 0, timestamp: now, lifetime: 280
+      });
+    }
+    this.pendingAimedShots = waiting;
   }
 
   _sendLocalInput(now) {
@@ -3586,6 +4011,8 @@ export class Game {
       if (p.buffTimeLeft > 0) p.buffTimeLeft = Math.max(0, p.buffTimeLeft - deltaTime);
       if (p.stunTimeLeft > 0) p.stunTimeLeft = Math.max(0, p.stunTimeLeft - deltaTime);
       if (p.burnTimeLeft > 0) p.burnTimeLeft = Math.max(0, p.burnTimeLeft - deltaTime);
+      if (p.bleedTimeLeft > 0) p.bleedTimeLeft = Math.max(0, p.bleedTimeLeft - deltaTime);
+      if (p.slowTimeLeft > 0) p.slowTimeLeft = Math.max(0, p.slowTimeLeft - deltaTime);
       if (p.altSkillCdLeft > 0) p.altSkillCdLeft = Math.max(0, p.altSkillCdLeft - deltaTime);
       if (p.targetSkillCdLeft > 0) p.targetSkillCdLeft = Math.max(0, p.targetSkillCdLeft - deltaTime);
       this._tickMagicCooldowns(p, deltaTime);
@@ -3712,10 +4139,18 @@ export class Game {
             recent.y = p.y;
             recent.tier = damageTier(recent.amount);
           } else {
+            // A small drop on a target with an active DoT is shown as a tick in
+            // the DoT's color (burn=orange, bleed=dark red), distinct from hits.
+            let dotColor = null;
+            if (dmg <= 6) {
+              if (p.burnTimeLeft > 0) dotColor = '#fb923c';
+              else if (p.bleedTimeLeft > 0) dotColor = '#c0392b';
+            }
             this._dmgPopups.push({
               targetId: id, amount: dmg, x: p.x, y: p.y,
               born: now, isLocal,
               tier: damageTier(dmg),
+              dotColor,
               // Random horizontal drift so stacked numbers fan out instead of
               // overlapping into an unreadable blob.
               vx: (Math.random() - 0.5) * 2
@@ -4411,6 +4846,8 @@ export class Game {
             p.pendingIcicles = Math.max(0, Math.floor(snap.pendingIcicles || 0));
             p.magicCooldowns = deserializeMagicCooldowns(snap.magicCdMs);
             p.burnTimeLeft = Math.max(0, (snap.burnMs || 0) / 1000);
+            p.bleedTimeLeft = Math.max(0, (snap.bleedMs || 0) / 1000);
+            p.slowTimeLeft = Math.max(0, (snap.slowMs || 0) / 1000);
             p.teleportReadyAt = Date.now() + Math.max(0, Math.round(snap.teleportCdMs || 0));
             p.color = snap.color;
             p.accentColor = snap.accentColor;

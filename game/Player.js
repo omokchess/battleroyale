@@ -4,6 +4,7 @@
  */
 
 import { Weapons, getEffectiveWeapon, DashConfig } from './Weapons.js';
+import { STATUS } from './Status.js';
 
 export class Player {
   constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
@@ -55,6 +56,10 @@ export class Player {
     this.buffTimeLeft = 0;    // seconds remaining on the active buff
     this.spearThrown = false; // true while the javelin skill is airborne
     this.chakramOut = false;  // true while a thrown chakram hasn't returned (disarmed)
+    this.chakramOrbitUntil = 0; // ms timestamp until which the LMB 맴돌이 defensive disc orbits
+    this.heatShieldUntil = 0; // ms timestamp until which 열기 방패 (flamethrower LMB) is active
+    this.guardianStanceUntil = 0; // ms timestamp until which 수호 태세 (guardian F) widens the orbit
+    this.pistolReloadUntil = 0; // ms timestamp until which 구르기 장전 (pistols LMB) speeds up fire
     this.slowTimeLeft = 0;    // seconds of a movement slow (harpoon pull) — can still attack
     // Flamethrower fuel state (host-driven; flameSpraying is synced for visuals).
     this.flameFuel = (Weapons.flamethrower?.fuelMs) || 3000;
@@ -67,6 +72,12 @@ export class Player {
     this.burnTickLeft = 0;     // fire DoT: seconds until the next tick
     this.burnDps = 0;          // fire DoT: damage per tick
     this.burnSourceId = null;  // fire DoT: who applied it (kill credit)
+    this.bleedTimeLeft = 0;    // bleed DoT: seconds remaining
+    this.bleedTickLeft = 0;    // bleed DoT: seconds until the next tick
+    this.bleedDps = 0;         // bleed DoT: damage per tick
+    this.bleedSourceId = null; // bleed DoT: who applied it (kill credit)
+    this.stunImmuneUntil = 0;  // host-ms: no new stun until this time (anti stun-lock)
+    this.statusImmuneUntil = 0;// host-ms: respawn protection — no new status until this time
     this.teleportReadyAt = 0;  // sniper R teleport: host-ms timestamp when ready again
     this.sniperTeleportTargetUntil = 0;
     this.altSkillCdLeft = 0;    // generic R skill cooldown (seconds)
@@ -201,7 +212,7 @@ export class Player {
     if (dx !== 0 || dy !== 0) {
       const length = Math.sqrt(dx * dx + dy * dy);
       const weaponConfig = Weapons[this.weapon] || Weapons.sword;
-      const slowMul = this.slowTimeLeft > 0 ? 0.35 : 1; // harpoon pull drag
+      const slowMul = this.slowTimeLeft > 0 ? STATUS.slow.moveFactor : 1; // −30% slow
       // Flamethrower is dragged down while actively spraying.
       let baseMul = weaponConfig.moveSpeed ?? 1;
       if (this.weapon === 'flamethrower' && this.flameSpraying) baseMul = weaponConfig.sprayMoveSpeed ?? baseMul;
@@ -265,6 +276,12 @@ export class Player {
     this.burnTickLeft = 0;
     this.burnDps = 0;
     this.burnSourceId = null;
+    this.bleedTimeLeft = 0;
+    this.bleedTickLeft = 0;
+    this.bleedDps = 0;
+    this.bleedSourceId = null;
+    // Note: stunImmuneUntil / statusImmuneUntil are timestamps set on respawn,
+    // not cleared here (clearCombatTimers also runs on death).
     this.teleportReadyAt = 0;
     this.sniperTeleportTargetUntil = 0;
     this.altSkillCdLeft = 0;
@@ -293,7 +310,10 @@ export class Player {
     if (!ignoresComboDelay && now < (this.comboDelayUntil || 0)) return false;
     const weaponConfig = getEffectiveWeapon(this.weapon, this.buffType);
     if (weaponConfig.automaticAttack === false) return false;
-    return (now - this.lastAttackTime) >= weaponConfig.cooldown;
+    let cd = weaponConfig.cooldown;
+    // 구르기 장전 (pistols LMB): +30% fire rate for a short window.
+    if (this.weapon === 'pistols' && this.pistolReloadUntil && now < this.pistolReloadUntil) cd *= 0.7;
+    return (now - this.lastAttackTime) >= cd;
   }
 
   triggerAttack(now) {
@@ -302,10 +322,15 @@ export class Player {
     return this.swingDirection;
   }
 
-  takeDamage(amount, attackerName) {
-    if (this.isDead || this.isInvincible()) return false;
+  // `ignoreIframe` lets damage-over-time (bleed/burn) keep ticking through dash
+  // i-frames — i-frames only block NEW direct hits/status, not existing DoTs.
+  takeDamage(amount, attackerName, ignoreIframe = false) {
+    if (this.isDead || (!ignoreIframe && this.isInvincible())) return false;
 
-    this.hp -= amount;
+    let dmg = amount;
+    // 열기 방패 (flamethrower LMB): flat 30% damage reduction while active.
+    if (this.heatShieldUntil && Date.now() < this.heatShieldUntil) dmg *= 0.7;
+    this.hp -= dmg;
     if (this.hp <= 0) {
       this.hp = 0;
       this.isDead = true;
@@ -339,6 +364,8 @@ export class Player {
       skillCdMs: Math.round(this.skillCdLeft * 1000),
       dashCdMs: Math.round(this.dashCdLeft * 1000),
       stunMs: Math.round(this.stunTimeLeft * 1000),
+      slowMs: Math.round((this.slowTimeLeft || 0) * 1000),
+      bleedMs: Math.round((this.bleedTimeLeft || 0) * 1000),
       spearThrown: this.spearThrown,
       flameSpraying: this.flameSpraying,
       isMobile: this.isMobile,
@@ -355,6 +382,9 @@ export class Player {
       sniperTeleportTargetMs: Math.max(0, Math.round((this.sniperTeleportTargetUntil || 0) - Date.now())),
       altSkillCdMs: Math.round((this.altSkillCdLeft || 0) * 1000),
       targetSkillCdMs: Math.round((this.targetSkillCdLeft || 0) * 1000),
+      orbitMs: Math.max(0, Math.round((this.chakramOrbitUntil || 0) - Date.now())),
+      shieldMs: Math.max(0, Math.round((this.heatShieldUntil || 0) - Date.now())),
+      stanceMs: Math.max(0, Math.round((this.guardianStanceUntil || 0) - Date.now())),
       color: this.color,
       accentColor: this.accentColor,
       costumeDecoration: this.costumeDecoration || null,
@@ -383,6 +413,8 @@ export class Player {
     this.skillCdLeft = (data.skillCdMs || 0) / 1000;
     this.dashCdLeft = (data.dashCdMs || 0) / 1000;
     this.stunTimeLeft = (data.stunMs || 0) / 1000;
+    this.slowTimeLeft = (data.slowMs || 0) / 1000;
+    this.bleedTimeLeft = (data.bleedMs || 0) / 1000;
     this.spearThrown = Boolean(data.spearThrown);
     this.arrowStacks = Math.max(0, Math.floor(data.arrowStacks || 0));
     this.greatswordChargeStart = data.greatswordChargeMs > 0 ? Date.now() - data.greatswordChargeMs : 0;
@@ -392,6 +424,9 @@ export class Player {
     this.sniperTeleportTargetUntil = data.sniperTeleportTargetMs > 0 ? Date.now() + data.sniperTeleportTargetMs : 0;
     this.altSkillCdLeft = Math.max(0, (data.altSkillCdMs || 0) / 1000);
     this.targetSkillCdLeft = Math.max(0, (data.targetSkillCdMs || 0) / 1000);
+    this.chakramOrbitUntil = data.orbitMs > 0 ? Date.now() + data.orbitMs : 0;
+    this.heatShieldUntil = data.shieldMs > 0 ? Date.now() + data.shieldMs : 0;
+    this.guardianStanceUntil = data.stanceMs > 0 ? Date.now() + data.stanceMs : 0;
     this.daggerQte = deserializeDaggerQte(data.daggerQte);
     this.comboStep = Math.max(0, Math.floor(data.comboStep || 0));
     this.comboDelayUntil = Date.now() + Math.max(0, Math.round(data.comboDelayMs || 0));
