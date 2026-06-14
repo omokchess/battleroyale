@@ -1090,48 +1090,22 @@ export class Renderer {
 
   _getGrassField(mapWidth, mapHeight) {
     if (typeof document === 'undefined') return null;
-    const key = `${mapWidth}x${mapHeight}`;
+    const tileImg = this.atlas?.get('tile/field');
+    // Wait until the tile image is loaded; will re-bake once it arrives.
+    const key = `${mapWidth}x${mapHeight}_${tileImg ? '1' : '0'}`;
     if (this._grassKey === key && this._grassField) return this._grassField;
+    if (!tileImg) { this._grassKey = null; return null; }
 
-    // Bake at 1:2 — enough detail, manageable memory.
-    const scale = 0.5;
-    const tw = Math.max(1, Math.round(mapWidth * scale));
-    const th = Math.max(1, Math.round(mapHeight * scale));
+    // Bake the map-sized floor once by repeating the 32×32 tile.
+    const tw = mapWidth, th = mapHeight;
     const cv = document.createElement('canvas');
     cv.width = tw; cv.height = th;
     const g = cv.getContext('2d');
-
-    // mulberry32 — fast, deterministic, no sync needed.
-    let s = 0x9e3779b9 >>> 0;
-    const rng = () => {
-      s = (s + 0x6d2b79f5) >>> 0;
-      let t = s;
-      t = Math.imul(t ^ (t >>> 15), t | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-
-    // Per-pixel colour noise — no grid, just smooth variation.
-    // Base: #74a334 = rgb(116, 163, 52)
-    const imgData = g.createImageData(tw, th);
-    const px = imgData.data;
-    for (let i = 0; i < px.length; i += 4) {
-      const n = (rng() - 0.5) * 28;
-      px[i]   = Math.max(60,  Math.min(200, 116 + n * 0.7)) | 0;
-      px[i+1] = Math.max(100, Math.min(220, 163 + n))       | 0;
-      px[i+2] = Math.max(20,  Math.min(100, 52  + n * 0.4)) | 0;
-      px[i+3] = 255;
-    }
-    g.putImageData(imgData, 0, 0);
-
-    // Scattered grass blade marks — 1px wide, 2-4px tall.
-    const blades = Math.round(tw * th * 0.022);
-    for (let i = 0; i < blades; i++) {
-      const x = (rng() * tw) | 0;
-      const y = (rng() * th) | 0;
-      g.fillStyle = rng() < 0.55 ? '#8dc02a' : '#4d7818';
-      g.fillRect(x, y, 1, 2 + ((rng() * 3) | 0));
-    }
+    g.imageSmoothingEnabled = false;
+    const ts = 32;
+    for (let y = 0; y < th; y += ts)
+      for (let x = 0; x < tw; x += ts)
+        g.drawImage(tileImg, x, y, ts, ts);
 
     this._grassField = cv;
     this._grassKey = key;
