@@ -40,10 +40,9 @@ let callbacks = {};            // { onEnterLobby, onRequireLogin }
 let itemCatalog = [];          // [{ id, category, name, price, data, unlock_type, unlock_threshold }]
 let ownedItemIds = new Set();  // 보유 아이템 id
 let equipped = equippedFromProfile(null); // { costume, weaponskin, killfx, dashtrail, respawnfx, title } (전체 id)
-let activeCategory = 'costume';
+let activeCategory = 'weaponskin';
 
 const SHOP_CATEGORIES = [
-  { key: 'costume',    label: '코스튬' },
   { key: 'weaponskin', label: '무기 스킨' },
   { key: 'killfx',     label: '처치 이펙트' },
   { key: 'dashtrail',  label: '대시 트레일' },
