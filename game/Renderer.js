@@ -1102,10 +1102,11 @@ export class Renderer {
     cv.width = tw; cv.height = th;
     const g = cv.getContext('2d');
     g.imageSmoothingEnabled = false;
-    const ts = 32;
-    for (let y = 0; y < th; y += ts)
-      for (let x = 0; x < tw; x += ts)
-        g.drawImage(tileImg, x, y, ts, ts);
+    const tsW = tileImg.naturalWidth  || 700;
+    const tsH = tileImg.naturalHeight || 700;
+    for (let y = 0; y < th; y += tsH)
+      for (let x = 0; x < tw; x += tsW)
+        g.drawImage(tileImg, x, y, tsW, tsH);
 
     this._grassField = cv;
     this._grassKey = key;

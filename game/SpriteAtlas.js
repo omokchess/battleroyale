@@ -76,7 +76,7 @@ export class SpriteAtlas {
  */
 // Bump when vendored sprite FILES change (same path, new pixels) so browsers /
 // the service worker fetch fresh instead of serving a cached image.
-export const ASSET_VERSION = '20260615c';
+export const ASSET_VERSION = '20260615d';
 
 export const SPRITE_MANIFEST = {
   // --- character body sheets (64×112 = 16×16, 4 cols × 7 rows) ---
