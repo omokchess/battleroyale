@@ -165,20 +165,6 @@ export const Weapons = {
     skill: 'F 스킬: 1초 예열 후 점점 커지는 충격파 3연발 (피해 20·40·52, 스턴 동반). 시전~종료까지 평타 불가 · 쿨타임 8.5초',
     color: '#fb923c'
   },
-  matchlock: {
-    name: '화승총',
-    damage: Infinity,       // 확정킬(즉사) — actual hit resolves via SkillConfig.matchlock
-    maxHp: 80,
-    cooldown: 10000,        // F-triggered only (automaticAttack false)
-    automaticAttack: false,
-    moveSpeed: 0.9,
-    range: Infinity,
-    speed: 50000,           // label only — fires as an instant hitscan
-    type: 'projectile',     // draws an aim line to the wall as the preview
-    description: 'F 키로 직선상의 첫 적을 즉사시키는 화기입니다. 조준선이 닿으면 즉시 처치하지만 쿨타임이 깁니다.',
-    skill: 'F 키: 조준 직선상의 첫 적을 즉사(확정킬) · 쿨타임 10초',
-    color: '#ef4444'
-  },
   katana: {
     name: '카타나',
     damage: 18,
@@ -211,7 +197,7 @@ export const Weapons = {
     color: '#a855f7'
   },
   sniper: {
-    name: '스나이퍼',
+    name: '강궁',
     damage: Infinity,       // 즉사 (actual shot resolves as a 9999 hitscan)
     maxHp: 90,
     cooldown: 2000,
@@ -220,12 +206,12 @@ export const Weapons = {
     range: Infinity,
     speed: Infinity,        // instant hitscan
     type: 'projectile',     // idle preview draws the aim line
-    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 저격총입니다. F로 0.5초간 조준선을 노출한 뒤 직선상 첫 적을 즉사시키고, R로 경기장 내 무작위 위치로 순간이동합니다.',
-    skill: 'F: 0.5초 조준선 노출(텔레그래프) 후 직선상 첫 적 즉사 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)',
-    color: '#22c55e'
+    description: '걷기는 불가능(이동속도 0)하지만 대시로 움직이는 초강력 활입니다. F로 0.5초간 시위를 당겨 조준선을 노출한 뒤 직선상 첫 적을 일격에 꿰뚫고(즉사), R로 경기장 내 무작위 위치로 순간이동합니다.',
+    skill: 'F: 0.5초 시위 당김(텔레그래프) 후 직선상 첫 적 즉사 (쿨타임 2초) ·  R: 경기장 내 무작위 위치로 순간이동 (쿨타임 2초)',
+    color: '#c9a227'
   },
   chakram: {
-    name: '차크람',
+    name: '부메랑',
     damage: 26,             // applied once per leg (outbound + return) per target
     maxHp: 100,
     cooldown: 750,          // measured from when the disk returns to hand
@@ -511,12 +497,6 @@ export const SkillConfig = {
       { range: 156, damage: 52, stunMs: 1100, knockback: 100 }
     ]
   },
-  matchlock: {
-    cooldownMs: 10000,
-    telegraphMs: 500,       // aim-line preview before the shot fires
-    damage: 9999,           // instakill
-    speed: 50000            // label only — instant hitscan
-  },
   katana: {
     cooldownMs: 7000,
     dashDistance: 150,      // total forward lunge across the two slashes
@@ -706,10 +686,6 @@ export const AuxSkillConfig = {
   hammer: {
     alt: { label: 'CRUSH', cooldownMs: 6200, type: 'melee_slam', damage: 38, shockwaveDamage: 30, range: 118, innerRange: 52, knockback: 105, stunMs: 650 },
     target: { cooldownMs: 5200, type: 'melee_slam', damage: 32, shockwaveDamage: 24, range: 92, innerRange: 40, knockback: 70, stunMs: 420 }
-  },
-  matchlock: {
-    alt: { label: 'BAYONET', cooldownMs: 8000, type: 'melee_line', damage: 36, range: 105, width: 24, knockback: 58 },
-    target: { cooldownMs: 6500, type: 'hitscan', damage: 48, range: Infinity }
   },
   katana: {
     target: { cooldownMs: 3800, type: 'melee_heavy_line', damage: 44, range: 132, width: 26, lungeDistance: 42, knockback: 42 }

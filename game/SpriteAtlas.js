@@ -100,7 +100,6 @@ export const SPRITE_MANIFEST = {
   'wpn/dagger': 'weapon/dagger.png',
   'wpn/rapier': 'weapon/rapier.png',
   'wpn/hammer': 'weapon/hammer.png',
-  'wpn/matchlock': 'weapon/matchlock.png',
   'wpn/katana': 'weapon/katana.png',
   'wpn/magicstaff': 'weapon/magicstaff.png',
   'wpn/sniper': 'weapon/sniper.png',
@@ -135,6 +134,8 @@ export const WEAPON_SPRITE_TUNE = {
   harpoon: { anchorX: 0.14, anchorY: 0.9, scale: 1.05 },
   // Bow is held centered on the hand, not pointed like a blade. Small extra tilt.
   bow:     { anchorX: 0.5, anchorY: 0.5, scale: 0.95, rot: -Math.PI / 4 + 0.35 },
+  // 강궁 (sniper): a heavy bow — same hold treatment as the bow.
+  sniper:  { anchorX: 0.5, anchorY: 0.5, scale: 1.05, rot: -Math.PI / 4 + 0.35 },
 };
 export const WEAPON_TUNE_DEFAULT = { rot: 0, scale: 1.0, anchorY: 1 };
 

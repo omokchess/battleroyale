@@ -1904,7 +1904,6 @@ export class Game {
       case 'dagger': this._startDaggerQte(player, now); break;
       case 'rapier': this._startBuff(player, 'rapier_riposte', SkillConfig.rapier.buffMs, now); break;
       case 'hammer': this._castHammerSkill(player, now); break;
-      case 'matchlock': this._fireMatchlock(player, now); break;
       case 'katana': this._castKatanaSkill(player, now); break;
       case 'sniper': this._fireSniperShot(player, now); break;
       case 'chakram': this._throwChakramFan(player, now); break;
@@ -3008,7 +3007,7 @@ export class Game {
 
     if (hitTarget) {
       const died = hitTarget.takeDamage(9999, player.nickname); // instakill
-      if (died) this._creditKill(player.id, hitTarget, '스나이퍼로');
+      if (died) this._creditKill(player.id, hitTarget, '강궁으로');
     }
 
     this.effects.push({
@@ -3395,8 +3394,8 @@ export class Game {
     proj.bornAt = now;
     proj.outRange = outRange;
     proj.locksOwner = !isSkill;     // only the basic throw disarms until return
-    proj.deathName = '차크람';
-    proj.hitLabel = '차크람으로';
+    proj.deathName = '부메랑';
+    proj.hitLabel = '부메랑으로';
     proj.hitOut = new Set();
     proj.hitBack = new Set();
     this.projectiles.push(proj);
@@ -3448,9 +3447,9 @@ export class Game {
         if (target.id === proj.ownerId || target.isDead || target.isInvincible() || hitSet.has(target.id)) return;
         if (Collision.checkProjectileHit(proj, target)) {
           hitSet.add(target.id);
-          const died = target.takeDamage(proj.damage, proj.deathName || '차크람');
+          const died = target.takeDamage(proj.damage, proj.deathName || '부메랑');
           if (!died && proj.bleed) this._applyBleed(target, proj.ownerId);
-          if (died) this._creditKill(proj.ownerId, target, proj.hitLabel || '차크람으로');
+          if (died) this._creditKill(proj.ownerId, target, proj.hitLabel || '부메랑으로');
         }
       });
     };
@@ -3843,7 +3842,7 @@ export class Game {
         if ((hits[target.id] || 0) > now) return;        // per-target hit cooldown
         hits[target.id] = now + (player.chakramOrbitHitCd || 400);
         const died = target.takeDamage(player.chakramOrbitDamage || 14, player.nickname);
-        if (died) this._creditKill(player.id, target, '차크람으로');
+        if (died) this._creditKill(player.id, target, '부메랑으로');
       });
     });
   }

@@ -15,7 +15,6 @@ test('idle weapon sprites point at aim except greatsword', () => {
     'dagger',
     'rapier',
     'hammer',
-    'matchlock',
     'katana',
     'magicstaff',
     'sniper'
