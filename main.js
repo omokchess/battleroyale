@@ -6,6 +6,7 @@
 import { NetworkManager } from './multiplayer/NetworkManager.js';
 import { Game } from './game/Game.js';
 import { Weapons } from './game/Weapons.js';
+import { ASSET_VERSION } from './game/SpriteAtlas.js';
 import { Protocol } from './multiplayer/Protocol.js';
 import { RoomRegistry } from './multiplayer/RoomRegistry.js';
 import * as accountUI from './ui/account-ui.js';
@@ -123,7 +124,7 @@ function weaponIconMarkup(weaponType, { preview = false } = {}) {
   const className = preview ? 'weapon-preview-art' : 'w-full h-full object-contain';
   if (NINJA_WEAPON_SPRITES.has(weaponType)) {
     const padding = preview ? 'padding:10%;' : 'padding:14%;';
-    return `<img src="/assets/ninja/weapon/${safeWeapon}.png" alt="${safeWeapon}" draggable="false" class="${className}" style="image-rendering:pixelated;${padding}" />`;
+    return `<img src="/assets/ninja/weapon/${safeWeapon}.png?v=${ASSET_VERSION}" alt="${safeWeapon}" draggable="false" class="${className}" style="image-rendering:pixelated;${padding}" />`;
   }
   return `<img src="/assets/weapons/${safeWeapon}.png?v=${WEAPON_ICON_VERSION}" alt="${safeWeapon}" draggable="false" class="${className}" style="image-rendering:pixelated;${weaponIconRotation(weaponType)}" />`;
 }
@@ -244,9 +245,18 @@ function setWeaponPreview(weaponType, cfg) {
   const ctx = cv.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   const body = _previewImg('/assets/ninja/char/Boy.png');
-  const wpn = _previewImg(`/assets/ninja/weapon/${weaponType}.png`);
+  const wpn = _previewImg(`/assets/ninja/weapon/${weaponType}.png?v=${ASSET_VERSION}`);
   const start = performance.now();
-  const aim = 0; // face right so the swing reads
+  const mode = PREVIEW_MODE[weaponType] || 'swing';
+  const accent = cfg.color || '#c9a227';
+
+  // draw the held weapon sprite, grip at (hx,hy), tip along `ang` (icon ↗ → +45°)
+  const drawWpn = (hx, hy, ang, sz = 56) => {
+    if (!(wpn.complete && wpn.naturalWidth)) return;
+    ctx.save(); ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(hx), Math.round(hy)); ctx.rotate(ang + Math.PI / 4);
+    ctx.drawImage(wpn, -sz * 0.28, -sz * 0.82, sz, sz); ctx.restore();
+  };
 
   const frame = (t) => {
     const el = (t - start) / 1000;
@@ -256,33 +266,90 @@ function setWeaponPreview(weaponType, cfg) {
     ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#0d0a06';
     ctx.beginPath(); ctx.ellipse(cx, cy + 36, 30, 10, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     // character body (right-facing row 3), gentle idle bob
+    const bob = Math.round(Math.sin(el * 3) * 1.5);
     if (body.complete && body.naturalWidth) {
-      const S = 84; const bob = Math.round(Math.sin(el * 3) * 1.5);
+      const S = 84;
       ctx.drawImage(body, 0, 3 * 16, 16, 16, Math.round(cx - S / 2), Math.round(cy - S / 2 + bob), S, S);
     }
-    // attack cycle: windup → swing → recover
-    const T = 1.5, c = el % T;
-    let ang = aim + 0.25, reach = 0, slash = 0;
-    if (c < 0.3) { ang = aim + 0.25 - (c / 0.3) * 0.9; }
-    else if (c < 0.5) { const k = (c - 0.3) / 0.2; ang = aim - 0.65 + k * 1.5; reach = Math.sin(k * Math.PI) * 16; slash = Math.sin(k * Math.PI); }
-    else { const k = Math.min(1, (c - 0.5) / 0.6); ang = aim + 0.85 - k * 0.6; }
-    const hand = 40 + reach;
-    const hx = cx + Math.cos(ang) * hand, hy = cy + Math.sin(ang) * hand;
-    // slash arc during the swing
-    if (slash > 0.05) {
-      ctx.save(); ctx.strokeStyle = `rgba(235,242,250,${0.7 * slash})`; ctx.lineWidth = 3; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.arc(cx, cy, hand, ang - 0.8, ang + 0.15); ctx.stroke(); ctx.restore();
-    }
-    // weapon sprite at the hand (icon points up-right → rotate aim+45°, grip lower-left)
-    if (wpn.complete && wpn.naturalWidth) {
-      const sz = 56; ctx.save(); ctx.imageSmoothingEnabled = false;
-      ctx.translate(Math.round(hx), Math.round(hy)); ctx.rotate(ang + Math.PI / 4);
-      ctx.drawImage(wpn, -sz * 0.28, -sz * 0.82, sz, sz); ctx.restore();
+
+    if (mode === 'orbit') {
+      // 디펜더: blades orbit the character (matches gameplay), tips outward.
+      const n = 3, R = 46;
+      for (let i = 0; i < n; i++) {
+        const a = el * 2.4 + (i / n) * Math.PI * 2;
+        drawWpn(cx + Math.cos(a) * R, cy + Math.sin(a) * R, a, 40);
+      }
+    } else if (mode === 'shoot') {
+      // 활/강궁/작살/쇠뇌: hold forward, recoil + a projectile flies out on the beat.
+      const T = 1.3, c = el % T;
+      const recoil = c < 0.12 ? -6 * (1 - c / 0.12) : 0;
+      drawWpn(cx + 30 + recoil, cy - 2, 0, 56);
+      // projectile
+      const p = (c % T) / T;
+      const px = cx + 36 + p * 130, py = cy - 2;
+      if (p < 0.95) {
+        ctx.save();
+        ctx.strokeStyle = accent; ctx.fillStyle = accent;
+        ctx.lineWidth = 3; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(px - 12, py); ctx.lineTo(px, py); ctx.stroke();
+        ctx.restore();
+      }
+    } else if (mode === 'throw') {
+      // 부메랑: a spinning disc flies out and returns.
+      const T = 1.6, c = (el % T) / T;
+      const dist = Math.sin(c * Math.PI) * 120;
+      const dx = cx + 24 + dist, dy = cy - 4;
+      drawWpn(cx + 22, cy + 6, 0.4, 40); // hand
+      ctx.save(); ctx.translate(dx, dy); ctx.rotate(el * 12);
+      drawWpn(0, 18, 0, 40); ctx.restore();
+    } else if (mode === 'cast') {
+      // 마법 지팡이: hold up, a glowing orb pulses then launches.
+      const T = 1.4, c = el % T;
+      drawWpn(cx + 26, cy - 18, -0.5, 56);
+      const tipx = cx + 40, tipy = cy - 36;
+      const grow = c < 0.6 ? c / 0.6 : 0;
+      const orbR = 4 + grow * 7;
+      ctx.save(); ctx.shadowColor = accent; ctx.shadowBlur = 14; ctx.fillStyle = accent;
+      if (c < 0.6) { ctx.globalAlpha = 0.6 + grow * 0.4; ctx.beginPath(); ctx.arc(tipx, tipy, orbR, 0, Math.PI * 2); ctx.fill(); }
+      else { const p = (c - 0.6) / 0.8; ctx.globalAlpha = 1 - p; ctx.beginPath(); ctx.arc(tipx + p * 120, tipy, 8, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+    } else if (mode === 'cone') {
+      // 화염 지팡이: a flickering flame cone sprays forward.
+      drawWpn(cx + 26, cy - 6, -0.2, 56);
+      const ox = cx + 40, oy = cy - 12, len = 86;
+      ctx.save();
+      const g = ctx.createLinearGradient(ox, oy, ox + len, oy);
+      g.addColorStop(0, 'rgba(251,146,60,0.9)'); g.addColorStop(0.6, 'rgba(251,191,36,0.5)'); g.addColorStop(1, 'rgba(251,191,36,0)');
+      ctx.fillStyle = g;
+      const flick = Math.sin(el * 18) * 4;
+      ctx.beginPath(); ctx.moveTo(ox, oy);
+      ctx.lineTo(ox + len, oy - 26 - flick); ctx.lineTo(ox + len, oy + 26 + flick); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    } else {
+      // swing (melee): windup → swing arc → recover, with a slash trail.
+      const T = 1.5, c = el % T;
+      let ang = 0.25, reach = 0, slash = 0;
+      if (c < 0.3) { ang = 0.25 - (c / 0.3) * 0.9; }
+      else if (c < 0.5) { const k = (c - 0.3) / 0.2; ang = -0.65 + k * 1.5; reach = Math.sin(k * Math.PI) * 16; slash = Math.sin(k * Math.PI); }
+      else { const k = Math.min(1, (c - 0.5) / 0.6); ang = 0.85 - k * 0.6; }
+      const hand = 40 + reach;
+      const hx = cx + Math.cos(ang) * hand, hy = cy + Math.sin(ang) * hand;
+      if (slash > 0.05) {
+        ctx.save(); ctx.strokeStyle = `rgba(235,242,250,${0.7 * slash})`; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.arc(cx, cy, hand, ang - 0.8, ang + 0.15); ctx.stroke(); ctx.restore();
+      }
+      drawWpn(hx, hy, ang, 56);
     }
     _previewRAF = requestAnimationFrame(frame);
   };
   _previewRAF = requestAnimationFrame(frame);
 }
+
+// Per-weapon preview style. Anything unlisted uses the melee swing.
+const PREVIEW_MODE = {
+  bow: 'shoot', sniper: 'shoot', harpoon: 'shoot', pistols: 'shoot',
+  chakram: 'throw', magicstaff: 'cast', flamethrower: 'cone', guardian: 'orbit',
+};
 
 function renderSkillPreview(skillText = '') {
   return String(skillText || '').split('\n').filter(Boolean).map(line => {

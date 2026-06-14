@@ -48,7 +48,7 @@ export class SpriteAtlas {
       };
       img.onload = () => done(true);
       img.onerror = () => done(false);     // fail soft — caller falls back
-      img.src = `${this.base}/${path}`;
+      img.src = `${this.base}/${path}?v=${ASSET_VERSION}`;
     });
   }
 
@@ -74,6 +74,10 @@ export class SpriteAtlas {
  * paths are relative to /assets/ninja. Anything not listed (or that fails to
  * load) simply falls back to procedural drawing.
  */
+// Bump when vendored sprite FILES change (same path, new pixels) so browsers /
+// the service worker fetch fresh instead of serving a cached image.
+export const ASSET_VERSION = '20260614b';
+
 export const SPRITE_MANIFEST = {
   // --- character body sheets (64×112 = 16×16, 4 cols × 7 rows) ---
   'char/Boy': 'character/Boy.png',
