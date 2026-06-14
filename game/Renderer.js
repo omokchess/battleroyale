@@ -1079,18 +1079,13 @@ export class Renderer {
     const grass = this._getGrassField(mapWidth, mapHeight);
     if (grass) {
       const prevSmooth = ctx.imageSmoothingEnabled;
-      ctx.imageSmoothingEnabled = false;            // keep blades chunky when upscaled
+      ctx.imageSmoothingEnabled = false;
       ctx.drawImage(grass, 0, 0, grass.width, grass.height, tl.x, tl.y, dw, dh);
       ctx.imageSmoothingEnabled = prevSmooth;
     } else {
-      // SSR / no canvas: flat grass fill.
-      ctx.fillStyle = '#5a8f3c';
+      ctx.fillStyle = '#74a334';
       ctx.fillRect(tl.x, tl.y, dw, dh);
     }
-
-    // Center heraldic emblem (crossed swords) — a faint trampled-grass medallion.
-    const ec = camera.toScreen(mapWidth / 2, mapHeight / 2, cw, ch);
-    this._drawArenaEmblem(ctx, ec.x, ec.y, camera.zoom || 1);
 
     ctx.restore();
   }
@@ -1118,34 +1113,12 @@ export class Renderer {
     const g = cv.getContext('2d');
     g.imageSmoothingEnabled = false;
 
-    // mulberry32 PRNG — fast, deterministic, seeded per call.
-    let s = 0x9e3779b9 >>> 0;
-    const rng = () => {
-      s = (s + 0x6d2b79f5) >>> 0;
-      let t = s;
-      t = Math.imul(t ^ (t >>> 15), t | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-
-    // Ninja Adventure TilesetField colour palette.
-    const BASE   = '#74a334';   // rgb(116,163,52)  — main field green
-    const LIGHT  = '#adbc3a';   // rgb(173,188,58)  — lighter yellow-green
-    const DARK   = '#5a8220';   // darker complement
-    const BLADE_HI  = '#8dc02a';
-    const BLADE_SH  = '#4d7818';
-    const DIRT      = '#a16240';
-    const DIRT_DARK = '#7c4a2e';
-
     // 1) Base fill.
-    g.fillStyle = BASE;
+    g.fillStyle = '#74a334';
     g.fillRect(0, 0, tw, th);
 
     if (fieldImg) {
-      // 2a) Tile rows 6-8 of TilesetField (the green section: srcY=96, srcH=48).
-      //     These rows contain the grass-patch border tiles that overlay the
-      //     base colour, adding subtle dark outlines and colour flecks that read
-      //     as a proper Ninja Adventure field without solid fill issues.
+      // 2) Tile rows 6-8 of TilesetField (the green section: srcY=96, srcH=48).
       const srcW = 80, srcY = 96, srcH = 48;
       const dstW = Math.round(srcW * scale);
       const dstH = Math.round(srcH * scale);
@@ -1154,86 +1127,11 @@ export class Renderer {
           g.drawImage(fieldImg, 0, srcY, srcW, srcH, x, y, dstW, dstH);
         }
       }
-      // Also scatter the yellow-green accent section (rows 3-5) sparsely.
-      const srcY2 = 48;
-      for (let i = 0; i < Math.round((tw * th) / (dstW * dstH * 6)); i++) {
-        const ox = (rng() * (tw - dstW)) | 0;
-        const oy = (rng() * (th - dstH)) | 0;
-        g.globalAlpha = 0.45;
-        g.drawImage(fieldImg, 0, srcY2, srcW, srcH, ox, oy, dstW, dstH);
-        g.globalAlpha = 1;
-      }
-    } else {
-      // 2b) Procedural fallback: mosaic of field palette tones.
-      const tones = [BASE, DARK, LIGHT];
-      const cell = 4;
-      for (let y = 0; y < th; y += cell) {
-        for (let x = 0; x < tw; x += cell) {
-          const r = rng();
-          if (r < 0.62) continue;
-          g.fillStyle = tones[(r * 3) | 0];
-          g.fillRect(x, y, cell, cell);
-        }
-      }
     }
-
-    // 3) Grass blade flecks.
-    const blades = Math.round(tw * th * 0.01);
-    for (let i = 0; i < blades; i++) {
-      const x = (rng() * tw) | 0;
-      const y = (rng() * th) | 0;
-      g.fillStyle = rng() < 0.5 ? BLADE_HI : BLADE_SH;
-      g.fillRect(x, y, 1, 1 + ((rng() * 2) | 0));
-    }
-
-    // 4) Bare dirt patches.
-    const patches = Math.max(3, Math.round((tw * th) / 90000));
-    for (let i = 0; i < patches; i++) {
-      const px = (rng() * tw) | 0;
-      const py = (rng() * th) | 0;
-      const pr = 6 + ((rng() * 10) | 0);
-      g.fillStyle = DIRT;
-      g.beginPath(); g.ellipse(px, py, pr, pr * 0.7, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = DIRT_DARK;
-      g.beginPath(); g.ellipse(px, py, pr * 0.55, pr * 0.4, 0, 0, Math.PI * 2); g.fill();
-    }
-
-    // 5) Edge vignette.
-    const grd = g.createRadialGradient(tw / 2, th / 2, Math.min(tw, th) * 0.35,
-      tw / 2, th / 2, Math.max(tw, th) * 0.62);
-    grd.addColorStop(0, 'rgba(0,0,0,0)');
-    grd.addColorStop(1, 'rgba(10,20,5,0.5)');
-    g.fillStyle = grd;
-    g.fillRect(0, 0, tw, th);
 
     this._grassField = cv;
     this._grassKey = key;
     return cv;
-  }
-
-  // A faint floor crest: trampled-grass medallion with brass crossed swords.
-  _drawArenaEmblem(ctx, cx, cy, zoom) {
-    ctx.save();
-    const r = 40 * zoom;
-    // Lighter, trodden grass ring rather than a stone slab.
-    ctx.fillStyle = this._hexToRGB('#6da04a', 0.30);
-    ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 0.85, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = this._hexToRGB('#c9a227', 0.35);
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.92, r * 0.78, 0, 0, Math.PI * 2); ctx.stroke();
-
-    ctx.lineCap = 'round';
-    const s = r * 0.58;
-    // Two brass blades.
-    ctx.strokeStyle = this._hexToRGB('#d4af37', 0.45);
-    ctx.lineWidth = 4 * zoom;
-    ctx.beginPath(); ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s); ctx.stroke();
-    // Small crossguards near each pommel.
-    ctx.lineWidth = 2.4 * zoom;
-    ctx.beginPath(); ctx.moveTo(cx - s - 5, cy - s + 5); ctx.lineTo(cx - s + 5, cy - s - 5); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx + s - 5, cy - s - 5); ctx.lineTo(cx + s + 5, cy - s + 5); ctx.stroke();
-    ctx.restore();
   }
 
   /**
