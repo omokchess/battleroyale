@@ -15,6 +15,7 @@ import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 import { normalizeRoomConfig, arenaDimensions, HEAL_RATES } from './RoomConfig.js';
 import { Sound } from './Sound.js';
 import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, coverClearOfPoint, coverBlocksCircle } from './Cover.js';
+import { generateWater, emptyWater } from './Water.js';
 import { Zone } from './Zone.js';
 import { STATUS } from './Status.js';
 
@@ -51,6 +52,9 @@ export class Game {
     // Cover tiles (Task 9): static obstacles. Host generates + syncs via
     // ROOM_JOINED; clients adopt the received list.
     this.cover = [];
+    // Water (Task 4-E): lakes that block walking but pass projectiles. Fully
+    // deterministic from map size, so it is computed (not synced) on every peer.
+    this.water = emptyWater();
     // Healing items (Task 9): host spawns on a timer, syncs via GAME_STATE.
     this.healingItems = [];
     this._healingSeq = 0;
@@ -153,6 +157,8 @@ export class Game {
     if (this.networkManager.isHost) {
       // Host builds the cover layout once; it ships to clients via ROOM_JOINED.
       this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight);
+      // Water is deterministic from map size — no sync needed.
+      this.water = generateWater(this.mapWidth, this.mapHeight);
 
       // Host adds themselves directly
       const spawnP = this._getRandomSpawnPoint();
@@ -402,6 +408,7 @@ export class Game {
         localPlayer.angle = this.input.aimAngle;
         Collision.clampToMap(localPlayer, this.mapWidth, this.mapHeight);
         if (this.cover.length) resolveCover(this.cover, localPlayer, localPlayer.radius || 14);
+        if (this.water?.tiles?.length) resolveCover(this.water.tiles, localPlayer, localPlayer.radius || 14);
 
         this._sendLocalInput(now);
       }
@@ -437,14 +444,17 @@ export class Game {
       }
       Collision.clampToMap(p, this.mapWidth, this.mapHeight);
       if (this.cover.length) resolveCover(this.cover, p, p.radius || 14);
+      if (this.water?.tiles?.length) resolveCover(this.water.tiles, p, p.radius || 14);
     });
 
     // 2. Resolve Player collisions to avoid clipping
     Collision.resolvePlayerCollisions(this.players);
-    // Re-eject from cover after player-vs-player pushes.
-    if (this.cover.length) {
+    // Re-eject from cover + water after player-vs-player pushes.
+    if (this.cover.length || this.water?.tiles?.length) {
       Object.values(this.players).forEach(p => {
-        if (!p.isDead) resolveCover(this.cover, p, p.radius || 14);
+        if (p.isDead) return;
+        if (this.cover.length) resolveCover(this.cover, p, p.radius || 14);
+        if (this.water?.tiles?.length) resolveCover(this.water.tiles, p, p.radius || 14);
       });
     }
 
@@ -620,6 +630,7 @@ export class Game {
               target.y = attacker.y + Math.sin(a) * (hk.pullToFront || 50);
               Collision.clampToMap(target, this.mapWidth, this.mapHeight);
               if (this.cover.length) resolveCover(this.cover, target, target.radius || 14);
+              if (this.water?.tiles?.length) resolveCover(this.water.tiles, target, target.radius || 14);
               this._applySlow(target, hk.slowMs || 300);
               if (hk.pullStunMs) this._applyStun(target, hk.pullStunMs, Date.now());
               target.prevX = target.x; // discontinuous move — don't let melee sweep it
@@ -1585,6 +1596,7 @@ export class Game {
       const x = margin + Math.random() * (this.mapWidth - margin * 2);
       const y = margin + Math.random() * (this.mapHeight - margin * 2);
       if (this.cover.length && !coverClearOfPoint(this.cover, x, y, 28)) continue;
+      if (this.water?.tiles?.length && !coverClearOfPoint(this.water.tiles, x, y, 28)) continue;
       let tooClose = false;
       for (const p of Object.values(this.players)) {
         if (p.isDead) continue;
@@ -3049,8 +3061,9 @@ export class Game {
     }
     player.x = Math.max(margin, Math.min(this.mapWidth - margin, fromX + dx));
     player.y = Math.max(margin, Math.min(this.mapHeight - margin, fromY + dy));
-    // Never blink inside cover; eject if the landing overlaps a tile.
+    // Never blink inside cover/water; eject if the landing overlaps a tile.
     if (this.cover?.length) resolveCover(this.cover, player, player.radius || 14);
+    if (this.water?.tiles?.length) resolveCover(this.water.tiles, player, player.radius || 14);
     // Teleport is discontinuous — don't let the next melee test sweep the jump.
     player.prevX = player.x;
     player.prevY = player.y;
@@ -3703,6 +3716,7 @@ export class Game {
     player.y += dirY * travel;
     Collision.clampToMap(player, this.mapWidth, this.mapHeight);
     if (this.cover.length) resolveCover(this.cover, player, player.radius || 14);
+    if (this.water?.tiles?.length) resolveCover(this.water.tiles, player, player.radius || 14);
     player.prevX = player.x; // discontinuous — avoid melee sweep across the yank
     player.prevY = player.y;
     // Arrival: slow enemies near the landing spot.
@@ -4095,6 +4109,7 @@ export class Game {
       hitFlash,
       killFeed: this._killFeed,
       cover: this.cover,
+      water: this.water,
       healingItems: this.healingItems,
       mines: this.mines,
       firePatches: this.firePatches,
@@ -4613,6 +4628,9 @@ export class Game {
       if (!bad && this.cover?.length && !coverClearOfPoint(this.cover, chosenX, chosenY, radius + 10)) {
         bad = true;
       }
+      if (!bad && this.water?.tiles?.length && !coverClearOfPoint(this.water.tiles, chosenX, chosenY, radius + 10)) {
+        bad = true;
+      }
 
       if (!bad) break;
 
@@ -4774,6 +4792,8 @@ export class Game {
           this.mapHeight = Number.isFinite(data.mapHeight) ? data.mapHeight : dims.mapHeight;
           // Adopt the host's cover layout (static obstacles).
           this.cover = Array.isArray(data.cover) ? data.cover : [];
+          // Water is deterministic from the (now-adopted) map size.
+          this.water = generateWater(this.mapWidth, this.mapHeight);
 
           // Reconstitute players list
           this.players = {};
@@ -5046,7 +5066,16 @@ function sanitizeCosmetics(cos) {
     /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|(?:hsla?|rgba?)\([0-9.,%\s]+\))$/.test(c.trim().slice(0, 40)))
     ? c.trim().slice(0, 40) : null;
   const out = {};
-  if (color(cos.weaponskin?.data?.tint)) out.weaponskin = { data: { tint: color(cos.weaponskin.data.tint) } };
+  // weapon skin: keep the tint + a validated skin id (used in a sprite path, so
+  // restrict to lowercase letters — no slashes/traversal).
+  const skinId = (s) => (typeof s === 'string' && /^[a-z]{2,16}$/.test(s)) ? s : null;
+  const wsTint = color(cos.weaponskin?.data?.tint);
+  const wsSkin = skinId(cos.weaponskin?.data?.skin);
+  if (wsTint || wsSkin) {
+    out.weaponskin = { data: {} };
+    if (wsTint) out.weaponskin.data.tint = wsTint;
+    if (wsSkin) out.weaponskin.data.skin = wsSkin;
+  }
   if (color(cos.dashtrail?.data?.color)) out.dashtrail = { data: { color: color(cos.dashtrail.data.color) } };
   if (color(cos.respawnfx?.data?.color)) out.respawnfx = { data: { color: color(cos.respawnfx.data.color) } };
   const styles = new Set(['firework', 'skull', 'coins']);

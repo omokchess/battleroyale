@@ -26,9 +26,9 @@ const costumeItems = DEFAULT_COSTUMES.map(c => ({
 export const DEFAULT_ITEMS = [
   ...costumeItems,
   { id: 'weaponskin:none', category: 'weaponskin', name: '기본', price: 0, data: {}, unlock_type: 'coin', unlock_threshold: 0, sort_order: 0 },
-  { id: 'weaponskin:ember', category: 'weaponskin', name: '잿불', price: 180, data: { tint: '#ff6b3d' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 1 },
-  { id: 'weaponskin:frost', category: 'weaponskin', name: '서리', price: 180, data: { tint: '#5fd3ff' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 2 },
-  { id: 'weaponskin:void', category: 'weaponskin', name: '보이드', price: 400, data: { tint: '#b14bff' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 3 },
+  { id: 'weaponskin:ember', category: 'weaponskin', name: '불꽃', price: 180, data: { skin: 'ember', tint: '#ff3d3d' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 1 },
+  { id: 'weaponskin:frost', category: 'weaponskin', name: '서리', price: 180, data: { skin: 'frost', tint: '#5fd3ff' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 2 },
+  { id: 'weaponskin:void', category: 'weaponskin', name: '보이드', price: 400, data: { skin: 'void', tint: '#b14bff' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 3 },
   { id: 'killfx:none', category: 'killfx', name: '기본', price: 0, data: {}, unlock_type: 'coin', unlock_threshold: 0, sort_order: 0 },
   { id: 'killfx:firework', category: 'killfx', name: '폭죽', price: 300, data: { style: 'firework', color: '#ffd24a' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 1 },
   { id: 'killfx:skull', category: 'killfx', name: '픽셀 해골', price: 450, data: { style: 'skull', color: '#e5e7eb' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 2 },

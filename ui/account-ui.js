@@ -23,6 +23,7 @@ import {
   purchaseItem,
   equipItem,
 } from '../firebase/game-api.js';
+import { ASSET_VERSION } from '../game/SpriteAtlas.js';
 
 /**
  * 계정(로그인/상단바) + 랭킹 + 상점 UI 를 담당.
@@ -39,10 +40,9 @@ let callbacks = {};            // { onEnterLobby, onRequireLogin }
 let itemCatalog = [];          // [{ id, category, name, price, data, unlock_type, unlock_threshold }]
 let ownedItemIds = new Set();  // 보유 아이템 id
 let equipped = equippedFromProfile(null); // { costume, weaponskin, killfx, dashtrail, respawnfx, title } (전체 id)
-let activeCategory = 'costume';
+let activeCategory = 'weaponskin';
 
 const SHOP_CATEGORIES = [
-  { key: 'costume',    label: '코스튬' },
   { key: 'weaponskin', label: '무기 스킨' },
   { key: 'killfx',     label: '처치 이펙트' },
   { key: 'dashtrail',  label: '대시 트레일' },
@@ -370,8 +370,17 @@ function itemSwatch(it) {
   const d = it.data || {};
   if (it.category === 'costume')
     return `<div class="w-12 h-12 rounded-full mb-2 border-2" style="background:${d.color || '#334155'};border-color:${d.accentColor || '#888'}"></div>`;
-  if (it.category === 'weaponskin')
-    return `<div class="w-12 h-12 mb-2 border-2 border-gray-600" style="background:${d.tint || '#3a4250'}"></div>`;
+  if (it.category === 'weaponskin') {
+    // Preview the actual skinned weapon sprite (sword as the representative).
+    // No skin → base sword. Missing sprite → fall back to a flat tint block.
+    const src = d.skin
+      ? `/assets/ninja/weapon/skins/${d.skin}/sword.png`
+      : `/assets/ninja/weapon/sword.png`;
+    const glow = d.tint ? `${d.tint}22` : '#11151c';
+    return `<div class="w-12 h-12 mb-2 border-2 border-gray-600 flex items-center justify-center" style="background:${glow}">
+      <img src="${src}?v=${ASSET_VERSION}" alt="" class="w-9 h-9" style="image-rendering:pixelated"
+onerror="this.style.display='none';this.parentElement.style.background='${d.tint || '#3a4250'}'"></div>`;
+  }
   if (it.category === 'title')
     return `<div class="h-12 flex items-center mb-2 font-mono text-xs font-bold" style="color:${d.color || '#9ca3af'}">${escapeHtml(d.text || '없음')}</div>`;
   // killfx / dashtrail / respawnfx → 발광 점
