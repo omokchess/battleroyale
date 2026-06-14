@@ -1135,24 +1135,13 @@ export class Renderer {
       const SRC = 16;
       const COUNT = Math.max(1, Math.floor((tufts.naturalWidth || 176) / SRC));
       const BLOCK = 32;
-      const EXCL = 1;                                  // keep-out radius in blocks
-      const score = (rx, ry) => hash(rx * 2 + 5, ry * 2 + 7);
+      const DENSITY = 0.20;                            // ~20% of blocks get a tuft
       const cols = Math.ceil(tw / BLOCK), rows = Math.ceil(th / BLOCK);
       for (let ry = 0; ry < rows; ry++) {
         for (let rx = 0; rx < cols; rx++) {
-          const s = score(rx, ry);
-          let isMax = true;
-          for (let dy = -EXCL; dy <= EXCL && isMax; dy++) {
-            for (let dx = -EXCL; dx <= EXCL; dx++) {
-              if (dx === 0 && dy === 0) continue;
-              if (score(rx + dx, ry + dy) >= s) { isMax = false; break; }
-            }
-          }
-          if (!isMax) continue;
+          if (hash(rx + 17, ry + 31) > DENSITY) continue;
           const idx  = (hash(rx + 7, ry + 3) * COUNT) | 0;
           const size = 22 + ((hash(rx + 11, ry + 5) * 12) | 0);   // 22–33px
-          // Bottom-left anchor: sprite's bottom edge sits on the block floor,
-          // left edge on the block's left side.
           const ax = rx * BLOCK;
           const ay = ry * BLOCK + BLOCK - size;
           g.drawImage(tufts, idx * SRC, 0, SRC, SRC, ax, ay, size, size);
