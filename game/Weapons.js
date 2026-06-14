@@ -6,7 +6,7 @@
 // Global Weapon Configurations
 export const Weapons = {
   sword: {
-    name: '검',
+    name: '디펜더',
     damage: 25,    // 밸런스의 영점 (DPS 48) — 모든 무기는 이 무기 대비 장단점이 명확
     maxHp: 120,
     cooldown: 520, // milliseconds

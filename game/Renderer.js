@@ -1552,12 +1552,25 @@ export class Renderer {
       const base = (now / period) * Math.PI * 2;
       const stance = pl.guardianStanceUntil && now < pl.guardianStanceUntil;
       const radius = cfg.orbitRadius + (stance ? (cfg.stanceRadiusBonus || 0) : 0);
+      const z = camera.zoom || 1;
+      const blade = this.atlas?.get('wpn/guardian');   // use the weapon sprite if loaded
       for (let i = 0; i < n; i++) {
         const a = base + (i / n) * Math.PI * 2;
         const wx = pl.x + Math.cos(a) * radius;
         const wy = pl.y + Math.sin(a) * radius;
         const scr = camera.toScreen(wx, wy, cw, ch);
-        this._drawGuardianBlade(ctx, scr, camera.zoom || 1, a * 2);
+        if (blade && blade.naturalWidth) {
+          // Draw the guardian blade sprite, tip pointing outward along the orbit.
+          const sz = Math.round((pl.radius || 14) * 1.4 * z);
+          ctx.save();
+          ctx.imageSmoothingEnabled = false;
+          ctx.translate(Math.round(scr.x), Math.round(scr.y));
+          ctx.rotate(a + Math.PI / 4 + Math.PI / 2);   // icon points up-right → face outward
+          ctx.drawImage(blade, -sz / 2, -sz / 2, sz, sz);
+          ctx.restore();
+        } else {
+          this._drawGuardianBlade(ctx, scr, z, a * 2);
+        }
       }
     }
   }
