@@ -1090,38 +1090,63 @@ export class Renderer {
 
   _getGrassField(mapWidth, mapHeight) {
     if (typeof document === 'undefined') return null;
-    const tileImg = this.atlas?.get('tile/field');
-    // Wait until the tile image is loaded; will re-bake once it arrives.
-    const key = `${mapWidth}x${mapHeight}_${tileImg ? '1' : '0'}`;
+    const tufts = this.atlas?.get('tile/tufts');
+    // Re-bake once the tuft sheet finishes loading (key encodes its readiness).
+    const key = `${mapWidth}x${mapHeight}_${tufts ? '1' : '0'}`;
     if (this._grassKey === key && this._grassField) return this._grassField;
-    if (!tileImg) { this._grassKey = null; return null; }
 
-    // Bake the map-sized floor once by repeating the hand-drawn tile. To stop
-    // the eye from catching the obvious grid repeat, each cell is flipped
-    // horizontally/vertically with a deterministic per-cell hash. Keeps the same
-    // texture density but breaks the seam pattern so it reads clean, not busy.
     const tw = mapWidth, th = mapHeight;
     const cv = document.createElement('canvas');
     cv.width = tw; cv.height = th;
     const g = cv.getContext('2d');
     g.imageSmoothingEnabled = false;
-    const tsW = tileImg.naturalWidth  || 700;
-    const tsH = tileImg.naturalHeight || 700;
-    let col = 0;
-    for (let x = 0; x < tw; x += tsW, col++) {
-      let row = 0;
-      for (let y = 0; y < th; y += tsH, row++) {
-        // hash(col,row) → 2 bits: bit0 = flipX, bit1 = flipY.
-        let h = (col * 73856093) ^ (row * 19349663);
-        h = (h ^ (h >>> 13)) >>> 0;
-        const flipX = (h & 1) ? -1 : 1;
-        const flipY = (h & 2) ? -1 : 1;
-        g.save();
-        g.translate(x + (flipX < 0 ? tsW : 0), y + (flipY < 0 ? tsH : 0));
-        g.scale(flipX, flipY);
-        g.drawImage(tileImg, 0, 0, tsW, tsH);
-        g.restore();
+
+    // 1) Flat base field — colour sampled from the hand-drawn TilesetField.
+    g.fillStyle = '#adbc3a';
+    g.fillRect(0, 0, tw, th);
+
+    // Deterministic hash → fract in [0,1). No RNG state, so every client bakes
+    // the identical field without any network sync.
+    const hash = (a, b) => {
+      let h = (a * 374761393 + b * 668265263) | 0;
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+
+    // 2) Very subtle ground mottling so the bare floor isn't dead flat.
+    const MB = 16;
+    for (let by = 0, ry = 0; by < th; by += MB, ry++) {
+      for (let bx = 0, rx = 0; bx < tw; bx += MB, rx++) {
+        const n = hash(rx * 3 + 1, ry * 3 + 2);
+        if (n > 0.82)      g.fillStyle = 'rgba(150,170,46,0.35)';   // darker fleck
+        else if (n < 0.12) g.fillStyle = 'rgba(196,210,92,0.30)';  // lighter fleck
+        else continue;
+        g.fillRect(bx, by, MB, MB);
       }
+    }
+
+    // 3) Scatter grass tufts on a 32×32 block grid at random density. Each block
+    //    has a ~45% chance of a tuft; the sprite, size, and offset are all
+    //    hash-jittered so nothing reads as a grid.
+    if (tufts) {
+      const SRC = 16;
+      const COUNT = Math.max(1, Math.floor((tufts.naturalWidth || 176) / SRC));
+      const BLOCK = 32;
+      for (let by = 0, ry = 0; by < th; by += BLOCK, ry++) {
+        for (let bx = 0, rx = 0; bx < tw; bx += BLOCK, rx++) {
+          if (hash(rx + 17, ry + 31) > 0.45) continue;          // density gate
+          const idx  = (hash(rx + 7,  ry + 3)  * COUNT) | 0;
+          const size = 22 + ((hash(rx + 11, ry + 5) * 12) | 0); // 22–33px
+          const ox = bx + ((hash(rx + 1, ry + 2) - 0.5) * BLOCK);
+          const oy = by + ((hash(rx + 4, ry + 9) - 0.5) * BLOCK);
+          g.drawImage(tufts, idx * SRC, 0, SRC, SRC, ox, oy, size, size);
+        }
+      }
+    } else {
+      // Tuft sheet not ready yet — bake base only, retry next frame.
+      this._grassKey = null;
+      this._grassField = cv;
+      return cv;
     }
 
     this._grassField = cv;
