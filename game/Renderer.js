@@ -1135,7 +1135,7 @@ export class Renderer {
       const SRC = 16;
       const COUNT = Math.max(1, Math.floor((tufts.naturalWidth || 176) / SRC));
       const BLOCK = 32;
-      const EXCL = 2;                                  // keep-out radius in blocks
+      const EXCL = 1;                                  // keep-out radius in blocks
       const score = (rx, ry) => hash(rx * 2 + 5, ry * 2 + 7);
       const cols = Math.ceil(tw / BLOCK), rows = Math.ceil(th / BLOCK);
       for (let ry = 0; ry < rows; ry++) {
