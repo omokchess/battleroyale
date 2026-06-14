@@ -449,8 +449,9 @@ export class Renderer {
   }
 
   /**
-   * Small status-effect badges above a player (bleed/burn/slow/stun). Pixel
-   * icons with a dark outline so they read on any background.
+   * Small status-effect badges above a player (bleed/burn/slow/stun).
+   * Uses 24×24 skill-icon sprites when the atlas is ready; falls back to the
+   * original pixel shapes so the game never breaks on a missing asset.
    */
   _drawStatusIcons(ctx, bodyScr, p, radius) {
     const active = [];
@@ -460,42 +461,52 @@ export class Renderer {
     if (p.stunTimeLeft > 0) active.push('stun');
     if (!active.length) return;
 
-    const s = 8;                  // icon box
-    const gap = 2;
-    const total = active.length * (s + gap) - gap;
-    let x = bodyScr.x - total / 2;
-    const y = bodyScr.y - radius - 40;
+    const S = 16;                 // rendered icon size (px on screen)
+    const gap = 3;
+    const total = active.length * (S + gap) - gap;
+    let x = Math.round(bodyScr.x - total / 2);
+    const y = Math.round(bodyScr.y - radius - 44);
     const blink = (Math.sin(Date.now() / 160) + 1) / 2;
+    const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.save();
+    ctx.imageSmoothingEnabled = false;
     for (const kind of active) {
-      ctx.fillStyle = 'rgba(11,12,16,0.8)';
-      ctx.fillRect(x - 1, y - 1, s + 2, s + 2);  // dark backing for contrast
-      const cx = x + s / 2, cy = y + s / 2;
-      if (kind === 'bleed') {
-        ctx.fillStyle = '#c0392b';                // red droplet
-        ctx.beginPath(); ctx.arc(cx, cy + 1, 2.6, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(cx, cy - 3.5); ctx.lineTo(cx - 2.2, cy + 0.5); ctx.lineTo(cx + 2.2, cy + 0.5); ctx.closePath(); ctx.fill();
-      } else if (kind === 'burn') {
-        ctx.fillStyle = '#fb923c';                // flame
-        ctx.beginPath(); ctx.moveTo(cx, cy - 4); ctx.lineTo(cx + 3, cy + 3); ctx.lineTo(cx - 3, cy + 3); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#fde047';
-        ctx.fillRect(cx - 1, cy, 2, 3);
-      } else if (kind === 'slow') {
-        ctx.strokeStyle = '#67e8f9';              // snowflake
-        ctx.lineWidth = 1.3;
-        for (let i = 0; i < 3; i++) {
-          const a = (i / 3) * Math.PI;
-          ctx.beginPath();
-          ctx.moveTo(cx - Math.cos(a) * 3.5, cy - Math.sin(a) * 3.5);
-          ctx.lineTo(cx + Math.cos(a) * 3.5, cy + Math.sin(a) * 3.5);
-          ctx.stroke();
+      // Dark backing pill
+      ctx.fillStyle = 'rgba(11,12,16,0.75)';
+      ctx.fillRect(x - 1, y - 1, S + 2, S + 2);
+
+      const img = this.atlas?.get(`status/${kind}`);
+      if (img && img.naturalWidth) {
+        // Sprite icon — stun blinks by modulating alpha
+        ctx.globalAlpha = (kind === 'stun') ? (0.55 + 0.45 * blink) : 1;
+        ctx.drawImage(img, x, y, S, S);
+        ctx.globalAlpha = 1;
+      } else {
+        // Procedural fallback (original pixel shapes, scaled to S)
+        const cx = x + S / 2, cy = y + S / 2, sc = S / 8;
+        if (kind === 'bleed') {
+          ctx.fillStyle = '#c0392b';
+          ctx.beginPath(); ctx.arc(cx, cy + sc, 2.6 * sc, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(cx, cy - 3.5 * sc); ctx.lineTo(cx - 2.2 * sc, cy + 0.5 * sc); ctx.lineTo(cx + 2.2 * sc, cy + 0.5 * sc); ctx.closePath(); ctx.fill();
+        } else if (kind === 'burn') {
+          ctx.fillStyle = '#fb923c';
+          ctx.beginPath(); ctx.moveTo(cx, cy - 4 * sc); ctx.lineTo(cx + 3 * sc, cy + 3 * sc); ctx.lineTo(cx - 3 * sc, cy + 3 * sc); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#fde047'; ctx.fillRect(cx - sc, cy, 2 * sc, 3 * sc);
+        } else if (kind === 'slow') {
+          ctx.strokeStyle = '#67e8f9'; ctx.lineWidth = 1.3;
+          for (let i = 0; i < 3; i++) {
+            const a = (i / 3) * Math.PI;
+            ctx.beginPath(); ctx.moveTo(cx - Math.cos(a) * 3.5 * sc, cy - Math.sin(a) * 3.5 * sc);
+            ctx.lineTo(cx + Math.cos(a) * 3.5 * sc, cy + Math.sin(a) * 3.5 * sc); ctx.stroke();
+          }
+        } else {
+          ctx.fillStyle = `rgba(250,204,21,${0.6 + 0.4 * blink})`;
+          for (const dx of [-2.5, 0, 2.5]) ctx.fillRect(cx + dx * sc - 0.8 * sc, cy - 1.6 * sc, 1.6 * sc, 1.6 * sc);
         }
-      } else { // stun
-        ctx.fillStyle = `rgba(250,204,21,${0.6 + 0.4 * blink})`; // blinking stars
-        for (const dx of [-2.5, 0, 2.5]) ctx.fillRect(cx + dx - 0.8, cy - 1.6, 1.6, 1.6);
       }
-      x += s + gap;
+      x += S + gap;
     }
+    ctx.imageSmoothingEnabled = prevSmooth;
     ctx.restore();
   }
 
@@ -3227,21 +3238,31 @@ export class Renderer {
     const radius = maxR * easeOutCubic(progress);
 
     ctx.save();
-    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.85 * alpha);
-    ctx.lineWidth = 5 * alpha + 1;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
 
-    ctx.fillStyle = this._hexToRGB('#ffffff', 0.5 * alpha * (1 - progress));
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius * 0.6, 0, Math.PI * 2);
-    ctx.fill();
+    // Sprite sheet: 9 frames of 40×40 in a 360×40 strip.
+    const sheet = this.atlas?.get('fx/explosion');
+    if (sheet && sheet.naturalWidth) {
+      const FRAMES = 9, FW = 40, FH = 40;
+      const frame = Math.min(FRAMES - 1, Math.floor(progress * FRAMES));
+      const drawSize = maxR * 2.4;
+      const prevSmooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(sheet, frame * FW, 0, FW, FH,
+        scr.x - drawSize / 2, scr.y - drawSize / 2, drawSize, drawSize);
+      ctx.globalAlpha = 1;
+      ctx.imageSmoothingEnabled = prevSmooth;
+    } else {
+      // Procedural fallback
+      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.85 * alpha);
+      ctx.lineWidth = 5 * alpha + 1;
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = this._hexToRGB('#ffffff', 0.5 * alpha * (1 - progress));
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, radius * 0.6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = this._hexToRGB(weapon.color, 0.18 * alpha);
+      ctx.beginPath(); ctx.arc(scr.x, scr.y, radius * 0.85, 0, Math.PI * 2); ctx.fill();
+    }
 
-    ctx.fillStyle = this._hexToRGB(weapon.color, 0.18 * alpha);
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius * 0.85, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   }
 
