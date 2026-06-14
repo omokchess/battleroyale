@@ -166,7 +166,7 @@ export const Weapons = {
     color: '#fb923c'
   },
   katana: {
-    name: '카타나',
+    name: '커틀레스',
     damage: 18,
     maxHp: 100,             // 검(120)보다 낮은 체력으로 역할 분리
     cooldown: 400,          // 검(520)보다 빠른 평타
@@ -286,7 +286,7 @@ export const Weapons = {
     color: '#f59e0b'
   },
   flamethrower: {
-    name: '화염방사기',
+    name: '화염 지팡이',
     damage: 7,              // per tick (5 ticks/s → DPS 35)
     maxHp: 130,
     cooldown: 200,          // tick reference (no manual swing)

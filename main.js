@@ -128,7 +128,7 @@ function setupWeaponSelector() {
   // Show the weapon art in each lobby card (replaces the placeholder SVGs).
   // Prefer the new Ninja/RPG-icon sprites (displayed upright like inventory
   // icons); weapons without one fall back to the legacy PNG (rotated upright).
-  const NINJA_WEAPON_SPRITES = new Set(['sword','axe','bow','spear','greatsword','scythe','dagger','rapier','hammer','katana','magicstaff','chakram','harpoon','guardian','minebag','sniper']);
+  const NINJA_WEAPON_SPRITES = new Set(['sword','axe','bow','spear','greatsword','scythe','dagger','rapier','hammer','katana','magicstaff','chakram','harpoon','guardian','minebag','sniper','flamethrower']);
   weaponCards.forEach(card => {
     const w = card.dataset.weapon;
     const iconBox = card.querySelector('div');
