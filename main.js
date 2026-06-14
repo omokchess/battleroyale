@@ -110,7 +110,7 @@ const UI_ICONS = {
 };
 
 const WEAPON_ICON_VERSION = '20260607c';
-const NINJA_WEAPON_SPRITES = new Set(['sword','axe','bow','spear','greatsword','scythe','dagger','rapier','hammer','katana','magicstaff','chakram','harpoon','guardian','minebag','sniper','flamethrower','gauntlet']);
+const NINJA_WEAPON_SPRITES = new Set(['sword','axe','bow','spear','greatsword','scythe','dagger','rapier','hammer','katana','magicstaff','chakram','harpoon','guardian','minebag','sniper','flamethrower','gauntlet','pistols']);
 
 function uiIcon(name, className = 'inline-block w-3 h-3 align-[-2px] mr-1 shrink-0') {
   return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${UI_ICONS[name] || ''}</svg>`;
