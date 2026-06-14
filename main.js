@@ -125,20 +125,25 @@ function setupWeaponSelector() {
     });
   });
 
-  // Show the real PNG weapon art in each lobby card (replaces the placeholder SVGs).
+  // Show the weapon art in each lobby card (replaces the placeholder SVGs).
+  // Prefer the new Ninja/RPG-icon sprites (displayed upright like inventory
+  // icons); weapons without one fall back to the legacy PNG (rotated upright).
+  const NINJA_WEAPON_SPRITES = new Set(['sword','axe','bow','spear','greatsword','scythe','dagger','rapier','hammer','katana','magicstaff','chakram','harpoon','guardian','minebag']);
   weaponCards.forEach(card => {
     const w = card.dataset.weapon;
     const iconBox = card.querySelector('div');
-    if (iconBox && w) {
-      // Fill the (wider, 4-column) card so the weapon art reads large on every
-      // screen, capped so it never gets cartoonishly big on desktop.
-      iconBox.style.width = '100%';
-      iconBox.style.height = 'auto';
-      iconBox.style.aspectRatio = '1 / 1';
-      iconBox.style.maxWidth = '5.25rem';
-      // Stand every weapon upright pointing downward in the picker — except the
-      // bow, whose sprite is already drawn vertically. The greatsword sprite
-      // points the opposite way, so flip it a further 180° to match the others.
+    if (!iconBox || !w) return;
+    iconBox.style.width = '100%';
+    iconBox.style.height = 'auto';
+    iconBox.style.aspectRatio = '1 / 1';
+    iconBox.style.maxWidth = '5.25rem';
+    if (NINJA_WEAPON_SPRITES.has(w)) {
+      // 16px item icon — upright, scaled up crisp.
+      iconBox.innerHTML =
+        `<img src="/assets/ninja/weapon/${w}.png" alt="${w}" draggable="false" ` +
+        `class="w-full h-full object-contain" style="image-rendering:pixelated;padding:14%" />`;
+    } else {
+      // legacy procedural PNG (firearms / gauntlet) — keep the old upright rotation.
       let rot = 'transform:rotate(90deg);';
       if (w === 'bow') rot = '';
       else if (w === 'greatsword') rot = 'transform:rotate(270deg);';
