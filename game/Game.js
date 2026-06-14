@@ -5046,7 +5046,16 @@ function sanitizeCosmetics(cos) {
     /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|(?:hsla?|rgba?)\([0-9.,%\s]+\))$/.test(c.trim().slice(0, 40)))
     ? c.trim().slice(0, 40) : null;
   const out = {};
-  if (color(cos.weaponskin?.data?.tint)) out.weaponskin = { data: { tint: color(cos.weaponskin.data.tint) } };
+  // weapon skin: keep the tint + a validated skin id (used in a sprite path, so
+  // restrict to lowercase letters — no slashes/traversal).
+  const skinId = (s) => (typeof s === 'string' && /^[a-z]{2,16}$/.test(s)) ? s : null;
+  const wsTint = color(cos.weaponskin?.data?.tint);
+  const wsSkin = skinId(cos.weaponskin?.data?.skin);
+  if (wsTint || wsSkin) {
+    out.weaponskin = { data: {} };
+    if (wsTint) out.weaponskin.data.tint = wsTint;
+    if (wsSkin) out.weaponskin.data.skin = wsSkin;
+  }
   if (color(cos.dashtrail?.data?.color)) out.dashtrail = { data: { color: color(cos.dashtrail.data.color) } };
   if (color(cos.respawnfx?.data?.color)) out.respawnfx = { data: { color: color(cos.respawnfx.data.color) } };
   const styles = new Set(['firework', 'skull', 'coins']);

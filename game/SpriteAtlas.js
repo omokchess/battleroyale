@@ -125,6 +125,21 @@ export const SPRITE_MANIFEST = {
   'tile/nature': 'map/TilesetNature.png',
 };
 
+// Weapon-skin variants (Task: 무기 스킨). A skin swaps the in-hand sprite to an
+// alternate at weapon/skins/<skin>/<weapon>.png. Entries are keyed
+// 'wpn/<weapon>@<skin>'. Load fails soft: any missing skin sprite simply falls
+// back to the base weapon sprite in the renderer. Drop a PNG in the folder to
+// add/override a skin for a weapon.
+export const WEAPON_SKINS = ['ember', 'frost', 'void'];
+const _weaponKeys = Object.keys(SPRITE_MANIFEST)
+  .filter(k => k.startsWith('wpn/'))
+  .map(k => k.slice(4));
+for (const skin of WEAPON_SKINS) {
+  for (const w of _weaponKeys) {
+    SPRITE_MANIFEST[`wpn/${w}@${skin}`] = `weapon/skins/${skin}/${w}.png`;
+  }
+}
+
 /**
  * Per-weapon orientation tuning for the in-hand sprite (Task 4-D).
  * The renderer assumes the icon art points up-right and rotates it to the aim

@@ -4682,7 +4682,10 @@ export class Renderer {
    * Returns false if no sprite exists for this weapon so the caller falls back.
    */
   _drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
-    const img = this.atlas?.get(`wpn/${player.weapon}`);
+    // Equipped weapon skin swaps to an alternate sprite; falls back to the base.
+    const skin = player.weaponSkin;
+    const img = (skin && skin !== 'none' && this.atlas?.get(`wpn/${player.weapon}@${skin}`))
+      || this.atlas?.get(`wpn/${player.weapon}`);
     if (!img || !img.naturalWidth) return false;     // no sprite for this key → fallback
 
     const tune = WEAPON_SPRITE_TUNE[player.weapon] || WEAPON_TUNE_DEFAULT;
