@@ -1096,23 +1096,27 @@ export class Renderer {
   }
 
   /**
-   * Lazily bake (and cache) the grass field for the current map size. Baked at
-   * a fixed world->texel scale so large maps don't blow up memory, then upscaled
-   * at blit time. Deterministic: a position-seeded PRNG drives every tuft, so
-   * the field is identical on every client without any network sync.
+   * Lazily bake (and cache) the arena floor using the Ninja Adventure
+   * TilesetField palette. The tileset image (rows 6-8, the green section) is
+   * tiled across the baked canvas when the atlas is ready; otherwise a
+   * procedural fallback using the same colours is used. Re-bakes if the atlas
+   * loads after the first call (cache key encodes atlas readiness).
    */
   _getGrassField(mapWidth, mapHeight) {
     if (typeof document === 'undefined') return null;
-    const key = `${mapWidth}x${mapHeight}`;
+    const fieldImg = this.atlas?.get('tile/field');
+    const key = `${mapWidth}x${mapHeight}_${fieldImg ? '1' : '0'}`;
     if (this._grassKey === key && this._grassField) return this._grassField;
 
     // ~1 texel per 1.5 world units keeps even a 2000px map under ~1.8M texels.
     const scale = 1 / 1.5;
     const tw = Math.max(1, Math.round(mapWidth * scale));
     const th = Math.max(1, Math.round(mapHeight * scale));
-    const cv = this._grassField || document.createElement('canvas');
+    const cv = (this._grassKey && this._grassKey !== key)
+      ? document.createElement('canvas') : (this._grassField || document.createElement('canvas'));
     cv.width = tw; cv.height = th;
     const g = cv.getContext('2d');
+    g.imageSmoothingEnabled = false;
 
     // mulberry32 PRNG — fast, deterministic, seeded per call.
     let s = 0x9e3779b9 >>> 0;
@@ -1124,51 +1128,81 @@ export class Renderer {
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
 
-    // 1) Base grass.
-    g.fillStyle = '#5a8f3c';
+    // Ninja Adventure TilesetField colour palette.
+    const BASE   = '#74a334';   // rgb(116,163,52)  — main field green
+    const LIGHT  = '#adbc3a';   // rgb(173,188,58)  — lighter yellow-green
+    const DARK   = '#5a8220';   // darker complement
+    const BLADE_HI  = '#8dc02a';
+    const BLADE_SH  = '#4d7818';
+    const DIRT      = '#a16240';
+    const DIRT_DARK = '#7c4a2e';
+
+    // 1) Base fill.
+    g.fillStyle = BASE;
     g.fillRect(0, 0, tw, th);
 
-    // 2) Patchy shading: 4px cells flipped between three green tones so the field
-    //    reads as a mosaic, not a flat slab.
-    const tones = ['#5a8f3c', '#4e7d34', '#6da04a'];
-    const cell = 4;
-    for (let y = 0; y < th; y += cell) {
-      for (let x = 0; x < tw; x += cell) {
-        const r = rng();
-        if (r < 0.62) continue;                 // most cells keep the base tone
-        g.fillStyle = tones[(r * 3) | 0];
-        g.fillRect(x, y, cell, cell);
+    if (fieldImg) {
+      // 2a) Tile rows 6-8 of TilesetField (the green section: srcY=96, srcH=48).
+      //     These rows contain the grass-patch border tiles that overlay the
+      //     base colour, adding subtle dark outlines and colour flecks that read
+      //     as a proper Ninja Adventure field without solid fill issues.
+      const srcW = 80, srcY = 96, srcH = 48;
+      const dstW = Math.round(srcW * scale);
+      const dstH = Math.round(srcH * scale);
+      for (let y = 0; y < th; y += dstH) {
+        for (let x = 0; x < tw; x += dstW) {
+          g.drawImage(fieldImg, 0, srcY, srcW, srcH, x, y, dstW, dstH);
+        }
+      }
+      // Also scatter the yellow-green accent section (rows 3-5) sparsely.
+      const srcY2 = 48;
+      for (let i = 0; i < Math.round((tw * th) / (dstW * dstH * 6)); i++) {
+        const ox = (rng() * (tw - dstW)) | 0;
+        const oy = (rng() * (th - dstH)) | 0;
+        g.globalAlpha = 0.45;
+        g.drawImage(fieldImg, 0, srcY2, srcW, srcH, ox, oy, dstW, dstH);
+        g.globalAlpha = 1;
+      }
+    } else {
+      // 2b) Procedural fallback: mosaic of field palette tones.
+      const tones = [BASE, DARK, LIGHT];
+      const cell = 4;
+      for (let y = 0; y < th; y += cell) {
+        for (let x = 0; x < tw; x += cell) {
+          const r = rng();
+          if (r < 0.62) continue;
+          g.fillStyle = tones[(r * 3) | 0];
+          g.fillRect(x, y, cell, cell);
+        }
       }
     }
 
-    // 3) Scattered blade flecks — short 1px highlights/shadows for texture.
-    const blades = Math.round(tw * th * 0.012);
+    // 3) Grass blade flecks.
+    const blades = Math.round(tw * th * 0.01);
     for (let i = 0; i < blades; i++) {
       const x = (rng() * tw) | 0;
       const y = (rng() * th) | 0;
-      const r = rng();
-      g.fillStyle = r < 0.5 ? '#87b35c' : '#436b2c';
-      const h = 1 + ((rng() * 2) | 0);
-      g.fillRect(x, y, 1, h);
+      g.fillStyle = rng() < 0.5 ? BLADE_HI : BLADE_SH;
+      g.fillRect(x, y, 1, 1 + ((rng() * 2) | 0));
     }
 
-    // 4) A few bare dirt patches for variety.
+    // 4) Bare dirt patches.
     const patches = Math.max(3, Math.round((tw * th) / 90000));
     for (let i = 0; i < patches; i++) {
       const px = (rng() * tw) | 0;
       const py = (rng() * th) | 0;
       const pr = 6 + ((rng() * 10) | 0);
-      g.fillStyle = '#8a6a3f';
+      g.fillStyle = DIRT;
       g.beginPath(); g.ellipse(px, py, pr, pr * 0.7, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#765a35';
+      g.fillStyle = DIRT_DARK;
       g.beginPath(); g.ellipse(px, py, pr * 0.55, pr * 0.4, 0, 0, Math.PI * 2); g.fill();
     }
 
-    // 5) Vignette so the field edges sink toward the dark walls.
+    // 5) Edge vignette.
     const grd = g.createRadialGradient(tw / 2, th / 2, Math.min(tw, th) * 0.35,
       tw / 2, th / 2, Math.max(tw, th) * 0.62);
     grd.addColorStop(0, 'rgba(0,0,0,0)');
-    grd.addColorStop(1, 'rgba(20,30,12,0.45)');
+    grd.addColorStop(1, 'rgba(10,20,5,0.5)');
     g.fillStyle = grd;
     g.fillRect(0, 0, tw, th);
 
