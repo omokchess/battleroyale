@@ -9,8 +9,8 @@ import {
   signOut,
   onAuthChange,
   fetchMyProfile,
-  isSupabaseConfigured,
-} from '../supabase/account.js';
+  isFirebaseConfigured,
+} from '../firebase/account.js';
 import {
   fetchLeaderboard,
   fetchCostumes,
@@ -22,7 +22,7 @@ import {
   equippedFromProfile,
   purchaseItem,
   equipItem,
-} from '../supabase/game-api.js';
+} from '../firebase/game-api.js';
 
 /**
  * 계정(로그인/상단바) + 랭킹 + 상점 UI 를 담당.
@@ -124,8 +124,8 @@ export function init(cbs) {
   callbacks = cbs || {};
   wireStaticButtons();
 
-  // Supabase 미설정 → 게스트 모드(로그인 없이 바로 플레이, 계정기능 숨김)
-  if (!isSupabaseConfigured) {
+  // Firebase 미설정 → 게스트 모드(로그인 없이 바로 플레이, 계정기능 숨김)
+  if (!isFirebaseConfigured) {
     setGuestMode();
     callbacks.onEnterLobby?.(null);
     return;
@@ -133,14 +133,14 @@ export function init(cbs) {
 
   // 인증 상태 변화 구독 (초기 INITIAL_SESSION 포함). 리디렉션 복귀도 여기서 처리.
   onAuthChange((session) => {
-    // supabase 콜백 안에서 직접 await 하면 데드락 위험 → 다음 틱으로 미룸
+    // 인증 콜백 안에서 직접 await 하면 UI 전환이 꼬일 수 있어 다음 틱으로 미룸.
     setTimeout(() => handleSession(session), 0);
   });
 }
 
 /** 매치 종료 후 코인/킬 갱신용: 프로필 재조회 & 상단바 갱신 */
 export async function refreshProfile() {
-  if (!isSupabaseConfigured) return null;
+  if (!isFirebaseConfigured) return null;
   profile = await fetchMyProfile();
   renderAccountBar();
   return profile;
@@ -152,7 +152,7 @@ export async function refreshProfile() {
  * 킬이 0이어도 판 완료/일일 보너스를 위해 기록한다(서버가 60초 속도 제한으로 보호).
  */
 export async function reportMatch(stats) {
-  if (!isSupabaseConfigured || !profile) return;
+  if (!isFirebaseConfigured || !profile) return;
   const s = (typeof stats === 'object' && stats !== null) ? stats : { kills: stats };
   const updated = await recordMatch(s);
   if (updated) {
@@ -186,7 +186,7 @@ function setGuestMode() {
   if (bar) bar.classList.add('hidden');
   const note = $('authNote');
   if (note) {
-    note.textContent = 'Supabase 미설정 — 로그인 없이 게스트로 플레이합니다.';
+    note.textContent = 'Firebase 미설정 - 로그인 없이 게스트로 플레이합니다.';
     note.classList.remove('hidden');
   }
 }
@@ -198,18 +198,17 @@ function showAuthNote(msg, colorClass = 'text-yellow-400') {
   note.className = 'mt-4 font-mono text-[11px] leading-snug ' + colorClass;
 }
 
-// Supabase 영문 에러 메시지를 친절한 한국어로 변환
+// Firebase 영문 에러 메시지를 친절한 한국어로 변환
 function authErrorMessage(e) {
   const m = String(e?.message || e || '').toLowerCase();
-  if (m.includes('email not confirmed'))
-    return '가입은 됐지만 자동 로그인이 막혀 있어요. Supabase ▸ Authentication ▸ Providers ▸ Email 에서 "Confirm email" 을 끄세요.';
-  if (m.includes('invalid login')) return '아이디 또는 비밀번호가 올바르지 않습니다.';
-  if (m.includes('already registered') || m.includes('already been registered') || m.includes('user already'))
+  if (m.includes('invalid-credential') || m.includes('wrong-password') || m.includes('user-not-found') || m.includes('invalid login'))
+    return '아이디 또는 비밀번호가 올바르지 않습니다.';
+  if (m.includes('email-already-in-use') || m.includes('already registered') || m.includes('already been registered') || m.includes('user already'))
     return '이미 사용 중인 아이디입니다. 로그인하거나 다른 아이디를 쓰세요.';
-  if (m.includes('weak password') || m.includes('should be at least') || (m.includes('password') && m.includes('6')))
+  if (m.includes('weak-password') || m.includes('weak password') || m.includes('should be at least') || (m.includes('password') && m.includes('6')))
     return '비밀번호가 너무 짧습니다 (6자 이상).';
-  if (m.includes('signups not allowed') || m.includes('signup is disabled'))
-    return '회원가입이 비활성화되어 있습니다 (Supabase 설정 확인).';
+  if (m.includes('operation-not-allowed') || m.includes('signups not allowed') || m.includes('signup is disabled'))
+    return '로그인 제공자가 비활성화되어 있습니다 (Firebase Authentication 설정 확인).';
   return '오류: ' + (e?.message || e);
 }
 
@@ -250,7 +249,7 @@ function wireStaticButtons() {
     try {
       const session = await signUpWithId(c.id, c.pw);
       if (!session) {
-        showAuthNote('가입 완료! "로그인"을 눌러주세요. (로그인이 안 되면 Supabase에서 Confirm email 끄기)', 'text-teal-300');
+        showAuthNote('가입 완료! "로그인"을 눌러주세요.', 'text-teal-300');
       }
     } catch (e) {
       showAuthNote(authErrorMessage(e));

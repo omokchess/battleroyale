@@ -135,7 +135,9 @@ export const SPRITE_MANIFEST = {
 export const WEAPON_SPRITE_TUNE = {
   // New 16px model sprites point up-right; their grip sits near lower-left.
   sword:   { anchorX: 0.18, anchorY: 0.78, scale: 0.95, handDistance: 15, handReachScale: 0.06 },
-  katana:  { anchorX: 0.18, anchorY: 0.78, scale: 0.95, handDistance: 15, handReachScale: 0.06 },
+  axe:     { anchorX: 0.24, anchorY: 0.78, scale: 1.00, handDistance: 15, handReachScale: 0.05, asymmetric: true, swingDirection: 1 },
+  katana:  { anchorX: 0.18, anchorY: 0.78, scale: 0.95, handDistance: 15, handReachScale: 0.06, asymmetric: true, swingDirection: 1 },
+  scythe:  { anchorX: 0.20, anchorY: 0.78, scale: 1.00, handDistance: 15, handReachScale: 0.05, asymmetric: true, swingDirection: 1 },
   dagger:  { anchorX: 0.16, anchorY: 0.72, scale: 0.82, handDistance: 14, handReachScale: 0.05 },
   gauntlet:{ anchorX: 0.42, anchorY: 0.58, scale: 0.88, handDistance: 15, handReachScale: 0.03, drawOverBody: true },
   guardian:{ anchorX: 0.20, anchorY: 0.82, scale: 0.90, handDistance: 14, handReachScale: 0.03 },

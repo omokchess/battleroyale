@@ -377,10 +377,67 @@ html, body {
 
 #weaponPreviewPanel {
   overflow: hidden;
+  min-height: 31rem;
 }
 
 #weaponPreview {
+  gap: 0.85rem;
+}
+
+.weapon-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 1rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.weapon-preview-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.weapon-preview-stage canvas {
+  flex: 0 0 400px;
+}
+
+@media (min-width: 1536px) {
+  #lobbyRight {
+    flex: 0 0 42rem;
+  }
+}
+
+.weapon-preview-action {
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 2px solid #8a6a22;
+  background: #1a120a;
+  color: #facc15;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weapon-preview-action[hidden] {
+  display: none !important;
+}
+
+.weapon-preview-action:hover {
+  border-color: #facc15;
+  background: #2c2016;
+}
+
+.weapon-preview-action:active {
+  transform: scale(0.96);
 }
 
 .weapon-preview-frame {
@@ -408,24 +465,12 @@ html, body {
   filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.35));
 }
 
-.weapon-preview-caption {
-  max-width: 24rem;
-  font-family: var(--font-mono);
-}
-
 .weapon-preview-name {
   color: #facc15;
+  font-family: var(--font-mono);
   font-size: 0.95rem;
   font-weight: 800;
   letter-spacing: 0.04em;
-}
-
-.weapon-preview-desc {
-  margin-top: 0.4rem;
-  color: #cbd5e1;
-  font-size: 0.72rem;
-  line-height: 1.55;
-  word-break: keep-all;
 }
 
 .weapon-card:hover {

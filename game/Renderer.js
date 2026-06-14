@@ -1502,21 +1502,13 @@ export class Renderer {
     } else { anim.frame = 0; anim.at = now; }
     const col = anim.frame;
 
-    const tinted = this._tintedSheet(skin, sheet, player.color);
-    const src = tinted || sheet;
     const sx = col * CHAR_FRAME, sy = row * CHAR_FRAME;
     const size = Math.round(radius * 2.7);
     const dx = Math.round(scr.x - size / 2);
     const dy = Math.round(scr.y - size / 2);
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(src, sx, sy, CHAR_FRAME, CHAR_FRAME, dx, dy, size, size);
-    // Local-player tell: a thin red rim under the existing marker.
-    if (isLocal) {
-      ctx.strokeStyle = 'rgba(239,68,68,0.6)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(dx + 0.5, dy + 0.5, size - 1, size - 1);
-    }
+    ctx.drawImage(sheet, sx, sy, CHAR_FRAME, CHAR_FRAME, dx, dy, size, size);
     ctx.imageSmoothingEnabled = prevSmooth;
     return true;
   }
@@ -1525,26 +1517,6 @@ export class Renderer {
   _charSkinKey(player) {
     const want = player.bodySkin ? `char/${player.bodySkin}` : 'char/Boy';
     return this.atlas.has(want) ? want : 'char/Boy';
-  }
-
-  // Cache a colour-tinted copy of a whole sheet, keyed by skin+colour, so the
-  // tint pass runs once per (skin,colour) rather than every frame.
-  _tintedSheet(skin, sheet, color) {
-    if (!color || typeof document === 'undefined') return null;
-    const key = `${skin}|${color}`;
-    let c = this._charTintCache[key];
-    if (c) return c;
-    c = document.createElement('canvas');
-    c.width = sheet.naturalWidth; c.height = sheet.naturalHeight;
-    const cx = c.getContext('2d');
-    cx.imageSmoothingEnabled = false;
-    cx.drawImage(sheet, 0, 0);
-    cx.globalCompositeOperation = 'source-atop';   // tint only opaque pixels
-    cx.globalAlpha = 0.32;
-    cx.fillStyle = color;
-    cx.fillRect(0, 0, c.width, c.height);
-    this._charTintCache[key] = c;
-    return c;
   }
 
   // 차크람 LMB 맴돌이: a single disc orbiting the caster while active. Mirrors the
@@ -1603,12 +1575,12 @@ export class Renderer {
         const wy = pl.y + Math.sin(a) * radius;
         const scr = camera.toScreen(wx, wy, cw, ch);
         if (blade && blade.naturalWidth) {
-          // Draw the guardian blade sprite, tip pointing outward along the orbit.
-          const sz = Math.round((pl.radius || 14) * 1.4 * z);
+          // Draw with the blade tip outward and the handle toward the player.
+          const sz = Math.round((pl.radius || 14) * 1.9 * z);
           ctx.save();
           ctx.imageSmoothingEnabled = false;
           ctx.translate(Math.round(scr.x), Math.round(scr.y));
-          ctx.rotate(a + Math.PI / 4 + Math.PI / 2);   // icon points up-right → face outward
+          ctx.rotate(a + Math.PI * 0.75);   // guardian icon tip points up-left; grip stays inward.
           ctx.drawImage(blade, -sz / 2, -sz / 2, sz, sz);
           ctx.restore();
         } else {
@@ -1616,6 +1588,14 @@ export class Renderer {
         }
       }
     }
+  }
+
+  _visualSwingDirection(weaponType, rawDirection) {
+    const tune = WEAPON_SPRITE_TUNE[weaponType] || null;
+    if (tune?.asymmetric && Number.isFinite(tune.swingDirection)) {
+      return tune.swingDirection < 0 ? -1 : 1;
+    }
+    return rawDirection === -1 ? -1 : 1;
   }
 
   // Spinning chakram disc — a bladed ring that rotates over time.
@@ -2145,7 +2125,7 @@ export class Renderer {
     const endAngle = isFullCircleSlash ? fullCircleStart + Math.PI * 2 : e.angle + halfAngleRad;
     const swingDirection = isFullCircleSlash && e.weapon === 'sword'
       ? 1
-      : (e.swingDirection === -1 ? -1 : 1);
+      : this._visualSwingDirection(e.weapon, e.swingDirection);
     const arcSize = endAngle - startAngle;
     const angleAt = t => swingDirection > 0
       ? startAngle + arcSize * t
@@ -2495,7 +2475,7 @@ export class Renderer {
     const sweetR = weapon.range;
     const innerR = Math.max(8, weapon.innerRange || sweetR * 0.58);
     const sweep = easeOutCubic(clamp01(progress / 0.65));
-    const dir = e.swingDirection === -1 ? -1 : 1;
+    const dir = this._visualSwingDirection(e.weapon, e.swingDirection);
     const head = dir > 0 ? start + (end - start) * sweep : end - (end - start) * sweep;
     const tail = dir > 0 ? Math.max(start, head - (end - start) * 0.26) : Math.min(end, head + (end - start) * 0.26);
 
@@ -3615,14 +3595,14 @@ export class Renderer {
       const windupPortion = isGreatsword ? 0.16 : 0.45;
       const chargeT = motionProgress < windupPortion ? easeOutCubic(motionProgress / windupPortion) : 1;
       const releaseT = progress < windupPortion ? 0 : easeOutBack((progress - windupPortion) / (1 - windupPortion));
-      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       lunge = (isGreatsword ? -7 : -8) * chargeT + (isGreatsword ? 21 : 13) * releaseT;
       weaponReach = (isGreatsword ? -14 : -12) * chargeT + (isGreatsword ? 36 : 20) * releaseT;
       weaponAngle = angle + swingDirection * ((isGreatsword ? -2.18 : -1.15) * chargeT + (isGreatsword ? 3.85 : 2.25) * releaseT);
       bodyScale = 2.1 * Math.sin(Math.PI * clamp01(progress));
 
     } else if (effect.type === 'melee_sweet_arc') {
-      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       const sweep = easeOutCubic(clamp01(progress / 0.92));
       lunge = 5 * Math.sin(Math.PI * progress);
       weaponReach = 20 * Math.sin(Math.PI * progress);
@@ -3685,7 +3665,7 @@ export class Renderer {
       const halfAngle = (angleDeg * Math.PI) / 360;
       const startAngle = angle - halfAngle;
       const endAngle = angleDeg >= 359 ? startAngle + Math.PI * 2 : angle + halfAngle;
-      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       const sweep = easeOutCubic(clamp01(progress / 0.58));
       weaponAngle = swingDirection > 0
         ? startAngle + (endAngle - startAngle) * sweep
@@ -3712,7 +3692,7 @@ export class Renderer {
       bodyScale = 1.2 * thrust * finisherBoost;
 
     } else {
-      const swingDirection = effect.swingDirection === -1 ? -1 : 1;
+      const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       const motionProgress = effect.weapon === 'sword' ? clamp01((progress + 0.1) / 0.62) : progress;
       const slashProgress = effect.weapon === 'sword' ? clamp01((progress + 0.06) / 0.72) : clamp01(motionProgress * 0.95);
       const slash = Math.sin(Math.PI * slashProgress);
@@ -3728,7 +3708,7 @@ export class Renderer {
       effectType: effect.type,
       attackProgress: progress,
       isFinisher: Boolean(effect.comboFinisher),
-      swingDirection: effect.swingDirection === -1 ? -1 : 1,
+      swingDirection: this._visualSwingDirection(effect.weapon, effect.swingDirection),
       bodyX: Math.cos(angle) * lunge,
       bodyY: Math.sin(angle) * lunge,
       bodyScale,
@@ -3803,9 +3783,7 @@ export class Renderer {
 
       ctx.save();
 
-      // Glow and Shadow under player
-      ctx.shadowBlur = this._glow * (isLocal ? 15 : 4);
-      ctx.shadowColor = isLocal ? '#ef4444' : p.color;
+      ctx.shadowBlur = 0;
       ctx.fillStyle = p.color;
 
       const drawWeaponFrame = () => {
@@ -3848,23 +3826,6 @@ export class Renderer {
       if (p.burnTimeLeft > 0) this._drawBurnFlames(ctx, bodyScr, radius, camera.zoom || 1);
       if (p.pendingIcicles > 0) this._drawLoadedIcicles(ctx, bodyScr, p.pendingIcicles, radius, camera.zoom || 1);
 
-      // Dash i-frame white highlight — bright flash that fades as the
-      // invulnerability window expires.
-      if (p.iframeTimeLeft > 0) {
-        const iAlpha = clamp01(p.iframeTimeLeft / (DashConfig.iframeMs / 1000));
-        ctx.save();
-        ctx.shadowBlur = this._glow *16 * iAlpha;
-        ctx.shadowColor = '#ffffff';
-        ctx.fillStyle = this._hexToRGB('#ffffff', 0.85 * iAlpha);
-        const ir = radius + motion.bodyScale;
-        ctx.fillRect(bodyScr.x - ir, bodyScr.y - ir, ir * 2, ir * 2);
-        ctx.strokeStyle = this._hexToRGB('#ffffff', iAlpha);
-        ctx.lineWidth = 2;
-        const ir2 = ir + 3 + 5 * (1 - iAlpha);
-        ctx.strokeRect(bodyScr.x - ir2, bodyScr.y - ir2, ir2 * 2, ir2 * 2);
-        ctx.restore();
-      }
-
       // Local Player Highlight Marker Ring
       if (isLocal) {
         // Broad pulsing red warning circle representing absolute player presence
@@ -3873,49 +3834,10 @@ export class Renderer {
         ctx.save();
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 3;
-        ctx.shadowColor = '#ef4444';
-        ctx.shadowBlur = this._glow *12;
+        ctx.shadowBlur = 0;
         const lr = radius + pulse;
         ctx.strokeRect(bodyScr.x - lr, bodyScr.y - lr, lr * 2, lr * 2);
         ctx.restore();
-
-        // High intensity floating indicator arrow pointing directly to player
-        const arrowOffset = radius + 22 + Math.sin(Date.now() / 120) * 4;
-        ctx.save();
-        ctx.fillStyle = '#ef4444';
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(bodyScr.x - 7, bodyScr.y - arrowOffset);
-        ctx.lineTo(bodyScr.x + 7, bodyScr.y - arrowOffset);
-        ctx.lineTo(bodyScr.x, bodyScr.y - arrowOffset + 9);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      if (p.weapon !== 'axe') {
-        // Draw Sight Pointer / Helmet Visor face vector direction
-        ctx.strokeStyle = '#0b0c10';
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(bodyScr.x, bodyScr.y);
-        ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
-        ctx.stroke();
-
-        // Highlight core represent eye visor
-        ctx.strokeStyle = p.accentColor;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        // Side ticks showing helmet look direction
-        const leftVisor = p.angle - 0.4;
-        const rightVisor = p.angle + 0.4;
-        ctx.moveTo(bodyScr.x + Math.cos(leftVisor) * (radius - 4), bodyScr.y + Math.sin(leftVisor) * (radius - 4));
-        ctx.lineTo(bodyScr.x + Math.cos(p.angle) * (radius - 2), bodyScr.y + Math.sin(p.angle) * (radius - 2));
-        ctx.lineTo(bodyScr.x + Math.cos(rightVisor) * (radius - 4), bodyScr.y + Math.sin(rightVisor) * (radius - 4));
-        ctx.stroke();
       }
 
       if (weaponDrawOverBody) drawWeaponFrame();
