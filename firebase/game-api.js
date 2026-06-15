@@ -322,7 +322,7 @@ export async function checkIsAdmin() {
   const user = currentUser();
   if (!firestore || !user) return false;
   try {
-    const snap = await getDoc(doc(firestore, 'admins', user.uid));
+    const snap = await getDoc(doc(firestore, 'admin', user.uid));
     return snap.exists();
   } catch {
     return false;
