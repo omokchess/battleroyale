@@ -2146,38 +2146,35 @@ export class Renderer {
 
   _drawArcSlash(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
-    const headT = easeOutCubic(clamp01(progress / 0.58));
     const finisher = Boolean(e.comboFinisher);
     const isFullCircleSlash = weapon.angle >= 359;
-    const radius = weapon.range * ((finisher ? 0.74 : 0.82) + (finisher ? 0.26 : 0.18) * headT);
-    const halfAngleRad = (weapon.angle * Math.PI) / 360;
-    const fullCircleStart = e.weapon === 'sword'
-      ? e.angle - Math.PI * 0.75
-      : e.angle - halfAngleRad;
-    const startAngle = isFullCircleSlash ? fullCircleStart : e.angle - halfAngleRad;
-    const endAngle = isFullCircleSlash ? fullCircleStart + Math.PI * 2 : e.angle + halfAngleRad;
-    const swingDirection = isFullCircleSlash && e.weapon === 'sword'
-      ? 1
-      : this._visualSwingDirection(e.weapon, e.swingDirection);
-    const arcSize = endAngle - startAngle;
-    const angleAt = t => swingDirection > 0
-      ? startAngle + arcSize * t
-      : endAngle - arcSize * t;
-    const leadingAngle = angleAt(headT);
-    const hitX = scr.x + Math.cos(leadingAngle) * radius;
-    const hitY = scr.y + Math.sin(leadingAngle) * radius;
     const spriteAlpha = Math.pow(1 - progress, 0.3) * 0.95;
 
+    // The Ninja-Adventure crescent sprites are drawn convex-LEFT by default
+    // (the cutting belly bulges toward -x). To make the belly face the aim we
+    // rotate by e.angle + π. We anchor the slash in front of the player and let
+    // the sheet's own frames play out the sweep — instead of dragging a tiny
+    // crescent around the blade tip (which read as a stray streak).
+    const slashAngle = e.angle + Math.PI;
+
     if (isFullCircleSlash) {
-      this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y, radius * 2.4, headT, spriteAlpha, leadingAngle);
-    } else if (headT > 0) {
-      const pct = Math.min(headT, 0.95) / 0.95;
-      const spriteSize = radius * (finisher ? 2.4 : 1.9);
-      if (finisher) {
-        this._drawFxSprite(ctx, 'fx/slash2', 9, 44, 50, hitX, hitY, spriteSize, pct, spriteAlpha, leadingAngle);
-      } else {
-        this._drawFxSprite(ctx, 'fx/slash', 4, 32, 32, hitX, hitY, spriteSize, pct, spriteAlpha, leadingAngle);
-      }
+      // 360° spin: a round burst centered on the body, rotated to the aim.
+      this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y,
+        weapon.range * 2.2, progress, spriteAlpha, slashAngle);
+      return;
+    }
+
+    // Flip across the swing axis so the crescent curls the same way the blade swings.
+    const flipY = this._visualSwingDirection(e.weapon, e.swingDirection) < 0;
+    const reach = weapon.range * (finisher ? 0.95 : 0.85);
+    const cx = scr.x + Math.cos(e.angle) * reach * 0.55;
+    const cy = scr.y + Math.sin(e.angle) * reach * 0.55;
+    const spriteSize = reach * (finisher ? 2.2 : 1.85);
+
+    if (finisher) {
+      this._drawFxSprite(ctx, 'fx/slash2', 9, 44, 50, cx, cy, spriteSize, progress, spriteAlpha, slashAngle, flipY);
+    } else {
+      this._drawFxSprite(ctx, 'fx/slash', 4, 32, 32, cx, cy, spriteSize, progress, spriteAlpha, slashAngle, flipY);
     }
   }
 
@@ -2822,7 +2819,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  _drawFxSprite(ctx, key, frames, fw, fh, cx, cy, drawSize, progress, alpha, angle = 0) {
+  _drawFxSprite(ctx, key, frames, fw, fh, cx, cy, drawSize, progress, alpha, angle = 0, flipY = false) {
     const sheet = this.atlas?.get(key);
     if (!sheet || !sheet.naturalWidth) return false;
     const frame = Math.min(frames - 1, Math.floor(clamp01(progress) * frames));
@@ -2832,6 +2829,7 @@ export class Renderer {
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     ctx.translate(cx, cy);
     if (angle !== 0) ctx.rotate(angle);
+    if (flipY) ctx.scale(1, -1);    // mirror across the swing axis (handedness)
     ctx.drawImage(sheet, frame * fw, 0, fw, fh, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
     ctx.restore();
     ctx.imageSmoothingEnabled = prev;
