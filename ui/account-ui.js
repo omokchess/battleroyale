@@ -22,6 +22,8 @@ import {
   equippedFromProfile,
   purchaseItem,
   equipItem,
+  adminAddCoins,
+  adminGrantAllItems,
 } from '../firebase/game-api.js';
 import { ASSET_VERSION } from '../game/SpriteAtlas.js';
 
@@ -268,6 +270,7 @@ function wireStaticButtons() {
 
   $('rankBtn')?.addEventListener('click', openLeaderboard);
   $('shopBtn')?.addEventListener('click', openShop);
+  $('adminBtn')?.addEventListener('click', openAdmin);
 
   // 모달 닫기 (배경/버튼 공용)
   document.querySelectorAll('[data-close-modal]').forEach((el) => {
@@ -276,6 +279,50 @@ function wireStaticButtons() {
       if (e.target === el || el.tagName === 'BUTTON') $(id)?.classList.add('hidden');
     });
   });
+
+  // 어드민 패널 버튼
+  document.querySelectorAll('[data-admin-coins]').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const amount = Number(el.dataset.adminCoins);
+      await adminAction(async () => {
+        const next = await adminAddCoins(amount);
+        if (profile) { profile = { ...profile, coins: next }; renderAccountBar(); }
+        const coinEl = $('shopCoins');
+        if (coinEl) coinEl.textContent = next;
+        return `코인 ${amount.toLocaleString()} 지급 완료 (현재 ${next.toLocaleString()})`;
+      });
+    });
+  });
+
+  $('adminGrantAll')?.addEventListener('click', async () => {
+    await adminAction(async () => {
+      const count = await adminGrantAllItems();
+      ownedItemIds = await fetchMyItemIds();
+      renderShop();
+      return count > 0 ? `${count}개 아이템 해금 완료` : '이미 전부 보유 중';
+    });
+  });
+}
+
+async function openAdmin() {
+  $('adminModal')?.classList.remove('hidden');
+  setAdminStatus('');
+}
+
+async function adminAction(fn) {
+  const el = $('adminStatus');
+  if (el) el.textContent = '처리 중...';
+  try {
+    const msg = await fn();
+    if (el) el.textContent = msg || '완료';
+  } catch (e) {
+    if (el) el.textContent = `오류: ${e?.message || e}`;
+  }
+}
+
+function setAdminStatus(msg) {
+  const el = $('adminStatus');
+  if (el) el.textContent = msg;
 }
 
 function renderAccountBar() {
@@ -288,6 +335,8 @@ function renderAccountBar() {
     if (nameEl) nameEl.textContent = profile.username;
     if (coinEl) coinEl.textContent = profile.coins;
   }
+  // 어드민 버튼: 로그인 중일 때 항상 표시
+  $('adminBtn')?.classList.toggle('hidden', !profile);
 }
 
 // ── 랭킹 모달 ───────────────────────────────────────────────

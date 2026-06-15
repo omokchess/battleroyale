@@ -295,3 +295,34 @@ export async function equipItem(itemId) {
     return normalizeProfile(user.uid, { ...profile, ...update });
   }));
 }
+
+// ── 어드민 도구 ─────────────────────────────────────────────
+export async function adminAddCoins(amount) {
+  const user = currentUser();
+  if (!firestore || !user) throw new Error('로그인 필요');
+  const ref = doc(firestore, 'profiles', user.uid);
+  return runTransaction(firestore, async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error('프로필 없음');
+    const next = Number(snap.data().coins || 0) + amount;
+    tx.update(ref, { coins: next, updated_at: serverTimestamp() });
+    return next;
+  });
+}
+
+export async function adminGrantAllItems() {
+  const user = currentUser();
+  if (!firestore || !user) throw new Error('로그인 필요');
+  const owned = await fetchMyItemIds();
+  const toGrant = DEFAULT_ITEMS.filter(it => !owned.has(it.id));
+  await Promise.all(toGrant.map(async it => {
+    const ref = doc(firestore, 'profiles', user.uid, 'user_items', it.id);
+    await setDoc(ref, { item_id: it.id, acquired_at: serverTimestamp() });
+    if (it.id.startsWith('costume:')) {
+      const cId = it.id.replace(/^costume:/, '');
+      const cRef = doc(firestore, 'profiles', user.uid, 'user_costumes', cId);
+      await setDoc(cRef, { costume_id: cId, acquired_at: serverTimestamp() });
+    }
+  }));
+  return toGrant.length;
+}

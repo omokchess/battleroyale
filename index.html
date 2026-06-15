@@ -80,6 +80,7 @@
               </span>
               <button id="rankBtn" class="bg-[#2c2016] border border-[#c9a227] text-[#c9a227] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">랭킹</button>
               <button id="shopBtn" class="bg-[#2c2016] border border-[#e8d5a3] text-[#e8d5a3] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">상점</button>
+              <button id="adminBtn" class="hidden bg-[#0b1a1f] border border-[#45f3ff]/50 text-[#45f3ff] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-[#0b3038]">⚙ DEV</button>
               <button id="logoutBtn" class="bg-[#2c2016] border border-gray-600 text-gray-400 font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">로그아웃</button>
             </div>
           </div>
@@ -741,6 +742,35 @@
           </div>
         </div>
         <div id="shopBody" class="overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-3 pr-1"></div>
+      </div>
+    </div>
+
+    <!-- ADMIN MODAL -->
+    <div id="adminModal" data-close-modal="adminModal" class="hidden absolute inset-0 z-[80] flex items-center justify-center bg-black/80 p-4">
+      <div class="w-full max-w-xs bg-[#0d1117] border-2 border-[#45f3ff]/40 p-5 font-mono shadow-[0_0_24px_rgba(69,243,255,0.15)]" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-[#45f3ff] text-xs font-bold uppercase tracking-widest">⚙ Dev Admin</span>
+          <button data-close-modal="adminModal" class="text-gray-400 hover:text-white text-base px-1 cursor-pointer leading-none">✕</button>
+        </div>
+
+        <!-- 코인 -->
+        <div class="mb-4">
+          <div class="text-[10px] text-gray-400 uppercase mb-1.5">코인 지급</div>
+          <div class="flex gap-1.5">
+            <button data-admin-coins="1000"  class="flex-1 py-1.5 text-[10px] border border-yellow-600 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">+1,000</button>
+            <button data-admin-coins="9999"  class="flex-1 py-1.5 text-[10px] border border-yellow-600 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">+9,999</button>
+            <button data-admin-coins="99999" class="flex-1 py-1.5 text-[10px] border border-yellow-500 text-yellow-200 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">+99,999</button>
+          </div>
+        </div>
+
+        <!-- 아이템 -->
+        <div class="mb-4">
+          <div class="text-[10px] text-gray-400 uppercase mb-1.5">아이템</div>
+          <button id="adminGrantAll" class="w-full py-2 text-[10px] border border-[#45f3ff]/60 text-[#45f3ff] hover:bg-[#0b3038] cursor-pointer active:scale-95 transition-all uppercase">전체 아이템 해금</button>
+        </div>
+
+        <!-- 상태 메시지 -->
+        <div id="adminStatus" class="text-[10px] text-center text-gray-500 min-h-[14px]"></div>
       </div>
     </div>
 
