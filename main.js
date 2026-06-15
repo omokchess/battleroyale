@@ -245,7 +245,7 @@ function _ensurePreview() {
     toScreen(x, y, cw, ch) { return { x: cw / 2 + (x - PX) * this.zoom, y: ch / 2 + (y - PY) * this.zoom }; },
     getShakeOffset() { return { x: 0, y: 0 }; },
   };
-  _previewState = { cv, controls, renderer, dummy, camera, PX, PY, MAP, effects: [], projectiles: [], mines: [], firePatches: [], pendingSniperShots: [], pendingMagicShards: [], pendingPreviewActions: [], lastFire: 0, swing: 1, raf: 0, last: performance.now(), weaponType: 'sword', greatswordCharge: null, _chakramNextFire: 0 };
+  _previewState = { cv, controls, renderer, dummy, camera, PX, PY, MAP, effects: [], projectiles: [], mines: [], firePatches: [], pendingSniperShots: [], pendingMagicShards: [], pendingPreviewActions: [], lastFire: 0, swing: 1, raf: 0, last: performance.now(), weaponType: 'sword', greatswordCharge: null };
   controls.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-preview-action]');
     if (!btn) return;
@@ -309,7 +309,7 @@ function setWeaponPreview(weaponType, cfg) {
   d.chakramOrbitUntil = 0;
   d.heatShieldUntil = 0;
   d.guardianStanceUntil = 0;
-  p.effects.length = 0; p.projectiles.length = 0; p.mines.length = 0; p.firePatches.length = 0; p.pendingSniperShots.length = 0; p.pendingMagicShards.length = 0; p.pendingPreviewActions.length = 0; p.greatswordCharge = null; p.lastFire = 0; p.last = performance.now(); p._chakramNextFire = 0;
+  p.effects.length = 0; p.projectiles.length = 0; p.mines.length = 0; p.firePatches.length = 0; p.pendingSniperShots.length = 0; p.pendingMagicShards.length = 0; p.pendingPreviewActions.length = 0; p.greatswordCharge = null; p.lastFire = 0; p.last = performance.now();
 
   const loop = (t) => {
     const dt = Math.min((t - p.last) / 1000, 0.05); p.last = t; const now = Date.now();
@@ -318,17 +318,6 @@ function setWeaponPreview(weaponType, cfg) {
     p.effects = p.effects.filter(e => { e.progress = (now - e.timestamp) / (e.lifetime || 400); return e.progress < 1; });
     for (const pr of p.projectiles) { if (pr.update) pr.update(dt); }
     p.projectiles = p.projectiles.filter(pr => !pr.isDead && Math.hypot(pr.x - p.PX, pr.y - p.PY) < p.MAP * 0.7);
-    if (p.weaponType === 'chakram') {
-      const flying = p.projectiles.some(pr => pr.kind === 'chakram');
-      const pending = p.pendingPreviewActions.length > 0;
-      const orbiting = (p.dummy.chakramOrbitUntil || 0) > now;
-      if (!flying && !pending && !orbiting) {
-        if (!p._chakramNextFire) p._chakramNextFire = now + 600;
-        if (now >= p._chakramNextFire) { p._chakramNextFire = 0; _previewTrigger(p, 'f', now); }
-      } else {
-        p._chakramNextFire = 0;
-      }
-    }
     p.mines = p.mines.filter(m => !m.expireAt || now < m.expireAt);
     p.firePatches = p.firePatches.filter(fp => !fp.expireAt || now < fp.expireAt);
     const gs = { players: { preview: d }, projectiles: p.projectiles, effects: p.effects,
