@@ -202,7 +202,7 @@ export class Renderer {
 
     // Draw Bow Projectiles
     if (gameState.projectiles) {
-      this._drawProjectiles(ctx, camera, cw, ch, gameState.projectiles);
+      this._drawProjectiles(ctx, camera, cw, ch, gameState.projectiles, gameState.players);
     }
 
     // Draw All Connected Players
@@ -1236,7 +1236,7 @@ export class Renderer {
   /**
    * Graphic drawings for bow arrows
    */
-  _drawProjectiles(ctx, camera, cw, ch, projectiles) {
+  _drawProjectiles(ctx, camera, cw, ch, projectiles, players) {
     ctx.save();
     const zoom = camera.zoom || 1;
 
@@ -1247,9 +1247,15 @@ export class Renderer {
       if (scr.x < -60 || scr.x > cw + 60 || scr.y < -60 || scr.y > ch + 60) return;
 
       const angle = Number.isFinite(p.angle) ? p.angle : Math.atan2(p.vy, p.vx);
+      const owner = players && p.ownerId ? players[p.ownerId] : null;
 
       if (p.kind === 'thrownspear') {
-        this._drawThrownSpear(ctx, scr, angle, zoom);
+        this._drawWeaponProjectile(ctx, scr, angle, zoom, 'spear', owner, { tumble: true });
+      } else if (p.kind === 'chakram') {
+        this._drawWeaponProjectile(ctx, scr, angle, zoom, 'chakram', owner, { spin: true });
+      } else if (p.kind === 'harpoon') {
+        this._drawWeaponProjectile(ctx, scr, angle, zoom, 'harpoon', owner, {});
+        this._drawHarpoonRope(ctx, scr, angle, zoom);
       } else if (p.kind === 'swordwave') {
         this._drawSwordWave(ctx, scr, angle, zoom);
       } else if (p.kind === 'greatswordwave') {
@@ -1258,19 +1264,66 @@ export class Renderer {
         this._drawFireball(ctx, scr, angle, zoom);
       } else if (p.kind === 'iceshard') {
         this._drawIceShard(ctx, scr, angle, zoom);
-      } else if (p.kind === 'chakram') {
-        this._drawChakram(ctx, scr, zoom);
       } else if (p.kind === 'pistol') {
         this._drawPistolBullet(ctx, scr, angle, zoom);
       } else if (p.kind === 'guardianblade' || p.kind === 'guardianhoming') {
         this._drawGuardianBlade(ctx, scr, zoom);
-      } else if (p.kind === 'harpoon') {
-        this._drawHarpoon(ctx, scr, angle, zoom);
       } else {
         this._drawArrow(ctx, scr, angle);
       }
     });
 
+    ctx.restore();
+  }
+
+  // Draws the actual weapon sprite as a flying projectile. Used for weapons
+  // that are literally thrown — spear (tumbles), chakram (spins), harpoon.
+  _drawWeaponProjectile(ctx, scr, angle, zoom, weapon, owner, { spin = false, tumble = false } = {}) {
+    // Resolve sprite: prefer owner's skin, fall back to base.
+    const skin = owner?.weaponSkin;
+    const img = (skin && skin !== 'none' && this.atlas?.get(`wpn/${weapon}@${skin}`))
+              || this.atlas?.get(`wpn/${weapon}`);
+    if (!img || !img.naturalWidth) {
+      // No sprite available — use old canvas fallback per weapon.
+      if (weapon === 'harpoon') this._drawHarpoon(ctx, scr, angle, zoom);
+      else if (weapon === 'spear') this._drawThrownSpear(ctx, scr, angle, zoom);
+      else this._drawChakram(ctx, scr, zoom);
+      return;
+    }
+
+    const tune = WEAPON_SPRITE_TUNE[weapon] || WEAPON_TUNE_DEFAULT;
+    const size = 16 * 2 * (tune.scale || 1) * Math.max(0.7, zoom * 0.55 + 0.3);
+
+    // Sprites point UP-RIGHT (-π/4). To align the tip with the flight angle:
+    // rotation = angle + π/4. Tumbling adds a time-based extra spin.
+    let rot = angle + Math.PI / 4 + (tune.rot || 0);
+    if (spin)   rot = (Date.now() / 90)  % (Math.PI * 2);           // chakram: full spin, no angle
+    if (tumble) rot = angle + Math.PI / 4 + (Date.now() / 120) % (Math.PI * 2); // spear: tumbles along path
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(scr.x), Math.round(scr.y));
+    ctx.rotate(rot);
+    // Center the sprite on the projectile position.
+    ctx.drawImage(img, -size * 0.5, -size * 0.5, size, size);
+    ctx.imageSmoothingEnabled = true;
+    ctx.restore();
+  }
+
+  // Harpoon rope trail — kept separate so it draws under the sprite.
+  _drawHarpoonRope(ctx, scr, angle, zoom) {
+    const len = 20 * (0.7 + zoom * 0.3);
+    const tailX = scr.x - Math.cos(angle) * len;
+    const tailY = scr.y - Math.sin(angle) * len;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(150,130,96,0.55)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(scr.x, scr.y);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
