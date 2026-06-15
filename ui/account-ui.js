@@ -27,6 +27,7 @@ import {
   checkIsAdmin,
 } from '../firebase/game-api.js';
 import { ASSET_VERSION } from '../game/SpriteAtlas.js';
+import { WEAPON_LIST, WEAPON_SKIN_DEFS } from '../firebase/catalog.js';
 
 /**
  * 계정(로그인/상단바) + 랭킹 + 상점 UI 를 담당.
@@ -45,6 +46,14 @@ let itemCatalog = [];          // [{ id, category, name, price, data, unlock_typ
 let ownedItemIds = new Set();  // 보유 아이템 id
 let equipped = equippedFromProfile(null); // { costume, weaponskin, killfx, dashtrail, respawnfx, title } (전체 id)
 let activeCategory = 'weaponskin';
+let activeSkinWeapon = 'sword'; // 무기 스킨 탭에서 선택된 무기
+
+const WEAPON_KO = {
+  axe: '도끼', bow: '활', chakram: '차크람', dagger: '단검',
+  flamethrower: '화염방사기', greatsword: '대검', guardian: '디펜더',
+  hammer: '망치', harpoon: '작살', katana: '카타나', magicstaff: '마법봉',
+  rapier: '레이피어', scythe: '낫', sniper: '스나이퍼', spear: '창', sword: '검',
+};
 
 const SHOP_CATEGORIES = [
   { key: 'weaponskin', label: '무기 스킨' },
@@ -112,7 +121,7 @@ export function getEquippedCosmetics() {
     return { id, data: item?.data || {} };
   };
   return {
-    weaponskin: resolve('weaponskin'),
+    weaponskins: equipped.weaponskins || {},
     killfx: resolve('killfx'),
     dashtrail: resolve('dashtrail'),
     respawnfx: resolve('respawnfx'),
@@ -465,6 +474,52 @@ function renderItemCard(it) {
     </div>`;
 }
 
+function renderWeaponSkinTab() {
+  const weaponBtns = WEAPON_LIST.map(wpn => {
+    const active = wpn === activeSkinWeapon;
+    const hasSkin = !!(equipped.weaponskins?.[wpn]);
+    const dot = hasSkin ? '<span class="inline-block w-1.5 h-1.5 rounded-full bg-[#45f3ff] ml-1 align-middle"></span>' : '';
+    return `<button data-skin-weapon="${wpn}" class="px-2 py-1 text-[10px] font-mono border cursor-pointer active:scale-95 transition-all whitespace-nowrap ${active ? 'border-[#45f3ff] text-[#45f3ff] bg-[#0b3038]' : 'border-gray-700 text-gray-400 hover:border-gray-500'}">${WEAPON_KO[wpn] || wpn}${dot}</button>`;
+  }).join('');
+
+  const wpn = activeSkinWeapon;
+  const equippedSkin = equipped.weaponskins?.[wpn] || 'none';
+
+  const skinCards = [
+    { id: 'none', name: '기본', price: 0, tint: null },
+    ...WEAPON_SKIN_DEFS,
+  ].map(sk => {
+    const itemId = sk.id === 'none' ? `weaponskin:${wpn}:none` : `weaponskin:${wpn}:${sk.id}`;
+    const owned = sk.id === 'none' || ownedItemIds.has(itemId);
+    const isEq = equippedSkin === sk.id;
+    const src = sk.id === 'none'
+      ? `/assets/ninja/weapon/${wpn}.png`
+      : `/assets/ninja/weapon/skins/${sk.id}/${wpn}.png`;
+    const glow = sk.tint ? `${sk.tint}22` : '#11151c';
+    const preview = `<div class="w-12 h-12 mb-2 border-2 flex items-center justify-center" style="background:${glow};border-color:${isEq ? (sk.tint || '#45f3ff') : '#374151'}">
+      <img src="${src}?v=${ASSET_VERSION}" alt="" class="w-9 h-9" style="image-rendering:pixelated"
+        onerror="this.style.display='none'"></div>`;
+    let btn;
+    if (isEq) {
+      btn = `<button disabled class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-[#45f3ff] text-[#45f3ff] bg-[#0b3038] cursor-default">착용 중</button>`;
+    } else if (owned) {
+      btn = `<button data-equip="${itemId}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-teal-400 text-teal-300 hover:bg-teal-900/40 cursor-pointer active:scale-95 transition-all">착용하기</button>`;
+    } else {
+      btn = `<button data-buy="${itemId}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-yellow-500 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">${sk.price} 코인 구매</button>`;
+    }
+    return `<div class="bg-[#0b0c10] border-2 border-gray-700 p-3 flex flex-col items-center">
+      ${preview}
+      <div class="font-mono text-xs text-white font-bold">${sk.name}</div>
+      <div class="font-mono text-[10px] text-gray-400 mt-0.5">${sk.id === 'none' ? '무료' : `${sk.price} 코인`}</div>
+      ${btn}
+    </div>`;
+  }).join('');
+
+  return `<div class="col-span-full flex flex-wrap gap-1 mb-3">${weaponBtns}</div>
+    <div class="col-span-full font-mono text-[11px] text-gray-400 mb-2">${WEAPON_KO[wpn] || wpn} 스킨 선택</div>
+    ${skinCards}`;
+}
+
 function renderShop() {
   const body = $('shopBody');
   const coinEl = $('shopCoins');
@@ -487,17 +542,25 @@ function renderShop() {
   const tabs = activeCats.map((c) => `
     <button data-cat="${c.key}" class="px-2.5 py-1 text-[10px] font-mono uppercase border-2 cursor-pointer active:scale-95 transition-all ${c.key === activeCategory ? 'border-[#45f3ff] text-[#45f3ff] bg-[#0b3038]' : 'border-gray-700 text-gray-400 hover:border-gray-500'}">${c.label}</button>`).join('');
 
-  const catItems = items
-    .filter((i) => i.category === activeCategory)
-    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-  const cards = catItems.map(renderItemCard).join('');
+  let content;
+  if (activeCategory === 'weaponskin') {
+    content = renderWeaponSkinTab();
+  } else {
+    const catItems = items
+      .filter((i) => i.category === activeCategory)
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const cards = catItems.map(renderItemCard).join('');
+    content = cards || '<div class="col-span-full text-center text-gray-500 text-xs py-6">아이템이 없습니다.</div>';
+  }
 
   body.innerHTML = `
     <div class="col-span-full flex flex-wrap gap-1.5 mb-3">${tabs}</div>
-    ${cards || '<div class="col-span-full text-center text-gray-500 text-xs py-6">아이템이 없습니다.</div>'}`;
+    ${content}`;
 
   body.querySelectorAll('[data-cat]').forEach((el) =>
     el.addEventListener('click', () => { activeCategory = el.getAttribute('data-cat'); renderShop(); }));
+  body.querySelectorAll('[data-skin-weapon]').forEach((el) =>
+    el.addEventListener('click', () => { activeSkinWeapon = el.getAttribute('data-skin-weapon'); renderShop(); }));
   body.querySelectorAll('[data-buy]').forEach((el) =>
     el.addEventListener('click', () => handleBuyItem(el.getAttribute('data-buy'))));
   body.querySelectorAll('[data-equip]').forEach((el) =>

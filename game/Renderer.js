@@ -26,6 +26,7 @@ const PROJECTILE_SPRITE_META = {
   arrow: { src: '/assets/weapons/arrow.png', scale: 1.65, anchorX: 0.5, anchorY: 0.5, angleOffset: Math.PI / 4 }
 };
 const WEAPON_ASSET_VERSION = '20260609a';
+const WS_TINTS = { ember: '#ff3d3d', frost: '#5fd3ff', void: '#b14bff' };
 
 // The low-res "pixel filter" (Task 4) is disabled by user request — the world
 // renders crisp at full resolution. Flip to true to bring the chunky look back.
@@ -1279,9 +1280,9 @@ export class Renderer {
   // Draws the actual weapon sprite as a flying projectile. Used for weapons
   // that are literally thrown — spear (tumbles), chakram (spins), harpoon.
   _drawWeaponProjectile(ctx, scr, angle, zoom, weapon, owner, { spin = false, tumble = false } = {}) {
-    // Resolve sprite: prefer owner's skin, fall back to base.
-    const skin = owner?.weaponSkin;
-    const img = (skin && skin !== 'none' && this.atlas?.get(`wpn/${weapon}@${skin}`))
+    // Resolve sprite: prefer owner's per-weapon skin, fall back to base.
+    const skin = owner?.weaponSkins?.[weapon];
+    const img = (skin && this.atlas?.get(`wpn/${weapon}@${skin}`))
               || this.atlas?.get(`wpn/${weapon}`);
     if (!img || !img.naturalWidth) {
       // No sprite available — use old canvas fallback per weapon.
@@ -4089,8 +4090,7 @@ export class Renderer {
     const wY = scr.y + Math.sin(wAngle) * wDistance;
 
     ctx.save();
-    // Equipped weapon skin tints the weapon's accent + glow.
-    const weaponInk = player.weaponTint || player.accentColor;
+    const weaponInk = WS_TINTS[player.weaponSkins?.[player.weapon]] || player.accentColor;
     ctx.strokeStyle = weaponInk;
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
@@ -4726,8 +4726,8 @@ export class Renderer {
    */
   _drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
     // Equipped weapon skin swaps to an alternate sprite; falls back to the base.
-    const skin = player.weaponSkin;
-    const img = (skin && skin !== 'none' && this.atlas?.get(`wpn/${player.weapon}@${skin}`))
+    const skin = player.weaponSkins?.[player.weapon];
+    const img = (skin && this.atlas?.get(`wpn/${player.weapon}@${skin}`))
       || this.atlas?.get(`wpn/${player.weapon}`);
     if (!img || !img.naturalWidth) return false;     // no sprite for this key → fallback
 

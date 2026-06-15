@@ -109,10 +109,9 @@ export class Player {
     this.applyCosmetics(costume?.cosmetics);
   }
 
-  /** Adopt an equipped-cosmetics set ({weaponskin, killfx, dashtrail, respawnfx, title}). */
+  /** Adopt an equipped-cosmetics set ({weaponskins, killfx, dashtrail, respawnfx, title}). */
   applyCosmetics(cos) {
-    this.weaponTint = cos?.weaponskin?.data?.tint || null;
-    this.weaponSkin = cos?.weaponskin?.data?.skin || null;  // alternate weapon sprite set
+    this.weaponSkins = cos?.weaponskins || {};  // { weapon: skinId }
     this.dashTrailColor = cos?.dashtrail?.data?.color || null;
     this.killFx = cos?.killfx?.data || null;          // { style, color }
     this.respawnFxColor = cos?.respawnfx?.data?.color || null;
@@ -121,8 +120,7 @@ export class Player {
 
   /** Restore the compact serialized cosmetics blob (see serialize). */
   applyCosmeticsSnapshot(c) {
-    this.weaponTint = c?.wt || null;
-    this.weaponSkin = c?.ws || null;
+    this.weaponSkins = (c?.ws && typeof c.ws === 'object') ? c.ws : {};
     this.dashTrailColor = c?.dt || null;
     this.killFx = c?.kf || null;
     this.respawnFxColor = c?.rf || null;
@@ -131,7 +129,7 @@ export class Player {
 
   /** Compact cosmetics blob for the wire. */
   cosmeticsSnapshot() {
-    return { wt: this.weaponTint, ws: this.weaponSkin, dt: this.dashTrailColor, kf: this.killFx, rf: this.respawnFxColor, ti: this.title };
+    return { ws: this.weaponSkins || {}, dt: this.dashTrailColor, kf: this.killFx, rf: this.respawnFxColor, ti: this.title };
   }
 
   /**

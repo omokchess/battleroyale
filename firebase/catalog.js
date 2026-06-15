@@ -23,12 +23,30 @@ const costumeItems = DEFAULT_COSTUMES.map(c => ({
   sort_order: c.sort_order,
 }));
 
+export const WEAPON_LIST = ['axe','bow','chakram','dagger','flamethrower','greatsword','guardian','hammer','harpoon','katana','magicstaff','rapier','scythe','sniper','spear','sword'];
+
+export const WEAPON_SKIN_DEFS = [
+  { id: 'ember', name: '불꽃', price: 30, tint: '#ff3d3d' },
+  { id: 'frost', name: '서리', price: 30, tint: '#5fd3ff' },
+  { id: 'void', name: '보이드', price: 80, tint: '#b14bff' },
+];
+
+const weaponSkinItems = WEAPON_SKIN_DEFS.flatMap((sk, si) =>
+  WEAPON_LIST.map((wpn, wi) => ({
+    id: `weaponskin:${wpn}:${sk.id}`,
+    category: 'weaponskin',
+    name: `${wpn} - ${sk.name}`,
+    price: sk.price,
+    data: { weapon: wpn, skin: sk.id, tint: sk.tint },
+    unlock_type: 'coin',
+    unlock_threshold: 0,
+    sort_order: si * 100 + wi,
+  }))
+);
+
 export const DEFAULT_ITEMS = [
   ...costumeItems,
-  { id: 'weaponskin:none', category: 'weaponskin', name: '기본', price: 0, data: {}, unlock_type: 'coin', unlock_threshold: 0, sort_order: 0 },
-  { id: 'weaponskin:ember', category: 'weaponskin', name: '불꽃', price: 180, data: { skin: 'ember', tint: '#ff3d3d' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 1 },
-  { id: 'weaponskin:frost', category: 'weaponskin', name: '서리', price: 180, data: { skin: 'frost', tint: '#5fd3ff' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 2 },
-  { id: 'weaponskin:void', category: 'weaponskin', name: '보이드', price: 400, data: { skin: 'void', tint: '#b14bff' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 3 },
+  ...weaponSkinItems,
   { id: 'killfx:none', category: 'killfx', name: '기본', price: 0, data: {}, unlock_type: 'coin', unlock_threshold: 0, sort_order: 0 },
   { id: 'killfx:firework', category: 'killfx', name: '폭죽', price: 300, data: { style: 'firework', color: '#ffd24a' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 1 },
   { id: 'killfx:skull', category: 'killfx', name: '픽셀 해골', price: 450, data: { style: 'skull', color: '#e5e7eb' }, unlock_type: 'coin', unlock_threshold: 0, sort_order: 2 },

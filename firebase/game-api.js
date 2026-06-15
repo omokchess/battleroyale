@@ -34,7 +34,7 @@ function normalizeProfile(id, data) {
     total_deaths: Number(data.total_deaths || 0),
     games_played: Number(data.games_played || 0),
     equipped_costume: data.equipped_costume || 'default',
-    equipped_weaponskin: data.equipped_weaponskin || 'none',
+    equipped_weaponskins: data.equipped_weaponskins || {},
     equipped_killfx: data.equipped_killfx || 'none',
     equipped_dashtrail: data.equipped_dashtrail || 'none',
     equipped_respawnfx: data.equipped_respawnfx || 'none',
@@ -206,7 +206,7 @@ export function equippedFromProfile(p) {
   if (!p) {
     return {
       costume: 'costume:default',
-      weaponskin: 'weaponskin:none',
+      weaponskins: {},
       killfx: 'killfx:none',
       dashtrail: 'dashtrail:none',
       respawnfx: 'respawnfx:none',
@@ -215,7 +215,7 @@ export function equippedFromProfile(p) {
   }
   return {
     costume: `costume:${p.equipped_costume || 'default'}`,
-    weaponskin: normEquip('weaponskin', p.equipped_weaponskin),
+    weaponskins: p.equipped_weaponskins || {},
     killfx: normEquip('killfx', p.equipped_killfx),
     dashtrail: normEquip('dashtrail', p.equipped_dashtrail),
     respawnfx: normEquip('respawnfx', p.equipped_respawnfx),
@@ -285,15 +285,48 @@ export async function equipItem(itemId) {
     }
 
     const update = { updated_at: serverTimestamp() };
-    if (item.category === 'costume') update.equipped_costume = itemId.replace(/^costume:/, '');
-    if (item.category === 'weaponskin') update.equipped_weaponskin = itemId;
-    if (item.category === 'killfx') update.equipped_killfx = itemId;
-    if (item.category === 'dashtrail') update.equipped_dashtrail = itemId;
-    if (item.category === 'respawnfx') update.equipped_respawnfx = itemId;
-    if (item.category === 'title') update.equipped_title = itemId;
+    const nextProfile = { ...profile };
+    if (item.category === 'costume') {
+      update.equipped_costume = itemId.replace(/^costume:/, '');
+      nextProfile.equipped_costume = update.equipped_costume;
+    } else if (item.category === 'weaponskin') {
+      // id = 'weaponskin:{weapon}:{skin}' or 'weaponskin:{weapon}:none'
+      const parts = itemId.split(':');
+      const weapon = parts[1];
+      const skin = parts[2];
+      const nextSkins = { ...(profile.equipped_weaponskins || {}) };
+      if (!skin || skin === 'none') delete nextSkins[weapon];
+      else nextSkins[weapon] = skin;
+      update.equipped_weaponskins = nextSkins;
+      nextProfile.equipped_weaponskins = nextSkins;
+    } else if (item.category === 'killfx') {
+      update.equipped_killfx = itemId;
+      nextProfile.equipped_killfx = itemId;
+    } else if (item.category === 'dashtrail') {
+      update.equipped_dashtrail = itemId;
+      nextProfile.equipped_dashtrail = itemId;
+    } else if (item.category === 'respawnfx') {
+      update.equipped_respawnfx = itemId;
+      nextProfile.equipped_respawnfx = itemId;
+    } else if (item.category === 'title') {
+      update.equipped_title = itemId;
+      nextProfile.equipped_title = itemId;
+    }
     tx.update(profileRef, update);
-    return normalizeProfile(user.uid, { ...profile, ...update });
+    return normalizeProfile(user.uid, nextProfile);
   }));
+}
+
+// ── 어드민 확인 ─────────────────────────────────────────────
+export async function checkIsAdmin() {
+  const user = currentUser();
+  if (!firestore || !user) return false;
+  try {
+    const snap = await getDoc(doc(firestore, 'admins', user.uid));
+    return snap.exists();
+  } catch {
+    return false;
+  }
 }
 
 // ── 어드민 도구 ─────────────────────────────────────────────
