@@ -2166,10 +2166,14 @@ export class Renderer {
 
     // Flip across the swing axis so the crescent curls the same way the blade swings.
     const flipY = this._visualSwingDirection(e.weapon, e.swingDirection) < 0;
+    // Size the crescent to roughly the reach so it reads as a slash in front of
+    // the player (concave inner edge near the body, convex out at the reach) —
+    // NOT a giant arc that engulfs/wraps the body.
     const reach = weapon.range * (finisher ? 0.95 : 0.85);
-    const cx = scr.x + Math.cos(e.angle) * reach * 0.55;
-    const cy = scr.y + Math.sin(e.angle) * reach * 0.55;
-    const spriteSize = reach * (finisher ? 2.2 : 1.85);
+    const spriteSize = reach * (finisher ? 1.25 : 1.05);
+    const fwd = reach * (finisher ? 0.55 : 0.5);
+    const cx = scr.x + Math.cos(e.angle) * fwd;
+    const cy = scr.y + Math.sin(e.angle) * fwd;
 
     if (finisher) {
       this._drawFxSprite(ctx, 'fx/slash2', 9, 44, 50, cx, cy, spriteSize, progress, spriteAlpha, slashAngle, flipY);
