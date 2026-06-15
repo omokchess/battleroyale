@@ -1601,15 +1601,24 @@ export class Renderer {
       const slots = deployedSlots[id] || new Set();
       const base = (now / period) * Math.PI * 2;
       const z = camera.zoom || 1;
+      // F 버프 활성 중: orbit 반경 확장 + 글로우 강화 (시각적 버프 연출)
+      const surging = pl.guardianSurgeUntil && now < pl.guardianSurgeUntil;
+      const radius = cfg.orbitRadius + (surging ? 20 : 0);
       for (let i = 0; i < n; i++) {
         if (slots.has(i)) continue;
         const a = base + (i / n) * Math.PI * 2;
-        const wx = pl.x + Math.cos(a) * cfg.orbitRadius;
-        const wy = pl.y + Math.sin(a) * cfg.orbitRadius;
+        const wx = pl.x + Math.cos(a) * radius;
+        const wy = pl.y + Math.sin(a) * radius;
         const scr = camera.toScreen(wx, wy, cw, ch);
-        // angle = -π/2 → _drawWeaponProjectile rotates by -π/2 + π/4 = -π/4
-        // → sprite (naturally UP-RIGHT) ends up pointing straight UP (세워진 상태)
-        this._drawWeaponProjectile(ctx, scr, -Math.PI / 2, z, 'guardian', pl);
+        if (surging) {
+          ctx.save();
+          ctx.shadowColor = '#67e8f9';
+          ctx.shadowBlur = this._glow ? 16 : 0;
+          this._drawWeaponProjectile(ctx, scr, -Math.PI / 2, z, 'guardian', pl);
+          ctx.restore();
+        } else {
+          this._drawWeaponProjectile(ctx, scr, -Math.PI / 2, z, 'guardian', pl);
+        }
       }
     }
   }
