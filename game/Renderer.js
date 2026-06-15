@@ -2168,17 +2168,21 @@ export class Renderer {
     const flipY = this._visualSwingDirection(e.weapon, e.swingDirection) < 0;
     // Size the crescent to roughly the reach so it reads as a slash in front of
     // the player (concave inner edge near the body, convex out at the reach) —
-    // NOT a giant arc that engulfs/wraps the body.
+    // NOT a giant arc that engulfs/wraps the body. A small pop-in scale gives it life.
     const reach = weapon.range * (finisher ? 0.95 : 0.85);
-    const spriteSize = reach * (finisher ? 1.25 : 1.05);
+    const grow = 0.9 + 0.18 * easeOutCubic(clamp01(progress / 0.4));
+    const spriteSize = reach * (finisher ? 1.25 : 1.05) * grow;
     const fwd = reach * (finisher ? 0.55 : 0.5);
     const cx = scr.x + Math.cos(e.angle) * fwd;
     const cy = scr.y + Math.sin(e.angle) * fwd;
 
+    // The slash sheets are NOT a uniform grid — the crescents drift and a 32px
+    // slice straddles two of them (which read as a doubled effect). Draw ONE
+    // clean crescent region instead and fade it.
     if (finisher) {
-      this._drawFxSprite(ctx, 'fx/slash2', 9, 44, 50, cx, cy, spriteSize, progress, spriteAlpha, slashAngle, flipY);
+      this._drawFxRegion(ctx, 'fx/slash2', 204, 0, 60, 50, cx, cy, spriteSize, spriteAlpha, slashAngle, flipY);
     } else {
-      this._drawFxSprite(ctx, 'fx/slash', 4, 32, 32, cx, cy, spriteSize, progress, spriteAlpha, slashAngle, flipY);
+      this._drawFxRegion(ctx, 'fx/slash', 53, 0, 26, 32, cx, cy, spriteSize, spriteAlpha, slashAngle, flipY);
     }
   }
 
@@ -2821,6 +2825,27 @@ export class Renderer {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  // Draw an explicit source sub-rectangle of a sheet, centered at (cx,cy),
+  // scaled so the source width maps to drawSize, rotated and optionally flipped.
+  // Used for sheets whose frames are NOT a clean uniform grid (e.g. the slash
+  // sheets, where 32px slicing straddles two crescents).
+  _drawFxRegion(ctx, key, sx, sy, sw, sh, cx, cy, drawSize, alpha, angle = 0, flipY = false) {
+    const sheet = this.atlas?.get(key);
+    if (!sheet || !sheet.naturalWidth) return false;
+    const drawH = drawSize * (sh / sw);
+    const prev = ctx.imageSmoothingEnabled;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.translate(cx, cy);
+    if (angle !== 0) ctx.rotate(angle);
+    if (flipY) ctx.scale(1, -1);
+    ctx.drawImage(sheet, sx, sy, sw, sh, -drawSize / 2, -drawH / 2, drawSize, drawH);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = prev;
+    return true;
   }
 
   _drawFxSprite(ctx, key, frames, fw, fh, cx, cy, drawSize, progress, alpha, angle = 0, flipY = false) {
