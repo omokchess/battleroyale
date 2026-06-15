@@ -1548,10 +1548,15 @@ export class Renderer {
     for (const id of Object.keys(players)) {
       const pl = players[id];
       if (!pl || pl.isDead || !(pl.chakramOrbitUntil > now)) continue;
-      const ang = (now / 140) % (Math.PI * 2);
-      const wx = pl.x + Math.cos(ang) * 46;
-      const wy = pl.y + Math.sin(ang) * 46;
-      this._drawChakram(ctx, camera.toScreen(wx, wy, cw, ch), camera.zoom || 1);
+      const radius = pl.chakramOrbitRadius || 46;
+      const zoom = camera.zoom || 1;
+      const baseAng = (now / 93) % (Math.PI * 2);
+      for (let i = 0; i < 3; i++) {
+        const ang = baseAng + (i / 3) * Math.PI * 2;
+        const wx = pl.x + Math.cos(ang) * radius;
+        const wy = pl.y + Math.sin(ang) * radius;
+        this._drawWeaponProjectile(ctx, camera.toScreen(wx, wy, cw, ch), ang, zoom, 'chakram', pl, { spin: true });
+      }
     }
   }
 

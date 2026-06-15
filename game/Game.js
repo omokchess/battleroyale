@@ -3852,18 +3852,21 @@ export class Game {
     Object.values(this.players).forEach(player => {
       if (player.isDead || !player.chakramOrbitUntil || now >= player.chakramOrbitUntil) return;
       const orbitR = player.chakramOrbitRadius || 46;
-      const ang = (now / 140) % (Math.PI * 2);          // deterministic spin from time
-      const ox = player.x + Math.cos(ang) * orbitR;
-      const oy = player.y + Math.sin(ang) * orbitR;
+      const baseAng = (now / 93) % (Math.PI * 2);
       const hits = player.chakramOrbitHits || (player.chakramOrbitHits = {});
-      Object.values(this.players).forEach(target => {
-        if (target.id === player.id || target.isDead || target.isInvincible()) return;
-        if (Math.hypot(target.x - ox, target.y - oy) > target.radius + 12) return;
-        if ((hits[target.id] || 0) > now) return;        // per-target hit cooldown
-        hits[target.id] = now + (player.chakramOrbitHitCd || 400);
-        const died = target.takeDamage(player.chakramOrbitDamage || 14, player.nickname);
-        if (died) this._creditKill(player.id, target, '부메랑으로');
-      });
+      for (let i = 0; i < 3; i++) {
+        const ang = baseAng + (i / 3) * Math.PI * 2;
+        const ox = player.x + Math.cos(ang) * orbitR;
+        const oy = player.y + Math.sin(ang) * orbitR;
+        Object.values(this.players).forEach(target => {
+          if (target.id === player.id || target.isDead || target.isInvincible()) return;
+          if (Math.hypot(target.x - ox, target.y - oy) > target.radius + 12) return;
+          if ((hits[target.id] || 0) > now) return;
+          hits[target.id] = now + (player.chakramOrbitHitCd || 400);
+          const died = target.takeDamage(player.chakramOrbitDamage || 14, player.nickname);
+          if (died) this._creditKill(player.id, target, '부메랑으로');
+        });
+      }
     });
   }
 
