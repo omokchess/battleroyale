@@ -930,8 +930,10 @@ function _previewFire(p, weaponType, wc, now, options = {}) {
   if (wc.type === 'projectile') {
     const kind = wc.projectileKind || 'arrow';
     const angle = d.angle + (wc.previewAngleOffset || 0);
-    p.effects.push({ attackerId: 'preview', x: d.x, y: d.y, angle, weapon: weaponType,
-      type: 'projectile_shot', projectileKind: kind, progress: 0, timestamp: now, lifetime: 220 });
+    if (kind !== 'chakram') {
+      p.effects.push({ attackerId: 'preview', x: d.x, y: d.y, angle, weapon: weaponType,
+        type: 'projectile_shot', projectileKind: kind, progress: 0, timestamp: now, lifetime: 220 });
+    }
     const proj = new Projectile(`prev-${now}-${p.projectiles.length}`, 'preview', d.x + Math.cos(angle) * 18, d.y + Math.sin(angle) * 18,
       angle, wc.speed || 600, wc.range || 300, wc.damage || 1, kind);
     proj.weapon = wc.projectileWeapon || weaponType;
