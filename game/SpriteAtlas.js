@@ -76,7 +76,7 @@ export class SpriteAtlas {
  */
 // Bump when vendored sprite FILES change (same path, new pixels) so browsers /
 // the service worker fetch fresh instead of serving a cached image.
-export const ASSET_VERSION = '20260615h';
+export const ASSET_VERSION = '20260615i';
 
 export const SPRITE_MANIFEST = {
   // --- character body sheets (64×112 = 16×16, 4 cols × 7 rows) ---
@@ -151,9 +151,13 @@ export const SPRITE_MANIFEST = {
 // back to the base weapon sprite in the renderer. Drop a PNG in the folder to
 // add/override a skin for a weapon.
 export const WEAPON_SKINS = ['ember', 'frost', 'void'];
+// Generate skin entries for every skinnable weapon key.
+// 'pistols' is excluded — its skins are stored under 'crossbow' (the shop key).
+const _SKIN_SKIP = new Set(['pistols', 'gauntlet', 'minebag']);
 const _weaponKeys = Object.keys(SPRITE_MANIFEST)
   .filter(k => k.startsWith('wpn/'))
-  .map(k => k.slice(4));
+  .map(k => k.slice(4))
+  .filter(k => !_SKIN_SKIP.has(k));
 for (const skin of WEAPON_SKINS) {
   for (const w of _weaponKeys) {
     SPRITE_MANIFEST[`wpn/${w}@${skin}`] = `weapon/skins/${skin}/${w}.png`;

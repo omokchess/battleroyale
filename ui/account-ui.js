@@ -496,8 +496,10 @@ function renderWeaponSkinTab() {
     const itemId = sk.id === 'none' ? `weaponskin:${wpn}:none` : `weaponskin:${wpn}:${sk.id}`;
     const owned = sk.id === 'none' || ownedItemIds.has(itemId);
     const isEq = equippedSkin === sk.id;
+    // crossbow is a shop-only key; its base sprite lives at pistols.png
+    const baseFile = wpn === 'crossbow' ? 'pistols' : wpn;
     const src = sk.id === 'none'
-      ? `/assets/ninja/weapon/${wpn}.png`
+      ? `/assets/ninja/weapon/${baseFile}.png`
       : `/assets/ninja/weapon/skins/${sk.id}/${wpn}.png`;
     const glow = sk.tint ? `${sk.tint}22` : '#11151c';
     const preview = `<div class="w-12 h-12 mb-2 border-2 flex items-center justify-center" style="background:${glow};border-color:${isEq ? (sk.tint || '#45f3ff') : '#374151'}">
