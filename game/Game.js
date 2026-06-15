@@ -453,7 +453,7 @@ export class Game {
     // Storm zone tick + healing spawns/pickups (host authoritative).
     this._updateZone(now, deltaTime);
     this._updateHealingItems(now);
-    this._updateGuardianBlades(now);
+    this._guardianAutoSeek(now);
     this._updateChakramOrbit(now);
     this._updateHeatShield(now);
     this._updateMines(now);
@@ -526,14 +526,19 @@ export class Game {
         this._updateThrownSpear(proj, deltaTime, now);
         return;
       }
-      // Chakram + launched guardian blades boomerang out then back.
-      if (proj.kind === 'chakram' || proj.kind === 'guardianblade') {
+      // Boomerang projectiles: chakram + guardian R launch swords.
+      if (proj.kind === 'chakram' || proj.kind === 'guardianlaunch') {
         this._updateChakram(proj, deltaTime, now);
         return;
       }
-      // 추적 칼날 (guardian R): homes the nearest enemy for a short lifetime.
-      if (proj.kind === 'guardianhoming') {
+      // Guardian LMB dart: homing sword that tracks then vanishes.
+      if (proj.kind === 'guardiandart') {
         this._updateHomingBlade(proj, deltaTime, now);
+        return;
+      }
+      // Guardian auto-seek: orbit blade flies to enemy and returns to orbit.
+      if (proj.kind === 'guardianseek') {
+        this._updateGuardianSeek(proj, deltaTime, now);
         return;
       }
 
@@ -1918,7 +1923,7 @@ export class Game {
       case 'sniper': this._fireSniperShot(player, now); break;
       case 'chakram': this._throwChakramFan(player, now); break;
       case 'pistols': this._firePistolBarrage(player, now); break;
-      case 'guardian': this._guardianStance(player, now); break;
+      case 'guardian': this._guardianSurge(player, now); break;
       case 'harpoon': this._harpoonPull(player, now); break;
       case 'minebag': this._detonateAllMines(player, now); break;
       case 'flamethrower': this._throwFirePatch(player, now); break;
@@ -3795,12 +3800,45 @@ export class Game {
     return out;
   }
 
-  // F 수호 태세: widen the orbit briefly and knock out one incoming projectile.
-  _guardianStance(player, now) {
+  // F 집중 사출: immediately dispatch all available orbit blades at enemies in expanded range.
+  _guardianSurge(player, now) {
     const sk = SkillConfig.guardian;
-    player.skillCdLeft = (sk.cooldownMs || 6000) / 1000;
-    player.guardianStanceUntil = now + (sk.stanceMs || 1500);
-    this._deflectProjectile(player, (Weapons.guardian.orbitRadius || 60) + (sk.stanceRadiusBonus || 0));
+    player.skillCdLeft = (sk.cooldownMs || 5000) / 1000;
+    const surgeRange = sk.surgeRange || 200;
+    const cfg = Weapons.guardian;
+    const deployed = this.projectiles.filter(p => p.kind === 'guardianseek' && p.ownerId === player.id);
+    const deployedSlots = new Set(deployed.map(p => p.bladeSlot));
+    const enemies = Object.values(this.players).filter(t =>
+      t.id !== player.id && !t.isDead && typeof t.isInvincible === 'function' && !t.isInvincible() &&
+      Math.hypot(t.x - player.x, t.y - player.y) <= surgeRange
+    );
+    if (!enemies.length) return;
+    const blades = this._guardianBladePositions(player, now);
+    for (let i = 0; i < (cfg.orbitCount || 3); i++) {
+      if (deployedSlots.has(i)) continue;
+      const target = enemies[Math.floor(Math.random() * enemies.length)];
+      const b = blades[i];
+      const angle = Math.atan2(target.y - b.y, target.x - b.x);
+      const proj = new Projectile(
+        `${player.id}-gsurge-${now}-${i}`, player.id,
+        b.x, b.y, angle,
+        (cfg.seekSpeed || 420) * 1.3, Infinity, sk.surgeDamage || 24, 'guardianseek'
+      );
+      proj.weapon = 'guardian';
+      proj.radius = cfg.bladeRadius || 9;
+      proj.phase = 'out';
+      proj.bladeSlot = i;
+      proj.targetId = target.id;
+      proj.hitOnce = false;
+      proj.deathName = '디펜더';
+      proj.hitLabel = '디펜더로';
+      this.projectiles.push(proj);
+    }
+    this.effects.push({
+      attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
+      weapon: 'guardian', type: 'projectile_shot', projectileKind: 'guardianseek',
+      progress: 0, timestamp: now, lifetime: 180
+    });
   }
 
   // LMB 추적 칼날: detach one blade that homes the nearest enemy for a short time.
@@ -3811,7 +3849,7 @@ export class Game {
       `${player.id}-ghoming-${now}`, player.id,
       player.x + Math.cos(player.angle) * spawnDist,
       player.y + Math.sin(player.angle) * spawnDist,
-      player.angle, sk.homingSpeed || 360, Infinity, sk.homingDamage || 14, 'guardianhoming'
+      player.angle, sk.homingSpeed || 360, Infinity, sk.homingDamage || 14, 'guardiandart'
     );
     proj.weapon = 'guardian';
     proj.radius = 11;
@@ -3886,28 +3924,83 @@ export class Game {
     });
   }
 
-  _updateGuardianBlades(now) {
+  // Auto-dispatch one orbit blade per 0.5 s toward an enemy within seekRange.
+  _guardianAutoSeek(now) {
     const cfg = Weapons.guardian;
     Object.values(this.players).forEach(player => {
       if (player.weapon !== 'guardian' || player.isDead) return;
-      // Disarmed while the blades are launched (F skill) — orbit does no damage.
-      if (this.projectiles.some(p => p.kind === 'guardianblade' && p.ownerId === player.id)) return;
-
-      if (!player._guardianHits) player._guardianHits = {};
-      const blades = this._guardianBladePositions(player, now);
-      Object.values(this.players).forEach(target => {
-        if (target.id === player.id || target.isDead || target.isInvincible()) return;
-        const last = player._guardianHits[target.id] || 0;
-        if (now - last < (cfg.rehitMs || 500)) return;
-        const rr = (target.radius || 14) + (cfg.bladeRadius || 9);
-        const hit = blades.some(b => (b.x - target.x) ** 2 + (b.y - target.y) ** 2 <= rr * rr);
-        if (hit) {
-          player._guardianHits[target.id] = now;
-          const died = target.takeDamage(cfg.damage, '디펜더');
-          if (died) this._creditKill(player.id, target, '디펜더로');
-        }
-      });
+      if (now < (player.guardianNextSeekAt || 0)) return;
+      const deployed = this.projectiles.filter(p => p.kind === 'guardianseek' && p.ownerId === player.id);
+      if (deployed.length >= (cfg.orbitCount || 3)) return;
+      const seekRange = cfg.seekRange || 130;
+      const enemies = Object.values(this.players).filter(t =>
+        t.id !== player.id && !t.isDead && typeof t.isInvincible === 'function' && !t.isInvincible() &&
+        Math.hypot(t.x - player.x, t.y - player.y) <= seekRange
+      );
+      if (!enemies.length) return;
+      const deployedSlots = new Set(deployed.map(p => p.bladeSlot));
+      let slot = 0;
+      for (let i = 0; i < (cfg.orbitCount || 3); i++) {
+        if (!deployedSlots.has(i)) { slot = i; break; }
+      }
+      const target = enemies[Math.floor(Math.random() * enemies.length)];
+      const b = this._guardianBladePositions(player, now)[slot];
+      const angle = Math.atan2(target.y - b.y, target.x - b.x);
+      const proj = new Projectile(
+        `${player.id}-gseek-${now}-${slot}`, player.id,
+        b.x, b.y, angle,
+        cfg.seekSpeed || 420, Infinity, cfg.damage || 18, 'guardianseek'
+      );
+      proj.weapon = 'guardian';
+      proj.radius = cfg.bladeRadius || 9;
+      proj.phase = 'out';
+      proj.bladeSlot = slot;
+      proj.targetId = target.id;
+      proj.hitOnce = false;
+      proj.deathName = '디펜더';
+      proj.hitLabel = '디펜더로';
+      this.projectiles.push(proj);
+      player.guardianNextSeekAt = now + (cfg.seekIntervalMs || 500);
     });
+  }
+
+  // Update a guardianseek blade: track target on 'out', home to owner on 'return'.
+  _updateGuardianSeek(proj, dt, now) {
+    const owner = this.players[proj.ownerId];
+    if (!owner || owner.isDead) { proj.isDead = true; return; }
+    if (proj.phase === 'out') {
+      const target = this.players[proj.targetId];
+      if (target && !target.isDead) {
+        const angle = Math.atan2(target.y - proj.y, target.x - proj.x);
+        proj.vx = Math.cos(angle) * proj.speed;
+        proj.vy = Math.sin(angle) * proj.speed;
+        proj.angle = angle;
+      }
+      proj.x += proj.vx * dt;
+      proj.y += proj.vy * dt;
+      if (target && !target.isDead && !proj.hitOnce && typeof target.isInvincible === 'function' && !target.isInvincible()) {
+        if (Math.hypot(target.x - proj.x, target.y - proj.y) <= (target.radius || 14) + proj.radius) {
+          proj.hitOnce = true;
+          const died = target.takeDamage(proj.damage, proj.deathName || '디펜더');
+          if (died) this._creditKill(proj.ownerId, target, proj.hitLabel || '디펜더로');
+          proj.phase = 'return';
+          return;
+        }
+      }
+      const dist = Math.hypot(proj.x - proj.startX, proj.y - proj.startY);
+      if (dist > (Weapons.guardian.seekRange || 130) * 1.5 || !target || target.isDead) {
+        proj.phase = 'return';
+      }
+      return;
+    }
+    const dx = owner.x - proj.x, dy = owner.y - proj.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 22) { proj.isDead = true; return; }
+    const sp = (proj.speed || 420) * 1.2;
+    proj.vx = (dx / dist) * sp; proj.vy = (dy / dist) * sp;
+    proj.angle = Math.atan2(dy, dx);
+    proj.x += proj.vx * dt;
+    proj.y += proj.vy * dt;
   }
 
   _launchGuardianBlades(player, now) {
@@ -3918,14 +4011,14 @@ export class Game {
       const proj = new Projectile(
         `${player.id}-gblade-${now}-${i}`,
         player.id, b.x, b.y, b.angle,
-        sk.launchSpeed, Infinity, sk.launchDamage, 'guardianblade'
+        sk.launchSpeed, Infinity, sk.launchDamage, 'guardianlaunch'
       );
       proj.weapon = 'guardian';
       proj.radius = 11;
       proj.phase = 'out';
       proj.bornAt = now;
       proj.outRange = sk.launchRange;
-      proj.locksOwner = false;       // disarm is implied by the projectiles existing
+      proj.locksOwner = false;
       proj.deathName = '디펜더';
       proj.hitLabel = '디펜더로';
       proj.hitOut = new Set();
@@ -3934,7 +4027,7 @@ export class Game {
     });
     this.effects.push({
       attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
-      weapon: 'guardian', type: 'projectile_shot', projectileKind: 'guardianblade',
+      weapon: 'guardian', type: 'projectile_shot', projectileKind: 'guardianlaunch',
       progress: 0, timestamp: now, lifetime: 220
     });
   }

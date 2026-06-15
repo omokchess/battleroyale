@@ -1266,8 +1266,8 @@ export class Renderer {
         this._drawIceShard(ctx, scr, angle, zoom);
       } else if (p.kind === 'pistol') {
         this._drawPistolBullet(ctx, scr, angle, zoom);
-      } else if (p.kind === 'guardianblade' || p.kind === 'guardianhoming') {
-        this._drawGuardianBlade(ctx, scr, zoom);
+      } else if (p.kind === 'guardianlaunch' || p.kind === 'guardiandart' || p.kind === 'guardianseek') {
+        this._drawWeaponProjectile(ctx, scr, p.angle, zoom, 'guardian', p, { tumble: true });
       } else {
         this._drawArrow(ctx, scr, angle);
       }
@@ -1583,37 +1583,33 @@ export class Renderer {
 
   _drawGuardianOrbits(ctx, camera, cw, ch, players, projectiles, now) {
     const cfg = Weapons.guardian;
-    const launched = new Set();
+    // Track which blade slots are currently deployed as guardianseek projectiles.
+    const deployedSlots = {};
     if (Array.isArray(projectiles)) {
-      for (const p of projectiles) if (p.kind === 'guardianblade') launched.add(p.ownerId);
+      for (const p of projectiles) {
+        if (p.kind === 'guardianseek') {
+          if (!deployedSlots[p.ownerId]) deployedSlots[p.ownerId] = new Set();
+          deployedSlots[p.ownerId].add(p.bladeSlot);
+        }
+      }
     }
     const period = cfg.orbitPeriodMs || 1100;
-    const n = cfg.orbitCount || 2;
+    const n = cfg.orbitCount || 3;
     for (const id of Object.keys(players)) {
       const pl = players[id];
-      if (!pl || pl.isDead || pl.weapon !== 'guardian' || launched.has(id)) continue;
+      if (!pl || pl.isDead || pl.weapon !== 'guardian') continue;
+      const slots = deployedSlots[id] || new Set();
       const base = (now / period) * Math.PI * 2;
-      const stance = pl.guardianStanceUntil && now < pl.guardianStanceUntil;
-      const radius = cfg.orbitRadius + (stance ? (cfg.stanceRadiusBonus || 0) : 0);
       const z = camera.zoom || 1;
-      const blade = this.atlas?.get('wpn/guardian');   // use the weapon sprite if loaded
       for (let i = 0; i < n; i++) {
+        if (slots.has(i)) continue;
         const a = base + (i / n) * Math.PI * 2;
-        const wx = pl.x + Math.cos(a) * radius;
-        const wy = pl.y + Math.sin(a) * radius;
+        const wx = pl.x + Math.cos(a) * cfg.orbitRadius;
+        const wy = pl.y + Math.sin(a) * cfg.orbitRadius;
         const scr = camera.toScreen(wx, wy, cw, ch);
-        if (blade && blade.naturalWidth) {
-          // Draw with the blade tip outward and the handle toward the player.
-          const sz = Math.round((pl.radius || 14) * 1.9 * z);
-          ctx.save();
-          ctx.imageSmoothingEnabled = false;
-          ctx.translate(Math.round(scr.x), Math.round(scr.y));
-          ctx.rotate(a + Math.PI * 0.75);   // guardian icon tip points up-left; grip stays inward.
-          ctx.drawImage(blade, -sz / 2, -sz / 2, sz, sz);
-          ctx.restore();
-        } else {
-          this._drawGuardianBlade(ctx, scr, z, a * 2);
-        }
+        // angle = -π/2 → _drawWeaponProjectile rotates by -π/2 + π/4 = -π/4
+        // → sprite (naturally UP-RIGHT) ends up pointing straight UP (세워진 상태)
+        this._drawWeaponProjectile(ctx, scr, -Math.PI / 2, z, 'guardian', pl);
       }
     }
   }

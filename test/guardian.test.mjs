@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Game } from '../game/Game.js';
+import { Player } from '../game/Player.js';
 import { Weapons, SkillConfig } from '../game/Weapons.js';
 
 function makeGame(players) {
@@ -12,40 +13,41 @@ function makeGame(players) {
   return g;
 }
 
-test('guardian config: no manual attack, orbit reach', () => {
+test('guardian config: no manual attack, seek range 130', () => {
   assert.equal(Weapons.guardian.automaticAttack, false);
-  assert.ok(Weapons.guardian.orbitRadius > 0);
+  assert.equal(Weapons.guardian.seekRange, 130);
   assert.ok(SkillConfig.guardian.launchDamage > 0);
 });
 
-test('orbiting blades damage a touching enemy, then respect the re-hit gap', () => {
-  const owner = { id: 'o', x: 100, y: 100, radius: 14, weapon: 'guardian', isDead: false };
-  // Place the target right on the orbit ring so a blade reaches it at some angle.
-  const target = { id: 't', x: 100 + Weapons.guardian.orbitRadius, y: 100, radius: 14, isDead: false,
-    hits: 0, isInvincible: () => false, takeDamage() { this.hits++; return false; } };
-  const g = makeGame({ o: owner, t: target });
-
-  // Sweep a full revolution; the blade must connect at least once.
-  for (let now = 0; now <= 1200; now += 30) g._updateGuardianBlades(now);
-  assert.ok(target.hits >= 1, 'orbit should hit a target on the ring');
-  // Re-hit gap caps how often it can land (≈ window / rehitMs + slack).
-  assert.ok(target.hits <= Math.ceil(1200 / Weapons.guardian.rehitMs) + 1);
+test('auto-seek does not dispatch when no enemy is in seekRange', () => {
+  const owner = { id: 'o', x: 100, y: 100, radius: 14, weapon: 'guardian', isDead: false,
+    guardianNextSeekAt: 0 };
+  const farFoe = { id: 't', x: 100 + 200, y: 100, radius: 14, isDead: false,
+    isInvincible: () => false };
+  const g = makeGame({ o: owner, t: farFoe });
+  g._guardianAutoSeek(5000);
+  assert.equal(g.projectiles.length, 0, 'no dispatch when foe is outside 130px');
 });
 
-test('launched blades suppress orbit damage and boomerang back', () => {
+test('seek blade flies to target, deals damage, returns to owner', () => {
+  const owner = new Player('o', 'Def', 'guardian', 100, 100);
+  const foe = new Player('t', 'T', 'sword', 100 + 80, 100);
+  const g = makeGame({ o: owner, t: foe });
+  g.mapWidth = 700; g.mapHeight = 700;
+  g._guardianAutoSeek(5000);
+  const blade = g.projectiles.find(p => p.kind === 'guardianseek');
+  assert.ok(blade, 'seek blade spawned');
+  const before = foe.hp;
+  for (let t = 0; t < 60; t++) g._updateGuardianSeek(blade, 0.016, 5000 + t * 16);
+  assert.ok(foe.hp < before, 'seek blade damaged the foe');
+  assert.equal(blade.phase, 'return', 'blade enters return phase after hit');
+});
+
+test('launched blades fire as guardianlaunch kind (do not rejoin orbit)', () => {
   const owner = { id: 'o', x: 100, y: 100, radius: 14, weapon: 'guardian', isDead: false, skillCdLeft: 0 };
   const g = makeGame({ o: owner });
   g.mapWidth = 700; g.mapHeight = 700; g.cover = [];
-
   g._launchGuardianBlades(owner, 1000);
-  assert.equal(g.projectiles.filter(p => p.kind === 'guardianblade').length, Weapons.guardian.orbitCount);
-  // Launch is now the R aux; its cooldown is governed by the executor, so
-  // _launchGuardianBlades itself no longer stamps the F skill cooldown.
-
-  // While blades are out, orbit deals no damage even to an on-ring target.
-  const target = { id: 't', x: 100 + Weapons.guardian.orbitRadius, y: 100, radius: 14, isDead: false,
-    hits: 0, isInvincible: () => false, takeDamage() { this.hits++; return false; } };
-  g.players.t = target;
-  for (let now = 1000; now <= 1300; now += 30) g._updateGuardianBlades(now);
-  assert.equal(target.hits, 0, 'orbit disarmed while launched');
+  assert.equal(g.projectiles.filter(p => p.kind === 'guardianlaunch').length, Weapons.guardian.orbitCount);
+  assert.equal(g.projectiles.filter(p => p.kind === 'guardianseek').length, 0);
 });

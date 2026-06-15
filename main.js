@@ -365,7 +365,8 @@ function _previewSkill(p, weaponType, cfg, now) {
     if (cfg === AuxSkillConfig.magicstaff?.target || cfg === MagicConfig.iceShard) return _previewMagicIce(p, now);
   }
   if (weaponType === 'guardian' && cfg === SkillConfig.guardian) {
-    p.dummy.guardianStanceUntil = now + 1200;
+    // F: preview fires 3 swords outward (surge).
+    _previewGuardianLaunch(p, cfg, now);
     return;
   }
   switch (cfg.type) {
@@ -766,7 +767,7 @@ function _previewGuardianLaunch(p, cfg, now) {
     const angle = p.dummy.angle + (i - 1) * 0.22;
     _previewFire(p, 'guardian', {
       type: 'projectile',
-      projectileKind: 'guardianblade',
+      projectileKind: 'guardianlaunch',
       projectileWeapon: 'guardian',
       speed: sk.launchSpeed || 560,
       range: sk.launchRange || 200,
@@ -780,7 +781,7 @@ function _previewGuardianHoming(p, cfg, now) {
   const sk = SkillConfig.guardian;
   _previewFire(p, 'guardian', {
     type: 'projectile',
-    projectileKind: 'guardianhoming',
+    projectileKind: 'guardiandart',
     projectileWeapon: 'guardian',
     speed: sk.homingSpeed || 360,
     range: 260,
