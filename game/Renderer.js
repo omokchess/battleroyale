@@ -1831,6 +1831,7 @@ export class Renderer {
     ctx.arc(scr.x, scr.y, r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
+    this._drawFxSprite(ctx, 'fx/magic/circleSpark', 6, 32, 32, scr.x, scr.y, r * 2.2, progress, alpha * (1 - progress) * 0.85, 0);
   }
 
   // 스나이퍼 순간이동: an expanding green scope ring with crosshair ticks.
@@ -2332,6 +2333,18 @@ export class Renderer {
       ctx.moveTo(scr.x + Math.cos(e.angle) * 18, scr.y + Math.sin(e.angle) * 18);
       ctx.lineTo(scr.x + Math.cos(e.angle) * (weapon.range + 18), scr.y + Math.sin(e.angle) * (weapon.range + 18));
       ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    if (!isFullCircleSlash && headT > 0.08) {
+      const pct = Math.min(headT, 0.92) / 0.92;
+      const spriteAlpha = alpha * Math.sin(Math.PI * pct) * (finisher ? 0.88 : 0.74);
+      const spriteSize = radius * (finisher ? 1.8 : 1.4);
+      if (finisher) {
+        this._drawFxSprite(ctx, 'fx/slash2', 9, 44, 50, hitX, hitY, spriteSize, pct, spriteAlpha, leadingAngle);
+      } else {
+        this._drawFxSprite(ctx, 'fx/slash', 4, 32, 32, hitX, hitY, spriteSize, pct, spriteAlpha, leadingAngle);
+      }
     }
 
     ctx.restore();
@@ -2707,6 +2720,12 @@ export class Renderer {
     ctx.moveTo(scr.x - pX * 3, scr.y - pY * 3);
     ctx.lineTo(baseX - pX * flare * 0.55, baseY - pY * flare * 0.55);
     ctx.stroke();
+
+    if (thrust > 0.6) {
+      const flashPct = clamp01(progress / 0.16);
+      this._drawFxSprite(ctx, 'fx/slash3', 6, 38, 42, tipX, tipY, weapon.range * 0.65, flashPct, alpha * thrust * 0.72, e.angle + Math.PI / 4);
+    }
+
     ctx.restore();
   }
 
@@ -2751,6 +2770,12 @@ export class Renderer {
       ctx.lineTo(baseX + pX * side * flare * 0.7, baseY + pY * side * flare * 0.7);
       ctx.stroke();
     });
+
+    if (thrust > 0.6) {
+      const flashPct = clamp01(progress / 0.14);
+      this._drawFxSprite(ctx, 'fx/slash3', 6, 38, 42, tipX, tipY, weapon.range * 0.55, flashPct, alpha * thrust * 0.72, e.angle - Math.PI / 4);
+    }
+
     ctx.restore();
   }
 
@@ -2818,6 +2843,12 @@ export class Renderer {
       ctx.lineTo(scr.x + Math.cos(a + 0.12) * end, scr.y + Math.sin(a + 0.12) * end);
       ctx.stroke();
     }
+
+    if (release > 0.05) {
+      const boomPct = clamp01((release - 0.05) / 0.95);
+      this._drawFxSprite(ctx, 'fx/explosion', 9, 40, 40, scr.x, scr.y, radius * 2.6, boomPct, alpha * (1 - boomPct * 0.5) * 0.9, e.angle);
+    }
+
     ctx.restore();
   }
 
@@ -2981,6 +3012,12 @@ export class Renderer {
       ctx.stroke();
     }
 
+    if (progress > 0.1) {
+      const circlePct = clamp01((progress - 0.1) / 0.9);
+      const circleAlpha = alpha * Math.sin(Math.PI * circlePct) * 0.78;
+      this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y, radius * 2.2, circlePct, circleAlpha, spinAngle);
+    }
+
     ctx.restore();
   }
 
@@ -3035,6 +3072,12 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(scr.x + Math.cos(e.angle) * 12, scr.y + Math.sin(e.angle) * 12, 8 + 28 * progress, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    if (ext > 0.65 && progress < 0.38) {
+      const flashPct = clamp01(progress / 0.16);
+      const flashAlpha = alpha * ext * (1 - flashPct * 0.55) * 0.82;
+      this._drawFxSprite(ctx, 'fx/elemental/thunder', 5, 32, 28, tipX, tipY, weapon.range * 0.55, flashPct, flashAlpha, angle);
     }
 
     ctx.restore();
@@ -3172,6 +3215,13 @@ export class Renderer {
       4 + 8 * flash,
       this._hexToRGB('#ffffff', 0.72 * alpha)
     );
+
+    if (e.weapon === 'flamethrower' && flash > 0.1) {
+      const flamX = scr.x + Math.cos(e.angle) * (length * 0.6 + 18);
+      const flamY = scr.y + Math.sin(e.angle) * (length * 0.6 + 18);
+      this._drawFxSprite(ctx, 'fx/elemental/flam', 5, 40, 30, flamX, flamY, 52 * flash, progress, alpha * flash * 0.88, e.angle);
+    }
+
     ctx.restore();
   }
 
@@ -3202,7 +3252,30 @@ export class Renderer {
       ctx.lineTo(scr.x + Math.cos(angle) * outer, scr.y + Math.sin(angle) * outer);
       ctx.stroke();
     }
+
+    if (e.weapon === 'magicstaff') {
+      this._drawFxSprite(ctx, 'fx/elemental/ice', 10, 32, 32, scr.x, scr.y, radius * 3.2, progress, alpha * 0.9, 0);
+    } else if (e.weapon === 'flamethrower') {
+      this._drawFxSprite(ctx, 'fx/elemental/flam', 5, 40, 30, scr.x, scr.y, radius * 3.0, progress, alpha * 0.9, e.angle);
+    }
+
     ctx.restore();
+  }
+
+  _drawFxSprite(ctx, key, frames, fw, fh, cx, cy, drawSize, progress, alpha, angle = 0) {
+    const sheet = this.atlas?.get(key);
+    if (!sheet || !sheet.naturalWidth) return false;
+    const frame = Math.min(frames - 1, Math.floor(clamp01(progress) * frames));
+    const prev = ctx.imageSmoothingEnabled;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.translate(cx, cy);
+    if (angle !== 0) ctx.rotate(angle);
+    ctx.drawImage(sheet, frame * fw, 0, fw, fh, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = prev;
+    return true;
   }
 
   _drawExplosion(ctx, scr, e, weapon, alpha, zoom) {

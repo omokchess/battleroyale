@@ -76,7 +76,7 @@ export class SpriteAtlas {
  */
 // Bump when vendored sprite FILES change (same path, new pixels) so browsers /
 // the service worker fetch fresh instead of serving a cached image.
-export const ASSET_VERSION = '20260615g';
+export const ASSET_VERSION = '20260615h';
 
 export const SPRITE_MANIFEST = {
   // --- character body sheets (64×112 = 16×16, 4 cols × 7 rows) ---
@@ -115,10 +115,21 @@ export const SPRITE_MANIFEST = {
   'wpn/flamethrower': 'weapon/flamethrower.png',
 
   // --- fx sheets ---
-  'fx/slash': 'fx/SpriteSheetSlash01.png',
-  'fx/slashArc': 'fx/SpriteSheetArc.png',
-  'fx/slashCircular': 'fx/SpriteSheetCircular.png',
-  'fx/explosion': 'fx/ExplosionSheet.png',   // 360×40 = 9 frames of 40×40
+  'fx/slash': 'fx/SpriteSheetSlash01.png',       // 130×32  4 frames 32×32
+  'fx/slash2': 'fx/SpriteSheetSlash02.png',      // 396×50  9 frames 44×50
+  'fx/slash3': 'fx/SpriteSheetSlash03.png',      // 228×42  6 frames 38×42
+  'fx/slashArc': 'fx/SpriteSheetArc.png',        // 228×34  6 frames 38×34
+  'fx/slashCircular': 'fx/SpriteSheetCircular.png', // 378×55 7 frames 54×55
+  'fx/slashMulti': 'fx/SpriteSheetMulti.png',    // 270×30  9 frames 30×30
+  'fx/explosion': 'fx/ExplosionSheet.png',        // 360×40  9 frames 40×40
+  'fx/elemental/flam': 'fx/Elemental/Flam/SpriteSheet.png',       // 200×30 5 frames 40×30
+  'fx/elemental/ice': 'fx/Elemental/Ice/SpriteSheet.png',         // 320×32 10 frames 32×32
+  'fx/elemental/thunder': 'fx/Elemental/Thunder/SpriteSheet.png', // 160×28 5 frames 32×28
+  'fx/magic/spark': 'fx/Magic/Spark/SpriteSheet.png',             // 270×35 9 frames 30×35
+  'fx/magic/spiritBlue': 'fx/Magic/Spirit/SpriteSheetBlue.png',   // 160×32 5 frames 32×32
+  'fx/magic/circleSpark': 'fx/Magic/Circle/SpriteSheetSpark.png', // 192×32 6 frames 32×32
+  'fx/magic/circleOrange': 'fx/Magic/Circle/SpriteSheetOrange.png', // 128×32 4 frames 32×32
+  'fx/smoke': 'fx/Smoke/Smoke/SpriteSheet.png',                   // 192×32 6 frames 32×32
 
   // --- status-effect icons (24×24 each, Task 4-F) ---
   'status/bleed': 'ui/status/bleed.png',
