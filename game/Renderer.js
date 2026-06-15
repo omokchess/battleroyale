@@ -6,6 +6,11 @@
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
 import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW, WEAPON_SPRITE_TUNE, WEAPON_TUNE_DEFAULT } from './SpriteAtlas.js';
 
+// Pixel-detected frame x-ranges of fx/slash2 (SpriteSheetSlash02.png, H=50).
+// The sheet is not a uniform grid; these are the real crescent frames
+// (appear → grow → full → full → shrink → wisp).
+const SLASH2_FRAMES = [[0, 26], [66, 120], [134, 193], [205, 263], [290, 329], [374, 395]];
+
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
   axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0, noAimFlip: true },
@@ -2144,198 +2149,53 @@ export class Renderer {
     ctx.restore();
   }
 
+  // The Slash02 sheet is NOT a uniform grid; these are the pixel-detected frame
+  // x-ranges (appear → grow → full → full → shrink → wisp). One blit per frame
+  // keeps the blue slash cheap (no per-frame procedural drawing = no lag).
+  _drawSlashFrames(ctx, key, rects, sheetH, cx, cy, targetH, progress, alpha, angle, flipY) {
+    const sheet = this.atlas?.get(key);
+    if (!sheet || !sheet.naturalWidth) return false;
+    const n = rects.length;
+    const fi = Math.min(n - 1, Math.max(0, Math.floor(clamp01(progress) * n)));
+    const x0 = rects[fi][0], x1 = rects[fi][1];
+    const fw = x1 - x0 + 1;
+    const scale = targetH / sheetH;
+    const dw = fw * scale, dh = sheetH * scale;
+    const prev = ctx.imageSmoothingEnabled;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.translate(cx, cy);
+    if (angle !== 0) ctx.rotate(angle);
+    if (flipY) ctx.scale(1, -1);
+    ctx.drawImage(sheet, x0, 0, fw, sheetH, -dw / 2, -dh / 2, dw, dh);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = prev;
+    return true;
+  }
+
   _drawArcSlash(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
-    const headT = easeOutCubic(clamp01(progress / 0.58));
-    const tailT = progress < 0.58 ? 0 : easeOutCubic((progress - 0.58) / 0.42);
-    const sweep = headT;
     const finisher = Boolean(e.comboFinisher);
     const isFullCircleSlash = weapon.angle >= 359;
-    const radius = weapon.range * ((finisher ? 0.74 : 0.82) + (finisher ? 0.26 : 0.18) * sweep);
-    const halfAngleRad = (weapon.angle * Math.PI) / 360;
-    const fullCircleStart = e.weapon === 'sword'
-      ? e.angle - Math.PI * 0.75
-      : e.angle - halfAngleRad;
-    const startAngle = isFullCircleSlash ? fullCircleStart : e.angle - halfAngleRad;
-    const endAngle = isFullCircleSlash ? fullCircleStart + Math.PI * 2 : e.angle + halfAngleRad;
-    const swingDirection = isFullCircleSlash && e.weapon === 'sword'
-      ? 1
-      : this._visualSwingDirection(e.weapon, e.swingDirection);
-    const arcSize = endAngle - startAngle;
-    const angleAt = t => swingDirection > 0
-      ? startAngle + arcSize * t
-      : endAngle - arcSize * t;
-    const leadingAngle = angleAt(headT);
-    const trailAngle = angleAt(tailT);
+    const spriteAlpha = Math.pow(1 - progress, 0.4) * 0.95;
 
-    ctx.save();
-
-    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.18 : 0.11) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius, startAngle, endAngle);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius, startAngle, endAngle);
-    ctx.closePath();
-    ctx.clip();
-
-    const activeArcStart = trailAngle;
-    const activeArcEnd = leadingAngle;
-    const activeSpan = Math.max(0.001, Math.abs(headT - tailT) * arcSize);
-    const anticlockwise = swingDirection < 0;
-    const bladeEdge = leadingAngle;
-    const normal = bladeEdge + Math.PI / 2 * swingDirection;
-    const tipX = scr.x + Math.cos(bladeEdge) * radius;
-    const tipY = scr.y + Math.sin(bladeEdge) * radius;
-    const rootX = scr.x;
-    const rootY = scr.y;
-
-    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.24 : 0.16) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius, activeArcStart, activeArcEnd, anticlockwise);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.shadowBlur = this._glow *(finisher ? 18 : 12) * alpha;
-    ctx.shadowColor = '#ffffff';
-    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.1 : 0.07) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius * 0.96, activeArcStart, activeArcEnd, anticlockwise);
-    ctx.closePath();
-    ctx.fill();
-
-    const routeBands = finisher ? 7 : 6;
-    const trimScale = clamp01(activeSpan / 0.32);
-    const directedSpan = activeArcEnd - activeArcStart;
-    for (let i = 0; i < routeBands; i++) {
-      const bandT = routeBands === 1 ? 1 : i / (routeBands - 1);
-      const easedBand = easeOutCubic(bandT);
-      const bandRadius = radius * (0.08 + easedBand * 0.86);
-      const startTrim = (0.012 + bandT * 0.014) * trimScale;
-      const endTrim = (0.075 * (1 - bandT) + 0.006) * trimScale;
-      const bandStart = activeArcStart + directedSpan * startTrim;
-      const bandEnd = activeArcEnd - directedSpan * endTrim;
-      const bandWidth = (finisher ? 7.2 : 5.2) * (1 - bandT * 0.28) * alpha;
-      const bandAlpha = (finisher ? 0.82 : 0.68) * alpha * (1 - bandT * 0.16);
-      if (Math.abs(bandEnd - bandStart) < 0.018 || bandWidth <= 0.2) continue;
-
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.36 * bandAlpha);
-      ctx.lineWidth = bandWidth + (finisher ? 4.2 : 3.2);
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, bandRadius, bandStart, bandEnd, anticlockwise);
-      ctx.stroke();
-
-      ctx.strokeStyle = this._hexToRGB('#ffffff', bandAlpha);
-      ctx.lineWidth = bandWidth;
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, bandRadius, bandStart, bandEnd, anticlockwise);
-      ctx.stroke();
+    if (isFullCircleSlash) {
+      // Blue circular slash sheet (clean 7x54 grid), centred on the body.
+      this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y,
+        weapon.range * 2.0, progress, spriteAlpha, e.angle);
+      return;
     }
 
-    const bladeStart = Math.max(8, radius * 0.08);
-    const bladeEnd = radius * 0.98;
-    const bladeStartX = scr.x + Math.cos(bladeEdge) * bladeStart;
-    const bladeStartY = scr.y + Math.sin(bladeEdge) * bladeStart;
-    const bladeEndX = scr.x + Math.cos(bladeEdge) * bladeEnd;
-    const bladeEndY = scr.y + Math.sin(bladeEdge) * bladeEnd;
-    this._drawCapsuleLine(
-      ctx,
-      bladeStartX,
-      bladeStartY,
-      bladeEndX,
-      bladeEndY,
-      (finisher ? 13 : 10) * alpha,
-      this._hexToRGB(weapon.color, (finisher ? 0.66 : 0.52) * alpha)
-    );
-    this._drawCapsuleLine(
-      ctx,
-      bladeStartX,
-      bladeStartY,
-      bladeEndX,
-      bladeEndY,
-      (finisher ? 6.2 : 4.8) * alpha,
-      this._hexToRGB('#ffffff', (finisher ? 0.92 : 0.84) * alpha)
-    );
-
-    const tipForward = finisher ? 14 : 10;
-    const tipHalf = finisher ? 8 : 6;
-    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.72 : 0.56) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(
-      bladeEndX + Math.cos(bladeEdge) * tipForward,
-      bladeEndY + Math.sin(bladeEdge) * tipForward
-    );
-    ctx.lineTo(
-      bladeEndX - Math.cos(bladeEdge) * 5 + Math.cos(normal) * tipHalf,
-      bladeEndY - Math.sin(bladeEdge) * 5 + Math.sin(normal) * tipHalf
-    );
-    ctx.lineTo(
-      bladeEndX - Math.cos(bladeEdge) * 5 - Math.cos(normal) * tipHalf,
-      bladeEndY - Math.sin(bladeEdge) * 5 - Math.sin(normal) * tipHalf
-    );
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.22 : 0.14) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(rootX + Math.cos(normal) * 4, rootY + Math.sin(normal) * 4);
-    ctx.lineTo(tipX + Math.cos(normal) * (finisher ? 16 : 10), tipY + Math.sin(normal) * (finisher ? 16 : 10));
-    ctx.lineTo(tipX - Math.cos(normal) * (finisher ? 9 : 6), tipY - Math.sin(normal) * (finisher ? 9 : 6));
-    ctx.lineTo(rootX - Math.cos(normal) * 3, rootY - Math.sin(normal) * 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    ctx.strokeStyle = this._hexToRGB(weapon.color, (finisher ? 0.92 : 0.78) * alpha);
-    ctx.lineWidth = (finisher ? 15 : 10) * (0.35 + alpha * 0.65);
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, trailAngle, leadingAngle, swingDirection < 0);
-    ctx.stroke();
-
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
-    ctx.lineWidth = (finisher ? 4.6 : 3.2) * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius - 4, trailAngle + 0.05 * swingDirection, leadingAngle, swingDirection < 0);
-    ctx.stroke();
-
-    const hitX = scr.x + Math.cos(leadingAngle) * radius;
-    const hitY = scr.y + Math.sin(leadingAngle) * radius;
-    ctx.fillStyle = this._hexToRGB('#ffffff', 0.8 * alpha);
-    ctx.beginPath();
-    ctx.arc(hitX, hitY, 3.5 + 3 * alpha, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (finisher && !isFullCircleSlash) {
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.34 * alpha);
-      ctx.lineWidth = 2.2;
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius * (0.45 + 0.45 * sweep), e.angle - halfAngleRad * 0.85, e.angle + halfAngleRad * 0.85);
-      ctx.stroke();
-    }
-
-    if (!isFullCircleSlash) {
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.3 * alpha);
-      ctx.lineWidth = 1.4;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath();
-      ctx.moveTo(scr.x + Math.cos(e.angle) * 18, scr.y + Math.sin(e.angle) * 18);
-      ctx.lineTo(scr.x + Math.cos(e.angle) * (weapon.range + 18), scr.y + Math.sin(e.angle) * (weapon.range + 18));
-      ctx.stroke();
-    }
-
-    ctx.restore();
+    // Blue crescent (Slash02). Convex faces -x by default -> rotate e.angle+PI so
+    // the cutting belly points toward the aim; flip across the swing axis for handedness.
+    const flipY = this._visualSwingDirection(e.weapon, e.swingDirection) < 0;
+    const reach = weapon.range * (finisher ? 0.95 : 0.85);
+    const targetH = reach * (finisher ? 1.45 : 1.2);
+    const fwd = reach * (finisher ? 0.6 : 0.55);
+    const cx = scr.x + Math.cos(e.angle) * fwd;
+    const cy = scr.y + Math.sin(e.angle) * fwd;
+    this._drawSlashFrames(ctx, 'fx/slash2', SLASH2_FRAMES, 50, cx, cy, targetH, progress, spriteAlpha, e.angle + Math.PI, flipY);
   }
 
   _drawGreatswordWave(ctx, scr, angle, zoom) {
@@ -2501,47 +2361,7 @@ export class Renderer {
   }
 
   _drawScytheSweep(ctx, scr, e, weapon, alpha) {
-    const progress = clamp01(e.progress);
-    this._drawArcSlash(ctx, scr, e, weapon, alpha * 0.88);
-
-    const halfAngle = ((weapon.angle || 150) * Math.PI) / 360;
-    const start = e.angle - halfAngle;
-    const end = e.angle + halfAngle;
-    const sweetR = weapon.range;
-    const innerR = Math.max(8, weapon.innerRange || sweetR * 0.58);
-    const sweep = easeOutCubic(clamp01(progress / 0.65));
-    const dir = this._visualSwingDirection(e.weapon, e.swingDirection);
-    const head = dir > 0 ? start + (end - start) * sweep : end - (end - start) * sweep;
-    const tail = dir > 0 ? Math.max(start, head - (end - start) * 0.26) : Math.min(end, head + (end - start) * 0.26);
-
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.78 * alpha);
-    ctx.lineWidth = 5.2 * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, sweetR, tail, head, dir < 0);
-    ctx.stroke();
-
-    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.52 * alpha);
-    ctx.lineWidth = 2.2 * alpha;
-    ctx.setLineDash([8, 7]);
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, innerR, start, end);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    for (let i = 0; i < 4; i++) {
-      const t = (i + 1) / 5;
-      const a = start + (end - start) * t;
-      const pull = 1 - progress;
-      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.23 * alpha * pull);
-      ctx.lineWidth = 1.6 * alpha;
-      ctx.beginPath();
-      ctx.moveTo(scr.x + Math.cos(a) * sweetR, scr.y + Math.sin(a) * sweetR);
-      ctx.lineTo(scr.x + Math.cos(a) * innerR, scr.y + Math.sin(a) * innerR);
-      ctx.stroke();
-    }
-    ctx.restore();
+    this._drawArcSlash(ctx, scr, e, weapon, alpha);
   }
 
   _drawDaggerStab(ctx, scr, e, weapon, alpha) {
@@ -2894,67 +2714,8 @@ export class Renderer {
       : 1 + (progress - 0.22) * (finisher ? 0.18 : 0.06);
     const radius = Math.max(2, weapon.range * scale);
     const spinAngle = e.angle + progress * Math.PI * (finisher ? 6.2 : 4.4);
-
-    ctx.save();
-    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.2 : 0.13) * alpha);
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.72 * alpha);
-    ctx.lineWidth = (finisher ? 11 : 8) * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.7 * alpha);
-    ctx.lineWidth = 2.2 * alpha;
-    if (radius > 7) {
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius - 5, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    const bladeCount = finisher ? 4 : 3;
-    for (let i = 0; i < bladeCount; i++) {
-      const a = spinAngle + i * (Math.PI * 2 / bladeCount);
-      ctx.strokeStyle = i === 0 ? this._hexToRGB('#ffffff', 0.85 * alpha) : this._hexToRGB(weapon.color, 0.82 * alpha);
-      ctx.lineWidth = i === 0 ? (finisher ? 5.4 : 4) * alpha : (finisher ? 4 : 3) * alpha;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius * 0.76, a, a + Math.PI * (finisher ? 0.68 : 0.52));
-      ctx.stroke();
-    }
-
-    if (finisher) {
-      const swirlCount = 7;
-      for (let i = 0; i < swirlCount; i++) {
-        const a = spinAngle + i * (Math.PI * 2 / swirlCount);
-        const inner = radius * 0.18;
-        const outer = radius * 0.95;
-        const mid = radius * 0.58;
-        ctx.strokeStyle = this._hexToRGB(i % 2 === 0 ? '#ffffff' : weapon.color, (i % 2 === 0 ? 0.52 : 0.36) * alpha);
-        ctx.lineWidth = (i % 2 === 0 ? 3.2 : 2.4) * alpha;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(scr.x + Math.cos(a - 0.32) * inner, scr.y + Math.sin(a - 0.32) * inner);
-        ctx.quadraticCurveTo(
-          scr.x + Math.cos(a + 0.55) * mid,
-          scr.y + Math.sin(a + 0.55) * mid,
-          scr.x + Math.cos(a + 1.02) * outer,
-          scr.y + Math.sin(a + 1.02) * outer
-        );
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.28 * alpha);
-      ctx.lineWidth = 2.2 * alpha;
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius * 0.45, spinAngle, spinAngle + Math.PI * 2);
-      ctx.stroke();
-    }
-
-    ctx.restore();
+    const spriteAlpha = Math.pow(1 - progress, 0.4) * 0.95;
+    this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y, radius * 2.0, progress, spriteAlpha, spinAngle);
   }
 
   _drawSpearThrust(ctx, scr, e, weapon, alpha) {
