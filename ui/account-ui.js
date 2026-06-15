@@ -129,6 +129,10 @@ export function getEquippedCosmetics() {
   };
 }
 
+export function getEquippedWeaponSkins() {
+  return equipped.weaponskins || {};
+}
+
 /**
  * 초기화: 버튼 배선 + 인증 상태 구독.
  * @param {{ onEnterLobby: (profile|null)=>void, onRequireLogin: ()=>void }} cbs
@@ -586,6 +590,7 @@ async function handleEquipItem(id) {
     if (updated) { profile = updated; equipped = equippedFromProfile(updated); }
     renderShop();
     renderAccountBar();
+    callbacks.onEquip?.();
   } catch (e) {
     alert(e?.message || '착용에 실패했습니다.');
   }

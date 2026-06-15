@@ -122,14 +122,32 @@ function weaponIconRotation(weaponType) {
   return 'transform:rotate(90deg);';
 }
 
-function weaponIconMarkup(weaponType, { preview = false } = {}) {
+function weaponIconMarkup(weaponType, { preview = false, skin = null } = {}) {
   const safeWeapon = encodeURIComponent(String(weaponType || 'sword'));
   const className = preview ? 'weapon-preview-art' : 'w-full h-full object-contain';
   if (NINJA_WEAPON_SPRITES.has(weaponType)) {
     const padding = preview ? 'padding:10%;' : 'padding:14%;';
-    return `<img src="/assets/ninja/weapon/${safeWeapon}.png?v=${ASSET_VERSION}" alt="${safeWeapon}" draggable="false" class="${className}" style="image-rendering:pixelated;${padding}" />`;
+    // pistols weapon card uses crossbow skin files
+    const skinFile = weaponType === 'pistols' ? 'crossbow' : safeWeapon;
+    const baseSrc = `/assets/ninja/weapon/${safeWeapon}.png?v=${ASSET_VERSION}`;
+    const src = skin
+      ? `/assets/ninja/weapon/skins/${encodeURIComponent(skin)}/${skinFile}.png?v=${ASSET_VERSION}`
+      : baseSrc;
+    const fallback = skin ? ` onerror="this.onerror=null;this.src='${baseSrc}'"` : '';
+    return `<img src="${src}" alt="${safeWeapon}" draggable="false" class="${className}" style="image-rendering:pixelated;${padding}"${fallback} />`;
   }
   return `<img src="/assets/weapons/${safeWeapon}.png?v=${WEAPON_ICON_VERSION}" alt="${safeWeapon}" draggable="false" class="${className}" style="image-rendering:pixelated;${weaponIconRotation(weaponType)}" />`;
+}
+
+function refreshWeaponCards() {
+  const skins = accountUI.getEquippedWeaponSkins();
+  document.querySelectorAll('.weapon-card').forEach(card => {
+    const w = card.dataset.weapon;
+    const iconBox = card.querySelector('div');
+    if (!iconBox || !w) return;
+    const skinKey = w === 'pistols' ? 'crossbow' : w;
+    iconBox.innerHTML = weaponIconMarkup(w, { skin: skins[skinKey] || null });
+  });
 }
 
 /**
@@ -299,6 +317,7 @@ function setWeaponPreview(weaponType, cfg) {
 
   const d = p.dummy;
   d.weapon = weaponType; d.angle = 0;
+  d.weaponSkins = accountUI.getEquippedWeaponSkins();
   d.color = cfg.color || '#9aa2ad';
   d.accentColor = cfg.color || '#c9a227';
   d.maxHp = cfg.maxHp || 100; d.hp = d.maxHp;
@@ -1539,6 +1558,7 @@ accountUI.init({
       nicknameInput.value = profile.username || '';
     }
 
+    refreshWeaponCards();
     startLobbyBrowsing();
   },
   onRequireLogin: () => {
@@ -1547,5 +1567,8 @@ accountUI.init({
     lobbyMenu.classList.add('hidden');
     gameScreen.classList.add('hidden');
     stopLobbyBrowsing();
+  },
+  onEquip: () => {
+    refreshWeaponCards();
   },
 });
