@@ -49,10 +49,10 @@ let activeCategory = 'weaponskin';
 let activeSkinWeapon = 'sword'; // 무기 스킨 탭에서 선택된 무기
 
 const WEAPON_KO = {
-  axe: '도끼', bow: '활', chakram: '차크람', dagger: '단검',
-  flamethrower: '화염방사기', greatsword: '대검', guardian: '디펜더',
-  hammer: '망치', harpoon: '작살', katana: '카타나', magicstaff: '마법봉',
-  rapier: '레이피어', scythe: '낫', sniper: '스나이퍼', spear: '창', sword: '검',
+  axe: '도끼', bow: '활', chakram: '부메랑', crossbow: '쇠뇌', dagger: '단검',
+  flamethrower: '화염 지팡이', greatsword: '대검', guardian: '디펜더',
+  hammer: '망치', harpoon: '작살', katana: '커틀레스', magicstaff: '마법봉',
+  rapier: '레이피어', scythe: '낫', sniper: '강궁', spear: '창', sword: '검',
 };
 
 const SHOP_CATEGORIES = [

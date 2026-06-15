@@ -5165,7 +5165,7 @@ function sanitizeCosmetics(cos) {
     ? c.trim().slice(0, 40) : null;
   const out = {};
   // weapon skins: per-weapon map { sword: 'ember', ... }
-  const VALID_WEAPONS = new Set(['axe','bow','chakram','dagger','flamethrower','greatsword','guardian','hammer','harpoon','katana','magicstaff','rapier','scythe','sniper','spear','sword']);
+  const VALID_WEAPONS = new Set(['axe','bow','chakram','crossbow','dagger','flamethrower','greatsword','guardian','hammer','harpoon','katana','magicstaff','rapier','scythe','sniper','spear','sword']);
   const VALID_SKINS = new Set(['ember','frost','void']);
   if (cos.weaponskins && typeof cos.weaponskins === 'object' && !Array.isArray(cos.weaponskins)) {
     const ws = {};

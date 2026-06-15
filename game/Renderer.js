@@ -2147,11 +2147,9 @@ export class Renderer {
   _drawArcSlash(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const headT = easeOutCubic(clamp01(progress / 0.58));
-    const tailT = progress < 0.58 ? 0 : easeOutCubic((progress - 0.58) / 0.42);
-    const sweep = headT;
     const finisher = Boolean(e.comboFinisher);
     const isFullCircleSlash = weapon.angle >= 359;
-    const radius = weapon.range * ((finisher ? 0.74 : 0.82) + (finisher ? 0.26 : 0.18) * sweep);
+    const radius = weapon.range * ((finisher ? 0.74 : 0.82) + (finisher ? 0.26 : 0.18) * headT);
     const halfAngleRad = (weapon.angle * Math.PI) / 360;
     const fullCircleStart = e.weapon === 'sword'
       ? e.angle - Math.PI * 0.75
@@ -2166,188 +2164,21 @@ export class Renderer {
       ? startAngle + arcSize * t
       : endAngle - arcSize * t;
     const leadingAngle = angleAt(headT);
-    const trailAngle = angleAt(tailT);
-
-    ctx.save();
-
-    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.18 : 0.11) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius, startAngle, endAngle);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius, startAngle, endAngle);
-    ctx.closePath();
-    ctx.clip();
-
-    const activeArcStart = trailAngle;
-    const activeArcEnd = leadingAngle;
-    const activeSpan = Math.max(0.001, Math.abs(headT - tailT) * arcSize);
-    const anticlockwise = swingDirection < 0;
-    const bladeEdge = leadingAngle;
-    const normal = bladeEdge + Math.PI / 2 * swingDirection;
-    const tipX = scr.x + Math.cos(bladeEdge) * radius;
-    const tipY = scr.y + Math.sin(bladeEdge) * radius;
-    const rootX = scr.x;
-    const rootY = scr.y;
-
-    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.24 : 0.16) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius, activeArcStart, activeArcEnd, anticlockwise);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.shadowBlur = this._glow *(finisher ? 18 : 12) * alpha;
-    ctx.shadowColor = '#ffffff';
-    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.1 : 0.07) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(scr.x, scr.y);
-    ctx.arc(scr.x, scr.y, radius * 0.96, activeArcStart, activeArcEnd, anticlockwise);
-    ctx.closePath();
-    ctx.fill();
-
-    const routeBands = finisher ? 7 : 6;
-    const trimScale = clamp01(activeSpan / 0.32);
-    const directedSpan = activeArcEnd - activeArcStart;
-    for (let i = 0; i < routeBands; i++) {
-      const bandT = routeBands === 1 ? 1 : i / (routeBands - 1);
-      const easedBand = easeOutCubic(bandT);
-      const bandRadius = radius * (0.08 + easedBand * 0.86);
-      const startTrim = (0.012 + bandT * 0.014) * trimScale;
-      const endTrim = (0.075 * (1 - bandT) + 0.006) * trimScale;
-      const bandStart = activeArcStart + directedSpan * startTrim;
-      const bandEnd = activeArcEnd - directedSpan * endTrim;
-      const bandWidth = (finisher ? 7.2 : 5.2) * (1 - bandT * 0.28) * alpha;
-      const bandAlpha = (finisher ? 0.82 : 0.68) * alpha * (1 - bandT * 0.16);
-      if (Math.abs(bandEnd - bandStart) < 0.018 || bandWidth <= 0.2) continue;
-
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.36 * bandAlpha);
-      ctx.lineWidth = bandWidth + (finisher ? 4.2 : 3.2);
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, bandRadius, bandStart, bandEnd, anticlockwise);
-      ctx.stroke();
-
-      ctx.strokeStyle = this._hexToRGB('#ffffff', bandAlpha);
-      ctx.lineWidth = bandWidth;
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, bandRadius, bandStart, bandEnd, anticlockwise);
-      ctx.stroke();
-    }
-
-    const bladeStart = Math.max(8, radius * 0.08);
-    const bladeEnd = radius * 0.98;
-    const bladeStartX = scr.x + Math.cos(bladeEdge) * bladeStart;
-    const bladeStartY = scr.y + Math.sin(bladeEdge) * bladeStart;
-    const bladeEndX = scr.x + Math.cos(bladeEdge) * bladeEnd;
-    const bladeEndY = scr.y + Math.sin(bladeEdge) * bladeEnd;
-    this._drawCapsuleLine(
-      ctx,
-      bladeStartX,
-      bladeStartY,
-      bladeEndX,
-      bladeEndY,
-      (finisher ? 13 : 10) * alpha,
-      this._hexToRGB(weapon.color, (finisher ? 0.66 : 0.52) * alpha)
-    );
-    this._drawCapsuleLine(
-      ctx,
-      bladeStartX,
-      bladeStartY,
-      bladeEndX,
-      bladeEndY,
-      (finisher ? 6.2 : 4.8) * alpha,
-      this._hexToRGB('#ffffff', (finisher ? 0.92 : 0.84) * alpha)
-    );
-
-    const tipForward = finisher ? 14 : 10;
-    const tipHalf = finisher ? 8 : 6;
-    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.72 : 0.56) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(
-      bladeEndX + Math.cos(bladeEdge) * tipForward,
-      bladeEndY + Math.sin(bladeEdge) * tipForward
-    );
-    ctx.lineTo(
-      bladeEndX - Math.cos(bladeEdge) * 5 + Math.cos(normal) * tipHalf,
-      bladeEndY - Math.sin(bladeEdge) * 5 + Math.sin(normal) * tipHalf
-    );
-    ctx.lineTo(
-      bladeEndX - Math.cos(bladeEdge) * 5 - Math.cos(normal) * tipHalf,
-      bladeEndY - Math.sin(bladeEdge) * 5 - Math.sin(normal) * tipHalf
-    );
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    ctx.fillStyle = this._hexToRGB('#ffffff', (finisher ? 0.22 : 0.14) * alpha);
-    ctx.beginPath();
-    ctx.moveTo(rootX + Math.cos(normal) * 4, rootY + Math.sin(normal) * 4);
-    ctx.lineTo(tipX + Math.cos(normal) * (finisher ? 16 : 10), tipY + Math.sin(normal) * (finisher ? 16 : 10));
-    ctx.lineTo(tipX - Math.cos(normal) * (finisher ? 9 : 6), tipY - Math.sin(normal) * (finisher ? 9 : 6));
-    ctx.lineTo(rootX - Math.cos(normal) * 3, rootY - Math.sin(normal) * 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    ctx.strokeStyle = this._hexToRGB(weapon.color, (finisher ? 0.92 : 0.78) * alpha);
-    ctx.lineWidth = (finisher ? 15 : 10) * (0.35 + alpha * 0.65);
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, trailAngle, leadingAngle, swingDirection < 0);
-    ctx.stroke();
-
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.82 * alpha);
-    ctx.lineWidth = (finisher ? 4.6 : 3.2) * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius - 4, trailAngle + 0.05 * swingDirection, leadingAngle, swingDirection < 0);
-    ctx.stroke();
-
     const hitX = scr.x + Math.cos(leadingAngle) * radius;
     const hitY = scr.y + Math.sin(leadingAngle) * radius;
-    ctx.fillStyle = this._hexToRGB('#ffffff', 0.8 * alpha);
-    ctx.beginPath();
-    ctx.arc(hitX, hitY, 3.5 + 3 * alpha, 0, Math.PI * 2);
-    ctx.fill();
+    const spriteAlpha = Math.pow(1 - progress, 0.3) * 0.95;
 
-    if (finisher && !isFullCircleSlash) {
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.34 * alpha);
-      ctx.lineWidth = 2.2;
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius * (0.45 + 0.45 * sweep), e.angle - halfAngleRad * 0.85, e.angle + halfAngleRad * 0.85);
-      ctx.stroke();
-    }
-
-    if (!isFullCircleSlash) {
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.3 * alpha);
-      ctx.lineWidth = 1.4;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath();
-      ctx.moveTo(scr.x + Math.cos(e.angle) * 18, scr.y + Math.sin(e.angle) * 18);
-      ctx.lineTo(scr.x + Math.cos(e.angle) * (weapon.range + 18), scr.y + Math.sin(e.angle) * (weapon.range + 18));
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    if (!isFullCircleSlash && headT > 0.08) {
-      const pct = Math.min(headT, 0.92) / 0.92;
-      const spriteAlpha = alpha * Math.sin(Math.PI * pct) * (finisher ? 0.88 : 0.74);
-      const spriteSize = radius * (finisher ? 1.8 : 1.4);
+    if (isFullCircleSlash) {
+      this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y, radius * 2.4, headT, spriteAlpha, leadingAngle);
+    } else if (headT > 0) {
+      const pct = Math.min(headT, 0.95) / 0.95;
+      const spriteSize = radius * (finisher ? 2.4 : 1.9);
       if (finisher) {
         this._drawFxSprite(ctx, 'fx/slash2', 9, 44, 50, hitX, hitY, spriteSize, pct, spriteAlpha, leadingAngle);
       } else {
         this._drawFxSprite(ctx, 'fx/slash', 4, 32, 32, hitX, hitY, spriteSize, pct, spriteAlpha, leadingAngle);
       }
     }
-
-    ctx.restore();
   }
 
   _drawGreatswordWave(ctx, scr, angle, zoom) {
@@ -2394,32 +2225,7 @@ export class Renderer {
 
   _drawHeavyCleave(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
-    const charge = clamp01(progress / 0.42);
     const release = progress < 0.42 ? 0 : easeOutCubic((progress - 0.42) / 0.58);
-    const pulse = 0.7 + 0.3 * Math.sin(progress * Math.PI * 8);
-
-    ctx.save();
-    if (progress < 0.42) {
-      const halfAngle = ((weapon.angle || 95) * Math.PI) / 360;
-      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.35 * alpha * pulse);
-      ctx.lineWidth = 2.4 * alpha;
-      ctx.setLineDash([6, 7]);
-      [-halfAngle, 0, halfAngle].forEach(offset => {
-        ctx.beginPath();
-        ctx.moveTo(scr.x + Math.cos(e.angle + offset) * 18, scr.y + Math.sin(e.angle + offset) * 18);
-        ctx.lineTo(
-          scr.x + Math.cos(e.angle + offset) * weapon.range * (0.45 + charge * 0.45),
-          scr.y + Math.sin(e.angle + offset) * weapon.range * (0.45 + charge * 0.45)
-        );
-        ctx.stroke();
-      });
-      ctx.setLineDash([]);
-    }
-    ctx.restore();
-
-    // The blade-arc slash used to render ~100ms ahead of the character's swing
-    // motion. Delay the slash by 100ms (converted to progress units) so the arc
-    // lands together with the motion instead of leading it.
     const slashDelay = 100 / (e.lifetime || 720);
     const slashProgress = clamp01(Math.max(progress, release * 0.9) - slashDelay);
     this._drawArcSlash(ctx, scr, { ...e, progress: slashProgress, comboFinisher: true }, weapon, alpha);
@@ -2513,47 +2319,7 @@ export class Renderer {
   }
 
   _drawScytheSweep(ctx, scr, e, weapon, alpha) {
-    const progress = clamp01(e.progress);
-    this._drawArcSlash(ctx, scr, e, weapon, alpha * 0.88);
-
-    const halfAngle = ((weapon.angle || 150) * Math.PI) / 360;
-    const start = e.angle - halfAngle;
-    const end = e.angle + halfAngle;
-    const sweetR = weapon.range;
-    const innerR = Math.max(8, weapon.innerRange || sweetR * 0.58);
-    const sweep = easeOutCubic(clamp01(progress / 0.65));
-    const dir = this._visualSwingDirection(e.weapon, e.swingDirection);
-    const head = dir > 0 ? start + (end - start) * sweep : end - (end - start) * sweep;
-    const tail = dir > 0 ? Math.max(start, head - (end - start) * 0.26) : Math.min(end, head + (end - start) * 0.26);
-
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.78 * alpha);
-    ctx.lineWidth = 5.2 * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, sweetR, tail, head, dir < 0);
-    ctx.stroke();
-
-    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.52 * alpha);
-    ctx.lineWidth = 2.2 * alpha;
-    ctx.setLineDash([8, 7]);
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, innerR, start, end);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    for (let i = 0; i < 4; i++) {
-      const t = (i + 1) / 5;
-      const a = start + (end - start) * t;
-      const pull = 1 - progress;
-      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.23 * alpha * pull);
-      ctx.lineWidth = 1.6 * alpha;
-      ctx.beginPath();
-      ctx.moveTo(scr.x + Math.cos(a) * sweetR, scr.y + Math.sin(a) * sweetR);
-      ctx.lineTo(scr.x + Math.cos(a) * innerR, scr.y + Math.sin(a) * innerR);
-      ctx.stroke();
-    }
-    ctx.restore();
+    this._drawArcSlash(ctx, scr, e, weapon, alpha);
   }
 
   _drawDaggerStab(ctx, scr, e, weapon, alpha) {
@@ -2685,48 +2451,14 @@ export class Renderer {
       ? easeOutBack(progress / 0.16)
       : Math.max(0, 1 - (progress - 0.16) / 0.84);
     const reach = weapon.range * (0.2 + 0.8 * thrust);
-    const width = Math.max(1.2, weapon.width || 1);
     const tipX = scr.x + Math.cos(e.angle) * reach;
     const tipY = scr.y + Math.sin(e.angle) * reach;
-    const baseX = scr.x + Math.cos(e.angle) * Math.max(8, reach - 18);
-    const baseY = scr.y + Math.sin(e.angle) * Math.max(8, reach - 18);
-    const pX = -Math.sin(e.angle);
-    const pY = Math.cos(e.angle);
-    const flare = 5.5 * thrust;
 
-    ctx.save();
-    if (progress < 0.42) {
-      this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, 6, this._hexToRGB(weapon.color, 0.08 * alpha));
-    }
-    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 1.1 * alpha, this._hexToRGB('#ffffff', 0.92 * alpha), 'butt');
-    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 3.6 * alpha, this._hexToRGB(weapon.color, 0.24 * alpha), 'butt');
-
-    ctx.fillStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
-    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.9 * alpha);
-    ctx.lineWidth = 1.2 * alpha;
-    ctx.beginPath();
-    ctx.moveTo(tipX + Math.cos(e.angle) * 12, tipY + Math.sin(e.angle) * 12);
-    ctx.lineTo(baseX + pX * flare, baseY + pY * flare);
-    ctx.lineTo(baseX - pX * flare, baseY - pY * flare);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.72 * alpha);
-    ctx.lineWidth = 0.9 * alpha;
-    ctx.beginPath();
-    ctx.moveTo(scr.x + pX * 3, scr.y + pY * 3);
-    ctx.lineTo(baseX + pX * flare * 0.55, baseY + pY * flare * 0.55);
-    ctx.moveTo(scr.x - pX * 3, scr.y - pY * 3);
-    ctx.lineTo(baseX - pX * flare * 0.55, baseY - pY * flare * 0.55);
-    ctx.stroke();
-
-    if (thrust > 0.6) {
+    if (thrust > 0.05) {
       const flashPct = clamp01(progress / 0.16);
-      this._drawFxSprite(ctx, 'fx/slash3', 6, 38, 42, tipX, tipY, weapon.range * 0.65, flashPct, alpha * thrust * 0.72, e.angle + Math.PI / 4);
+      const spriteAlpha = Math.pow(1 - progress, 0.25) * thrust * 0.95;
+      this._drawFxSprite(ctx, 'fx/slash3', 6, 38, 42, tipX, tipY, weapon.range * 0.85, flashPct, spriteAlpha, e.angle + Math.PI / 4);
     }
-
-    ctx.restore();
   }
 
   _drawDaggerPierce(ctx, scr, e, weapon, alpha) {
@@ -2737,46 +2469,12 @@ export class Renderer {
     const reach = weapon.range * (0.12 + 0.88 * thrust);
     const tipX = scr.x + Math.cos(e.angle) * reach;
     const tipY = scr.y + Math.sin(e.angle) * reach;
-    const baseX = scr.x + Math.cos(e.angle) * Math.max(6, reach - 18);
-    const baseY = scr.y + Math.sin(e.angle) * Math.max(6, reach - 18);
-    const pX = -Math.sin(e.angle);
-    const pY = Math.cos(e.angle);
-    const flare = 8 * thrust;
 
-    ctx.save();
-    if (progress < 0.36) {
-      this._drawAttackLane(ctx, scr.x, scr.y, e.angle, weapon.range, 10, this._hexToRGB(weapon.color, 0.08 * alpha));
-    }
-
-    ctx.shadowBlur = this._glow *12 * alpha;
-    ctx.shadowColor = weapon.color;
-    ctx.fillStyle = this._hexToRGB(weapon.color, 0.32 * alpha);
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
-    ctx.lineWidth = 1.8 * alpha;
-    ctx.beginPath();
-    ctx.moveTo(tipX + Math.cos(e.angle) * 9, tipY + Math.sin(e.angle) * 9);
-    ctx.lineTo(baseX + pX * flare, baseY + pY * flare);
-    ctx.lineTo(baseX - pX * flare, baseY - pY * flare);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    this._drawCapsuleLine(ctx, scr.x, scr.y, tipX, tipY, 1.5 * alpha, this._hexToRGB('#ffffff', 0.92 * alpha), 'butt');
-    [-1, 1].forEach(side => {
-      ctx.strokeStyle = this._hexToRGB(weapon.color, 0.36 * alpha);
-      ctx.lineWidth = 1.1 * alpha;
-      ctx.beginPath();
-      ctx.moveTo(scr.x + pX * side * 4, scr.y + pY * side * 4);
-      ctx.lineTo(baseX + pX * side * flare * 0.7, baseY + pY * side * flare * 0.7);
-      ctx.stroke();
-    });
-
-    if (thrust > 0.6) {
+    if (thrust > 0.05) {
       const flashPct = clamp01(progress / 0.14);
-      this._drawFxSprite(ctx, 'fx/slash3', 6, 38, 42, tipX, tipY, weapon.range * 0.55, flashPct, alpha * thrust * 0.72, e.angle - Math.PI / 4);
+      const spriteAlpha = Math.pow(1 - progress, 0.25) * thrust * 0.95;
+      this._drawFxSprite(ctx, 'fx/slash3', 6, 38, 42, tipX, tipY, weapon.range * 0.7, flashPct, spriteAlpha, e.angle - Math.PI / 4);
     }
-
-    ctx.restore();
   }
 
   _drawHeavyLine(ctx, scr, e, weapon, alpha) {
@@ -2812,44 +2510,11 @@ export class Renderer {
     const charge = clamp01(progress / 0.42);
     const release = progress < 0.42 ? 0 : easeOutCubic((progress - 0.42) / 0.58);
     const radius = weapon.range * (0.35 + 0.65 * Math.max(charge * 0.45, release));
-    const inner = Math.max(8, weapon.innerRange || weapon.range * 0.45);
 
-    ctx.save();
-    ctx.fillStyle = this._hexToRGB(weapon.color, 0.13 * alpha);
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.72 * alpha);
-    ctx.lineWidth = (progress < 0.42 ? 2.2 : 5.4) * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.55 * alpha);
-    ctx.lineWidth = 2.2 * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, inner, 0, Math.PI * 2);
-    ctx.stroke();
-
-    for (let i = 0; i < 8; i++) {
-      const a = e.angle + i * Math.PI / 4 + release * 0.24;
-      const start = inner * (0.62 + 0.18 * Math.sin(i));
-      const end = radius * (0.72 + 0.22 * Math.cos(i * 1.7));
-      ctx.strokeStyle = this._hexToRGB(i % 2 === 0 ? '#ffffff' : weapon.color, 0.32 * alpha * Math.max(charge, release));
-      ctx.lineWidth = (i % 2 === 0 ? 2 : 1.4) * alpha;
-      ctx.beginPath();
-      ctx.moveTo(scr.x + Math.cos(a) * start, scr.y + Math.sin(a) * start);
-      ctx.lineTo(scr.x + Math.cos(a + 0.12) * end, scr.y + Math.sin(a + 0.12) * end);
-      ctx.stroke();
+    if (release > 0) {
+      const spriteAlpha = Math.pow(1 - progress, 0.25) * 0.95;
+      this._drawFxSprite(ctx, 'fx/explosion', 9, 40, 40, scr.x, scr.y, radius * 2.8, release, spriteAlpha, e.angle);
     }
-
-    if (release > 0.05) {
-      const boomPct = clamp01((release - 0.05) / 0.95);
-      this._drawFxSprite(ctx, 'fx/explosion', 9, 40, 40, scr.x, scr.y, radius * 2.6, boomPct, alpha * (1 - boomPct * 0.5) * 0.9, e.angle);
-    }
-
-    ctx.restore();
   }
 
   _drawHammerWindup(ctx, scr, e, weapon, alpha) {
@@ -2952,80 +2617,13 @@ export class Renderer {
       : 1 + (progress - 0.22) * (finisher ? 0.18 : 0.06);
     const radius = Math.max(2, weapon.range * scale);
     const spinAngle = e.angle + progress * Math.PI * (finisher ? 6.2 : 4.4);
-
-    ctx.save();
-    ctx.fillStyle = this._hexToRGB(weapon.color, (finisher ? 0.2 : 0.13) * alpha);
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = this._hexToRGB(weapon.color, 0.72 * alpha);
-    ctx.lineWidth = (finisher ? 11 : 8) * alpha;
-    ctx.beginPath();
-    ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.strokeStyle = this._hexToRGB('#ffffff', 0.7 * alpha);
-    ctx.lineWidth = 2.2 * alpha;
-    if (radius > 7) {
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius - 5, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    const bladeCount = finisher ? 4 : 3;
-    for (let i = 0; i < bladeCount; i++) {
-      const a = spinAngle + i * (Math.PI * 2 / bladeCount);
-      ctx.strokeStyle = i === 0 ? this._hexToRGB('#ffffff', 0.85 * alpha) : this._hexToRGB(weapon.color, 0.82 * alpha);
-      ctx.lineWidth = i === 0 ? (finisher ? 5.4 : 4) * alpha : (finisher ? 4 : 3) * alpha;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius * 0.76, a, a + Math.PI * (finisher ? 0.68 : 0.52));
-      ctx.stroke();
-    }
-
-    if (finisher) {
-      const swirlCount = 7;
-      for (let i = 0; i < swirlCount; i++) {
-        const a = spinAngle + i * (Math.PI * 2 / swirlCount);
-        const inner = radius * 0.18;
-        const outer = radius * 0.95;
-        const mid = radius * 0.58;
-        ctx.strokeStyle = this._hexToRGB(i % 2 === 0 ? '#ffffff' : weapon.color, (i % 2 === 0 ? 0.52 : 0.36) * alpha);
-        ctx.lineWidth = (i % 2 === 0 ? 3.2 : 2.4) * alpha;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(scr.x + Math.cos(a - 0.32) * inner, scr.y + Math.sin(a - 0.32) * inner);
-        ctx.quadraticCurveTo(
-          scr.x + Math.cos(a + 0.55) * mid,
-          scr.y + Math.sin(a + 0.55) * mid,
-          scr.x + Math.cos(a + 1.02) * outer,
-          scr.y + Math.sin(a + 1.02) * outer
-        );
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.28 * alpha);
-      ctx.lineWidth = 2.2 * alpha;
-      ctx.beginPath();
-      ctx.arc(scr.x, scr.y, radius * 0.45, spinAngle, spinAngle + Math.PI * 2);
-      ctx.stroke();
-    }
-
-    if (progress > 0.1) {
-      const circlePct = clamp01((progress - 0.1) / 0.9);
-      const circleAlpha = alpha * Math.sin(Math.PI * circlePct) * 0.78;
-      this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y, radius * 2.2, circlePct, circleAlpha, spinAngle);
-    }
-
-    ctx.restore();
+    const spriteAlpha = Math.pow(1 - progress, 0.3) * 0.95;
+    this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y, radius * 2.2, progress, spriteAlpha, spinAngle);
   }
 
   _drawSpearThrust(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
-    const finisher = Boolean(e.comboFinisher);
     const length = weapon.range;
-    const width = weapon.width;
     const ext = progress < 0.16
       ? easeOutCubic(progress / 0.16)
       : progress < 0.38
@@ -3036,51 +2634,11 @@ export class Renderer {
     const tipX = scr.x + Math.cos(angle) * length * ext;
     const tipY = scr.y + Math.sin(angle) * length * ext;
 
-    ctx.save();
-
-    if (progress < 0.5) {
-      const laneAlpha = (finisher ? 0.25 : 0.16) * (1 - progress / 0.5);
-      this._drawAttackLane(ctx, scr.x, scr.y, e.angle, length, width, this._hexToRGB(weapon.color, laneAlpha));
-    }
-
-    const headSize = Math.max(6, width * (finisher ? 0.68 : 0.52)) * (0.75 + alpha * 0.25);
-    const shaftEndX = scr.x + Math.cos(angle) * Math.max(0, length * ext - headSize * 0.6);
-    const shaftEndY = scr.y + Math.sin(angle) * Math.max(0, length * ext - headSize * 0.6);
-
-    this._drawCapsuleLine(ctx, scr.x, scr.y, shaftEndX, shaftEndY, width * (finisher ? 0.96 : 0.78) * alpha, this._hexToRGB(weapon.color, (finisher ? 0.68 : 0.54) * alpha), 'butt');
-    this._drawCapsuleLine(ctx, scr.x, scr.y, shaftEndX, shaftEndY, (finisher ? 5.2 : 4.0) * alpha, this._hexToRGB('#ffffff', 0.86 * alpha), 'butt');
-
-    ctx.fillStyle = this._hexToRGB('#ffffff', 0.88 * alpha);
-    ctx.strokeStyle = this._hexToRGB(weapon.color, alpha);
-    ctx.lineWidth = 2;
-    ctx.save();
-    ctx.translate(tipX, tipY);
-    ctx.rotate(angle);
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(-headSize, -headSize * 0.52);
-    ctx.lineTo(-headSize * 0.62, 0);
-    ctx.lineTo(-headSize, headSize * 0.52);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-
-    if (progress < 0.25) {
-      ctx.strokeStyle = this._hexToRGB('#ffffff', 0.42 * (1 - progress / 0.25));
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(scr.x + Math.cos(e.angle) * 12, scr.y + Math.sin(e.angle) * 12, 8 + 28 * progress, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    if (ext > 0.65 && progress < 0.38) {
+    if (ext > 0.05) {
       const flashPct = clamp01(progress / 0.16);
-      const flashAlpha = alpha * ext * (1 - flashPct * 0.55) * 0.82;
-      this._drawFxSprite(ctx, 'fx/elemental/thunder', 5, 32, 28, tipX, tipY, weapon.range * 0.55, flashPct, flashAlpha, angle);
+      const spriteAlpha = Math.pow(1 - progress, 0.25) * ext * 0.95;
+      this._drawFxSprite(ctx, 'fx/elemental/thunder', 5, 32, 28, tipX, tipY, weapon.range * 0.7, flashPct, spriteAlpha, angle);
     }
-
-    ctx.restore();
   }
 
   _isCombatEffect(effect) {
@@ -3193,6 +2751,15 @@ export class Renderer {
   _drawShotFlash(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const flash = 1 - easeOutCubic(progress);
+
+    if (e.weapon === 'flamethrower') {
+      const flamX = scr.x + Math.cos(e.angle) * (42 * flash * 0.6 + 18);
+      const flamY = scr.y + Math.sin(e.angle) * (42 * flash * 0.6 + 18);
+      const spriteAlpha = Math.pow(1 - progress, 0.3) * flash * 0.95;
+      this._drawFxSprite(ctx, 'fx/elemental/flam', 5, 40, 30, flamX, flamY, 64 * flash + 16, progress, spriteAlpha, e.angle);
+      return;
+    }
+
     const length = 42 * flash;
     const half = 0.18 + 0.2 * flash;
     const start = e.angle - half;
@@ -3205,7 +2772,6 @@ export class Renderer {
     ctx.arc(scr.x, scr.y, length + 18, start, end);
     ctx.closePath();
     ctx.fill();
-
     this._drawCapsuleLine(
       ctx,
       scr.x + Math.cos(e.angle) * 8,
@@ -3215,19 +2781,22 @@ export class Renderer {
       4 + 8 * flash,
       this._hexToRGB('#ffffff', 0.72 * alpha)
     );
-
-    if (e.weapon === 'flamethrower' && flash > 0.1) {
-      const flamX = scr.x + Math.cos(e.angle) * (length * 0.6 + 18);
-      const flamY = scr.y + Math.sin(e.angle) * (length * 0.6 + 18);
-      this._drawFxSprite(ctx, 'fx/elemental/flam', 5, 40, 30, flamX, flamY, 52 * flash, progress, alpha * flash * 0.88, e.angle);
-    }
-
     ctx.restore();
   }
 
   _drawProjectileBurst(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const radius = 8 + easeOutCubic(progress) * 24;
+    const spriteAlpha = Math.pow(1 - progress, 0.3) * 0.95;
+
+    if (e.weapon === 'magicstaff') {
+      this._drawFxSprite(ctx, 'fx/elemental/ice', 10, 32, 32, scr.x, scr.y, radius * 3.5, progress, spriteAlpha, 0);
+      return;
+    }
+    if (e.weapon === 'flamethrower') {
+      this._drawFxSprite(ctx, 'fx/elemental/flam', 5, 40, 30, scr.x, scr.y, radius * 3.5, progress, spriteAlpha, e.angle);
+      return;
+    }
 
     ctx.save();
     ctx.strokeStyle = this._hexToRGB(weapon.color, 0.78 * alpha);
@@ -3235,12 +2804,10 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(scr.x, scr.y, radius, 0, Math.PI * 2);
     ctx.stroke();
-
     ctx.fillStyle = this._hexToRGB(weapon.color, 0.18 * alpha);
     ctx.beginPath();
     ctx.arc(scr.x, scr.y, radius * 0.62, 0, Math.PI * 2);
     ctx.fill();
-
     ctx.strokeStyle = this._hexToRGB('#ffffff', 0.75 * alpha);
     ctx.lineWidth = 2 * alpha;
     for (let i = 0; i < 8; i++) {
@@ -3252,13 +2819,6 @@ export class Renderer {
       ctx.lineTo(scr.x + Math.cos(angle) * outer, scr.y + Math.sin(angle) * outer);
       ctx.stroke();
     }
-
-    if (e.weapon === 'magicstaff') {
-      this._drawFxSprite(ctx, 'fx/elemental/ice', 10, 32, 32, scr.x, scr.y, radius * 3.2, progress, alpha * 0.9, 0);
-    } else if (e.weapon === 'flamethrower') {
-      this._drawFxSprite(ctx, 'fx/elemental/flam', 5, 40, 30, scr.x, scr.y, radius * 3.0, progress, alpha * 0.9, e.angle);
-    }
-
     ctx.restore();
   }
 
@@ -4799,8 +4359,11 @@ export class Renderer {
    */
   _drawNinjaWeapon(ctx, scr, player, motion, radius, weaponAngle, reach, active) {
     // Equipped weapon skin swaps to an alternate sprite; falls back to the base.
-    const skin = player.weaponSkins?.[player.weapon];
-    const img = (skin && this.atlas?.get(`wpn/${player.weapon}@${skin}`))
+    // 'pistols' weapon uses 'crossbow' as its shop/skin key.
+    const effectiveKey = player.weapon === 'pistols' ? 'crossbow' : player.weapon;
+    const skin = player.weaponSkins?.[effectiveKey];
+    const img = (skin && this.atlas?.get(`wpn/${effectiveKey}@${skin}`))
+      || this.atlas?.get(`wpn/${effectiveKey}`)
       || this.atlas?.get(`wpn/${player.weapon}`);
     if (!img || !img.naturalWidth) return false;     // no sprite for this key → fallback
 

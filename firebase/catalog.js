@@ -23,7 +23,7 @@ const costumeItems = DEFAULT_COSTUMES.map(c => ({
   sort_order: c.sort_order,
 }));
 
-export const WEAPON_LIST = ['axe','bow','chakram','dagger','flamethrower','greatsword','guardian','hammer','harpoon','katana','magicstaff','rapier','scythe','sniper','spear','sword'];
+export const WEAPON_LIST = ['axe','bow','chakram','crossbow','dagger','flamethrower','greatsword','guardian','hammer','harpoon','katana','magicstaff','rapier','scythe','sniper','spear','sword'];
 
 export const WEAPON_SKIN_DEFS = [
   { id: 'ember', name: '불꽃', price: 30, tint: '#ff3d3d' },

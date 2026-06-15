@@ -109,6 +109,7 @@ export const SPRITE_MANIFEST = {
   'wpn/sniper': 'weapon/sniper.png',
   'wpn/chakram': 'weapon/chakram.png',
   'wpn/pistols': 'weapon/pistols.png',
+  'wpn/crossbow': 'weapon/pistols.png',
   'wpn/harpoon': 'weapon/harpoon.png',
   'wpn/guardian': 'weapon/guardian.png',
   'wpn/minebag': 'weapon/minebag.png',
