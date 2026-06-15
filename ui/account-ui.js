@@ -24,6 +24,7 @@ import {
   equipItem,
   adminAddCoins,
   adminGrantAllItems,
+  checkIsAdmin,
 } from '../firebase/game-api.js';
 import { ASSET_VERSION } from '../game/SpriteAtlas.js';
 
@@ -34,6 +35,7 @@ import { ASSET_VERSION } from '../game/SpriteAtlas.js';
 
 // ── 내부 상태 ───────────────────────────────────────────────
 let profile = null;            // { id, username, coins, total_kills, equipped_costume }
+let isAdmin = false;           // /admins/{uid} 문서 존재 여부
 let costumeCatalog = [];       // [{ id, name, price, color, accent_color }]
 let ownedIds = new Set();      // 보유 코스튬 id (레거시 — getEquippedCostume 용)
 let callbacks = {};            // { onEnterLobby, onRequireLogin }
@@ -175,6 +177,7 @@ async function handleSession(session) {
     if (!itemCatalog.length) itemCatalog = await fetchItems();
     ownedItemIds = await fetchMyItemIds();
     equipped = await fetchMyEquipped();
+    isAdmin = await checkIsAdmin();
     renderAccountBar();
     callbacks.onEnterLobby?.(profile);
   } else {
@@ -335,8 +338,7 @@ function renderAccountBar() {
     if (nameEl) nameEl.textContent = profile.username;
     if (coinEl) coinEl.textContent = profile.coins;
   }
-  // 어드민 버튼: 로그인 중일 때 항상 표시
-  $('adminBtn')?.classList.toggle('hidden', !profile);
+  $('adminBtn')?.classList.toggle('hidden', !profile || !isAdmin);
 }
 
 // ── 랭킹 모달 ───────────────────────────────────────────────
