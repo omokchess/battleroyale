@@ -242,20 +242,22 @@ export const Weapons = {
   },
   guardian: {
     name: '디펜더',
-    damage: 18,             // orbit contact damage (per target, re-hit every 400ms)
+    damage: 18,
     maxHp: 110,
-    cooldown: 500,          // unused (no manual attack) but kept for the stats card
-    automaticAttack: false, // damage comes from the orbiting blades, not a swing
+    cooldown: 500,
+    automaticAttack: false,
     moveSpeed: 1.2,
-    range: 55,              // orbit radius == effective reach
+    range: 130,
+    seekRange: 130,         // auto-seek detection range
     type: 'orbit',
     orbitCount: 3,
     orbitRadius: 60,
-    orbitPeriodMs: 1100,    // one full revolution
-    rehitMs: 400,           // min gap between hits on the same target
+    orbitPeriodMs: 1100,
+    seekIntervalMs: 500,    // stagger between auto-dispatches
+    seekSpeed: 420,
     bladeRadius: 9,
-    description: '칼날 3개가 몸 주위를 공전하며 닿는 적을 자동으로 벱니다(조준 없음). 사거리가 몸 둘레뿐이라 긴 사거리 무기엔 접근이 까다롭습니다.',
-    skill: 'F: 수호 태세(1.5초간 공전 속도 1.8배, 반경 +16px, 적 투사체 1개 차단) · 쿨타임 6초\nR: 칼날 사출(칼날 전부 발사, 각 24 피해, 사거리 200px) · 쿨타임 4초\nLMB: 추적 칼날(가까운 적 1.5초 추적, 14 피해, 0.4초 재타격 간격) · 쿨타임 6초',
+    description: '칼날 3개가 몸 주위를 공전합니다. 반경 130px 안에 적이 들어오면 칼날이 차례로 0.5초 간격으로 날아가 적을 벱니다. 때린 후 원위치로 복귀.',
+    skill: 'F: 집중 사출(가용 칼날 전부 즉시 발사, 범위 200px, 피해 24) · 쿨타임 5초\nR: 칼날 사출(모든 칼날 발사 후 귀환, 각 24 피해, 사거리 200px) · 쿨타임 4초\nLMB: 추적 칼날(가까운 적 1.5초 추적, 14 피해) · 쿨타임 6초',
     color: '#2dd4bf'
   },
   harpoon: {
@@ -376,12 +378,11 @@ export const SkillConfig = {
     hopDistance: 90        // backward escape hop after the barrage
   },
   guardian: {
-    // F 수호 태세 (buff): faster/wider orbit + blocks one incoming projectile.
-    cooldownMs: 6000,
-    stanceMs: 1500,
-    stanceSpeedMul: 1.8,
-    stanceRadiusBonus: 16,
-    // R 사출 (launch) params, reused by the alt aux.
+    // F 집중 사출: burst-fire all available orbit blades simultaneously.
+    cooldownMs: 5000,
+    surgeRange: 200,
+    surgeDamage: 24,
+    // R 사출 (launch) params.
     launchDamage: 24,
     launchRange: 200,
     launchSpeed: 560,
@@ -716,9 +717,7 @@ export const AuxSkillConfig = {
     target: { label: 'CHAIN', cooldownMs: 7000, type: 'melee_line', damage: 8, range: 92, width: 18, stunMs: 500 }
   },
   guardian: {
-    // 사출: launch all orbiting blades outward (bespoke; reuses _launchGuardianBlades).
     alt: { label: 'LAUNCH', cooldownMs: 4000, type: 'guardian_launch' },
-    // 추적 칼날: detach one blade to home the nearest enemy (bespoke).
     target: { label: 'SEEK', cooldownMs: 6000, type: 'guardian_homing' }
   },
   minebag: {
