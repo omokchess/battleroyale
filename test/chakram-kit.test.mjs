@@ -19,16 +19,20 @@ test('chakram has a full R(3연발)/LMB(맴돌이) aux kit', () => {
   assert.ok(kit.target.durationMs > 0 && kit.target.orbitDamage > 0);
 });
 
-test('R throws 3 chakram discs', () => {
+test('R throws 3 chakram discs sequentially (230ms apart)', () => {
   const owner = new Player('o', 'Tri', 'chakram', 120, 120); owner.angle = 0;
   const g = Object.create(Game.prototype);
   g.players = { o: owner };
   g.projectiles = [];
   g.effects = [];
+  g.pendingChakrams = [];
   g.mapWidth = 700; g.mapHeight = 700;
-  g._executeAuxSkill(owner, AuxSkillConfig.chakram.alt, 5000, 'alt');
-  const discs = g.projectiles.filter(p => p.kind === 'chakram');
-  assert.equal(discs.length, 3);
+  const now = 5000;
+  g._executeAuxSkill(owner, AuxSkillConfig.chakram.alt, now, 'alt');
+  assert.equal(g.projectiles.filter(p => p.kind === 'chakram').length, 0, 'none fired immediately');
+  assert.equal(g.pendingChakrams.length, 3, '3 shots queued');
+  g._releaseDuePendingChakrams(now + 460);
+  assert.equal(g.projectiles.filter(p => p.kind === 'chakram').length, 3, 'all 3 released after 460ms');
 });
 
 test('LMB 맴돌이 disc deals contact damage to a nearby enemy', () => {

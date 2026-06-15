@@ -253,21 +253,21 @@ function _ensurePreview() {
       btn.dataset.previewSkipClick = '';
       return;
     }
-    _previewTrigger(_previewState, btn.dataset.previewAction, performance.now());
+    _previewTrigger(_previewState, btn.dataset.previewAction, Date.now());
   });
   controls.addEventListener('pointerdown', (e) => {
     const btn = e.target.closest('[data-preview-action="f"]');
     if (!btn || _previewState?.weaponType !== 'greatsword') return;
     btn.dataset.previewSkipClick = '1';
-    _previewGreatswordChargeStart(_previewState, performance.now());
+    _previewGreatswordChargeStart(_previewState, Date.now());
   });
   controls.addEventListener('pointerup', (e) => {
     const btn = e.target.closest('[data-preview-action="f"]');
     if (!btn || _previewState?.weaponType !== 'greatsword') return;
-    _previewGreatswordChargeRelease(_previewState, performance.now());
+    _previewGreatswordChargeRelease(_previewState, Date.now());
   });
   controls.addEventListener('pointercancel', () => {
-    if (_previewState?.weaponType === 'greatsword') _previewGreatswordChargeRelease(_previewState, performance.now());
+    if (_previewState?.weaponType === 'greatsword') _previewGreatswordChargeRelease(_previewState, Date.now());
   });
   return _previewState;
 }
@@ -312,7 +312,7 @@ function setWeaponPreview(weaponType, cfg) {
   p.effects.length = 0; p.projectiles.length = 0; p.mines.length = 0; p.firePatches.length = 0; p.pendingSniperShots.length = 0; p.pendingMagicShards.length = 0; p.pendingPreviewActions.length = 0; p.greatswordCharge = null; p.lastFire = 0; p.last = performance.now();
 
   const loop = (t) => {
-    const dt = Math.min((t - p.last) / 1000, 0.05); p.last = t; const now = t;
+    const dt = Math.min((t - p.last) / 1000, 0.05); p.last = t; const now = Date.now();
     _previewAutoReleaseGreatsword(p, now);
     _previewReleasePending(p, now);
     p.effects = p.effects.filter(e => { e.progress = (now - e.timestamp) / (e.lifetime || 400); return e.progress < 1; });
@@ -936,6 +936,26 @@ function _previewFire(p, weaponType, wc, now, options = {}) {
       angle, wc.speed || 600, wc.range || 300, wc.damage || 1, kind);
     proj.weapon = wc.projectileWeapon || weaponType;
     if (Number.isFinite(wc.radius)) proj.radius = wc.radius;
+    if (kind === 'chakram') {
+      const ownerX = d.x, ownerY = d.y;
+      let phase = 'out';
+      proj.update = function(dt) {
+        if (this.isDead) return;
+        if (phase === 'out') {
+          this.x += this.vx * dt;
+          this.y += this.vy * dt;
+          if (Math.hypot(this.x - this.startX, this.y - this.startY) >= this.maxRange) phase = 'return';
+        } else {
+          const dx = ownerX - this.x, dy = ownerY - this.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 18) { this.isDead = true; return; }
+          const s = 720 / dist;
+          this.x += dx * s * dt;
+          this.y += dy * s * dt;
+          this.angle = Math.atan2(dy, dx);
+        }
+      };
+    }
     p.projectiles.push(proj);
   } else {
     p.swing = -p.swing;

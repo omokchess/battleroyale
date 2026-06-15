@@ -86,6 +86,7 @@ export class Game {
     this.pendingMatchlockShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
+    this.pendingChakrams = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
@@ -132,6 +133,7 @@ export class Game {
     this.pendingMatchlockShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
+    this.pendingChakrams = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
@@ -488,6 +490,7 @@ export class Game {
     this._releaseDueKatanaSlashes(now);
     this._releaseDueSniperShots(now);
     this._releaseDueMatchlockShots(now);
+    this._releaseDuePendingChakrams(now);
     this._processSpearThrowQueue(now);
     this._processPendingMeleeHits(now);
     this._processGreatswordCharges(now);
@@ -1189,10 +1192,17 @@ export class Game {
 
     if (cfg.type === 'chakram_throw') {
       const n = Math.max(1, cfg.count || 3);
-      const spread = ((cfg.spreadDeg || 18) * Math.PI) / 180;
+      const intervalMs = 230;
       for (let i = 0; i < n; i++) {
-        const off = n === 1 ? 0 : (i - (n - 1) / 2) * (spread / (n - 1));
-        this._spawnChakram(player, player.angle + off, cfg.damage || 18, cfg.range || 240, cfg.speed || 680, now, `lmb-${now}-${i}`, true);
+        this.pendingChakrams.push({
+          playerId: player.id,
+          angle: player.angle,
+          damage: cfg.damage || 18,
+          range: cfg.range || 240,
+          speed: cfg.speed || 680,
+          fireAt: now + i * intervalMs,
+          tag: `alt-${now}-${i}`
+        });
       }
       this.effects.push({
         attackerId: player.id, x: player.x, y: player.y, angle: player.angle,
@@ -3431,6 +3441,18 @@ export class Game {
     });
   }
 
+  _releaseDuePendingChakrams(now) {
+    if (!this.pendingChakrams?.length) return;
+    const waiting = [];
+    for (const shot of this.pendingChakrams) {
+      if (shot.fireAt > now) { waiting.push(shot); continue; }
+      const player = this.players[shot.playerId];
+      if (!player || player.isDead || player.weapon !== 'chakram') continue;
+      this._spawnChakram(player, shot.angle, shot.damage, shot.range, shot.speed, now, shot.tag, true);
+    }
+    this.pendingChakrams = waiting;
+  }
+
   _updateChakram(proj, deltaTime, now) {
     const owner = this.players[proj.ownerId];
     if (!owner || owner.isDead) {
@@ -4667,6 +4689,7 @@ export class Game {
     this.pendingMatchlockShots = [];
     this.pendingMagicShards = [];
     this.pendingSpearThrows = [];
+    this.pendingChakrams = [];
     this.pendingMeleeHits = [];    this.pendingHammerSlams = [];
     this.vibratedRailbeamIds = new Set();
     this.shakenSpearThrowIds = new Set();
