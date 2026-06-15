@@ -365,8 +365,7 @@ function _previewSkill(p, weaponType, cfg, now) {
     if (cfg === AuxSkillConfig.magicstaff?.target || cfg === MagicConfig.iceShard) return _previewMagicIce(p, now);
   }
   if (weaponType === 'guardian' && cfg === SkillConfig.guardian) {
-    // F: preview fires 3 swords outward (surge).
-    _previewGuardianLaunch(p, cfg, now);
+    _previewGuardianSurge(p, now);
     return;
   }
   switch (cfg.type) {
@@ -761,10 +760,28 @@ function _previewAimedShot(p, cfg, now) {
   });
 }
 
+// F 버프: 공전 중인 칼날이 3방향으로 방사형 사출 (orbit 위치 기준 0°/120°/240°).
+function _previewGuardianSurge(p, now) {
+  const sk = SkillConfig.guardian;
+  for (let i = 0; i < 3; i++) {
+    const offset = (i / 3) * Math.PI * 2;
+    _previewFire(p, 'guardian', {
+      type: 'projectile',
+      projectileKind: 'guardianseek',
+      projectileWeapon: 'guardian',
+      speed: (sk.seekSpeed || 420) * 1.3,
+      range: sk.surgeRange || 200,
+      damage: sk.surgeDamage || 24,
+      previewAngleOffset: offset
+    }, now + i);
+  }
+}
+
+// R: 3개 검을 120도 부채꼴(-60°/0°/+60°)로 발사.
 function _previewGuardianLaunch(p, cfg, now) {
   const sk = SkillConfig.guardian;
   for (let i = 0; i < 3; i++) {
-    const angle = p.dummy.angle + (i - 1) * 0.22;
+    const offset = (i - 1) * (Math.PI / 3); // -60°, 0°, +60°
     _previewFire(p, 'guardian', {
       type: 'projectile',
       projectileKind: 'guardianlaunch',
@@ -772,7 +789,7 @@ function _previewGuardianLaunch(p, cfg, now) {
       speed: sk.launchSpeed || 560,
       range: sk.launchRange || 200,
       damage: sk.launchDamage || 24,
-      previewAngleOffset: angle - p.dummy.angle
+      previewAngleOffset: offset
     }, now + i);
   }
 }
