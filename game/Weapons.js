@@ -356,13 +356,14 @@ export const SkillConfig = {
   },
   chakram: {
     cooldownMs: 4500,
-    fanCount: 3,           // simultaneous discs
-    fanSpreadDeg: 34,      // total angular spread of the fan
-    damage: 22,            // per disc, per leg
-    bleed: true,           // direct hits bleed
+    fanCount: 3,
+    fanSpreadDeg: 34,
+    damage: 22,
+    bleed: true,
     range: 280,
     speed: 640,
-    returnSpeed: 720
+    returnSpeed: 720,
+    projectileKind: 'chakram'
   },
   pistols: {
     cooldownMs: 5000,
@@ -698,9 +699,9 @@ export const AuxSkillConfig = {
   chakram: {
     // 쳐내기: hurl 3 discs in a tight forward burst (non-disarming) that also
     // deflects the nearest incoming enemy projectile.
-    alt: { label: 'TRIPLE', cooldownMs: 700, type: 'chakram_throw', count: 3, spreadDeg: 18, damage: 18, range: 240, speed: 680, deflectProjectile: true },
+    alt: { label: 'TRIPLE', cooldownMs: 700, type: 'chakram_throw', count: 3, spreadDeg: 0, damage: 18, range: 240, speed: 680, deflectProjectile: true, burstMs: 460 },
     // 맴돌이: a defensive disc orbits the player for a short time (bespoke).
-    target: { label: 'ORBIT', cooldownMs: 6000, type: 'chakram_orbit', durationMs: 1500, orbitDamage: 14, orbitRadius: 46, hitCooldownMs: 400 }
+    target: { label: 'ORBIT', cooldownMs: 6000, type: 'chakram_orbit', durationMs: 4000, orbitDamage: 14, orbitRadius: 46, hitCooldownMs: 400 }
   },
   flamethrower: {
     // 점화: a forward fire bomb that bursts for AoE damage + burn.
