@@ -2187,15 +2187,17 @@ export class Renderer {
       return;
     }
 
-    // Blue crescent (Slash02). Convex faces -x by default -> rotate e.angle+PI so
-    // the cutting belly points toward the aim; flip across the swing axis for handedness.
+    // Blue crescent (Slash02). The sheet reads correctly when rotated to
+    // e.angle + 270° (picked from the rotation-offset preview): the vertical
+    // crescent stands in front with its belly toward the aim. Flip across the
+    // swing axis for handedness, and nestle it close to the body.
     const flipY = this._visualSwingDirection(e.weapon, e.swingDirection) < 0;
     const reach = weapon.range * (finisher ? 0.95 : 0.85);
     const targetH = reach * (finisher ? 1.45 : 1.2);
-    const fwd = reach * (finisher ? 0.6 : 0.55);
+    const fwd = reach * (finisher ? 0.4 : 0.35);
     const cx = scr.x + Math.cos(e.angle) * fwd;
     const cy = scr.y + Math.sin(e.angle) * fwd;
-    this._drawSlashFrames(ctx, 'fx/slash2', SLASH2_FRAMES, 50, cx, cy, targetH, progress, spriteAlpha, e.angle + Math.PI, flipY);
+    this._drawSlashFrames(ctx, 'fx/slash2', SLASH2_FRAMES, 50, cx, cy, targetH, progress, spriteAlpha, e.angle + Math.PI * 1.5, flipY);
   }
 
   _drawGreatswordWave(ctx, scr, angle, zoom) {
