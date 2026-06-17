@@ -2167,7 +2167,7 @@ export class Renderer {
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     ctx.translate(cx, cy);
     if (angle !== 0) ctx.rotate(angle);
-    if (flipY) ctx.scale(1, -1);
+    if (flipY) ctx.scale(-1, 1);   // mirror across the swing axis (horizontal flip)
     ctx.drawImage(sheet, x0, 0, fw, sheetH, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
     ctx.imageSmoothingEnabled = prev;
