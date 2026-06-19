@@ -263,7 +263,7 @@ function _ensurePreview() {
     toScreen(x, y, cw, ch) { return { x: cw / 2 + (x - PX) * this.zoom, y: ch / 2 + (y - PY) * this.zoom }; },
     getShakeOffset() { return { x: 0, y: 0 }; },
   };
-  _previewState = { cv, controls, renderer, dummy, camera, PX, PY, MAP, effects: [], projectiles: [], mines: [], firePatches: [], pendingSniperShots: [], pendingMagicShards: [], pendingPreviewActions: [], lastFire: 0, swing: 1, raf: 0, last: performance.now(), weaponType: 'sword', greatswordCharge: null };
+  _previewState = { cv, controls, renderer, dummy, camera, PX, PY, MAP, effects: [], projectiles: [], mines: [], firePatches: [], pendingSniperShots: [], pendingMagicShards: [], pendingPreviewActions: [], lastFire: 0, swing: -1, raf: 0, last: performance.now(), weaponType: 'sword', greatswordCharge: null };
   controls.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-preview-action]');
     if (!btn) return;

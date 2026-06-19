@@ -2167,7 +2167,7 @@ export class Renderer {
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     ctx.translate(cx, cy);
     if (angle !== 0) ctx.rotate(angle);
-    if (flipY) ctx.scale(-1, 1);   // mirror across the swing axis (horizontal flip)
+    if (flipY) ctx.scale(1, -1);   // mirror across the swing axis (vertical flip)
     ctx.drawImage(sheet, x0, 0, fw, sheetH, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
     ctx.imageSmoothingEnabled = prev;
@@ -2197,7 +2197,7 @@ export class Renderer {
     const fwd = reach * (finisher ? 0.4 : 0.35);
     const cx = scr.x + Math.cos(e.angle) * fwd;
     const cy = scr.y + Math.sin(e.angle) * fwd;
-    this._drawSlashFrames(ctx, 'fx/slash2', SLASH2_FRAMES, 50, cx, cy, targetH, progress, spriteAlpha, e.angle + Math.PI * 1.5, flipY);
+    this._drawSlashFrames(ctx, 'fx/slash2', SLASH2_FRAMES, 50, cx, cy, targetH, progress, spriteAlpha, e.angle + Math.PI * 0.5, flipY);
   }
 
   _drawGreatswordWave(ctx, scr, angle, zoom) {
