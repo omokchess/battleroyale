@@ -11,6 +11,14 @@ import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW, WEAPON_S
 // (appear → grow → full → full → shrink → wisp).
 const SLASH2_FRAMES = [[0, 26], [66, 120], [134, 193], [205, 263], [290, 329], [374, 395]];
 
+// SpriteSheetCircular.png (378×55, 7 frames). The artist's ring is a slightly
+// elliptical slash whose opaque content has a DIFFERENT size + center in every
+// 54px cell, so a uniform slice + square stretch makes it wobble and squash.
+// These are each frame's tight opaque bounding box [sx, sy, w, h] in sheet px;
+// the renderer blits each box at its true aspect ratio, centered on the player.
+const CIRC_FRAMES = [[0, 18, 27, 34], [63, 27, 45, 28], [108, 0, 54, 55], [162, 0, 54, 55], [216, 0, 54, 51], [270, 29, 41, 26], [324, 29, 50, 26]];
+const CIRC_CELL = 54;   // reference full-ring size; scale = targetSize / CIRC_CELL
+
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
   axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0, noAimFlip: true },
@@ -2174,6 +2182,31 @@ export class Renderer {
     return true;
   }
 
+  // Blit one frame of an irregular ring sheet (e.g. SpriteSheetCircular) using
+  // its tight per-frame bounding box, so each frame keeps its own size + aspect
+  // and is centred on the player instead of on its (offset) cell. `rects` are
+  // [sx, sy, w, h] in sheet px; `cell` is the reference full-ring size so the
+  // whole animation scales by a single factor (targetSize / cell).
+  _drawCircFrames(ctx, key, rects, cell, cx, cy, targetSize, progress, alpha, angle) {
+    const sheet = this.atlas?.get(key);
+    if (!sheet || !sheet.naturalWidth) return false;
+    const n = rects.length;
+    const fi = Math.min(n - 1, Math.max(0, Math.floor(clamp01(progress) * n)));
+    const sx = rects[fi][0], sy = rects[fi][1], sw = rects[fi][2], sh = rects[fi][3];
+    const scale = targetSize / cell;
+    const dw = sw * scale, dh = sh * scale;
+    const prev = ctx.imageSmoothingEnabled;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.translate(cx, cy);
+    if (angle !== 0) ctx.rotate(angle);
+    ctx.drawImage(sheet, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = prev;
+    return true;
+  }
+
   _drawArcSlash(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const finisher = Boolean(e.comboFinisher);
@@ -2181,8 +2214,9 @@ export class Renderer {
     const spriteAlpha = Math.pow(1 - progress, 0.4) * 0.95;
 
     if (isFullCircleSlash) {
-      // Blue circular slash sheet (clean 7x54 grid), centred on the body.
-      this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y,
+      // Blue circular slash sheet — per-frame bbox so the ring stays centred on
+      // the body and keeps its real (slightly elliptical) shape per frame.
+      this._drawCircFrames(ctx, 'fx/slashCircular', CIRC_FRAMES, CIRC_CELL, scr.x, scr.y,
         weapon.range * 2.0, progress, spriteAlpha, e.angle);
       return;
     }
@@ -2719,7 +2753,7 @@ export class Renderer {
     const radius = Math.max(2, weapon.range * scale);
     const spinAngle = e.angle + progress * Math.PI * (finisher ? 6.2 : 4.4);
     const spriteAlpha = Math.pow(1 - progress, 0.4) * 0.95;
-    this._drawFxSprite(ctx, 'fx/slashCircular', 7, 54, 55, scr.x, scr.y, radius * 2.0, progress, spriteAlpha, spinAngle);
+    this._drawCircFrames(ctx, 'fx/slashCircular', CIRC_FRAMES, CIRC_CELL, scr.x, scr.y, radius * 2.0, progress, spriteAlpha, spinAngle);
   }
 
   _drawSpearThrust(ctx, scr, e, weapon, alpha) {
