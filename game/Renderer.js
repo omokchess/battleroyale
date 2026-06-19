@@ -2191,7 +2191,9 @@ export class Renderer {
     // e.angle + 270° (picked from the rotation-offset preview): the vertical
     // crescent stands in front with its belly toward the aim. Flip across the
     // swing axis for handedness, and nestle it close to the body.
-    const flipY = this._visualSwingDirection(e.weapon, e.swingDirection) < 0;
+    // Flip on the DOWN swing (swingDirection > 0) so the crescent curls the
+    // same way the blade travels: down-swing curls down, up-swing curls up.
+    const flipY = this._visualSwingDirection(e.weapon, e.swingDirection) > 0;
     const reach = weapon.range * (finisher ? 0.95 : 0.85);
     const targetH = reach * (finisher ? 1.45 : 1.2);
     const fwd = reach * (finisher ? 0.4 : 0.35);
