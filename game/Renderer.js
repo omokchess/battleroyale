@@ -3516,7 +3516,11 @@ export class Renderer {
       const endAngle = angleDeg >= 359 ? startAngle + Math.PI * 2 : angle + halfAngle;
       const swingDirection = this._visualSwingDirection(effect.weapon, effect.swingDirection);
       const sweep = easeOutCubic(clamp01(progress / 0.58));
-      weaponAngle = swingDirection > 0
+      // Reverse the full 360 spin so it turns the same way as the other circular
+      // slashes; keep the narrower rage arc (120°) swinging its original way.
+      const reverse = angleDeg >= 359;
+      const goPositive = (swingDirection > 0) !== reverse;
+      weaponAngle = goPositive
         ? startAngle + (endAngle - startAngle) * sweep
         : endAngle - (endAngle - startAngle) * sweep;
       weaponReach = Math.max(0, (effect.range || 0) * 0.18) * Math.sin(Math.PI * clamp01(progress));
