@@ -2751,7 +2751,7 @@ export class Renderer {
       ? easeOutCubic(progress / 0.22)
       : 1 + (progress - 0.22) * (finisher ? 0.18 : 0.06);
     const radius = Math.max(2, weapon.range * scale);
-    const spinAngle = e.angle + progress * Math.PI * (finisher ? 6.2 : 4.4);
+    const spinAngle = e.angle - progress * Math.PI * (finisher ? 6.2 : 4.4);
     const spriteAlpha = Math.pow(1 - progress, 0.4) * 0.95;
     this._drawCircFrames(ctx, 'fx/slashCircular', CIRC_FRAMES, CIRC_CELL, scr.x, scr.y, radius * 2.0, progress, spriteAlpha, spinAngle);
   }
