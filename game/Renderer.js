@@ -11,14 +11,13 @@ import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW, WEAPON_S
 // (appear → grow → full → full → shrink → wisp).
 const SLASH2_FRAMES = [[0, 26], [66, 120], [134, 193], [205, 263], [290, 329], [374, 395]];
 
-// SpriteSheetCircular.png (378×55) is a 6-frame ring slash on a 61px grid. The
-// ring is slightly elliptical and its opaque content has a DIFFERENT size +
-// center in every cell, so a uniform slice + square stretch makes it wobble and
-// squash. These are each frame's tight opaque bounding box [sx, sy, w, h] in
-// sheet px; the renderer blits each box at its true aspect ratio, centered on
-// the player.
-const CIRC_FRAMES = [[0, 18, 27, 34], [63, 16, 59, 39], [122, 0, 61, 55], [183, 0, 61, 47], [244, 10, 61, 45], [305, 29, 61, 26]];
-const CIRC_CELL = 61;   // reference full-ring size; scale = targetSize / CIRC_CELL
+// SpriteSheetCircular.png (378×55) is the hand-cut 360-slash animation: 6
+// frames on a clean 63px grid, each frame's own canvas centred in its cell.
+// We draw the WHOLE cell centred on the player (not the tight bbox) so the
+// ring keeps the vertical sweep the artist baked into each frame. Aspect ratio
+// is preserved (no square stretch). [sx, sy, w, h] in sheet px.
+const CIRC_FRAMES = [[0, 0, 63, 55], [63, 0, 63, 55], [126, 0, 63, 55], [189, 0, 63, 55], [252, 0, 63, 55], [315, 0, 63, 55]];
+const CIRC_CELL = 63;   // reference full-ring size; scale = targetSize / CIRC_CELL
 
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
