@@ -2167,7 +2167,7 @@ export class Renderer {
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     ctx.translate(cx, cy);
     if (angle !== 0) ctx.rotate(angle);
-    if (flipY) ctx.scale(1, -1);   // mirror across the swing axis (vertical flip)
+    if (flipY) ctx.scale(-1, 1);   // mirror across the aim axis (sprite is rotated +0.5pi, so aim runs vertically -> flip on X)
     ctx.drawImage(sheet, x0, 0, fw, sheetH, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
     ctx.imageSmoothingEnabled = prev;
