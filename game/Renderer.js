@@ -1986,27 +1986,14 @@ export class Renderer {
       ctx.shadowBlur = isMagicFx ? (this._glow * (minimized ? 4 : 14) * alpha) : 0;
       ctx.shadowColor = weapon.color;
 
-      // Lock the blue crescent slash to the blade's real swing arc so the two
-      // can never disagree: pull the attacker's current weaponAngle straight
-      // from the same motion solver that poses the weapon on the body. Works for
-      // every arc weapon (sword/scythe/greatsword) without duplicating formulas.
-      let slashBladeAngle;
-      if (e.type === 'melee_arc' || e.type === 'melee_sweet_arc' || e.type === 'melee_heavy_arc') {
-        const attacker = this._findPlayerById(players, e.attackerId);
-        if (attacker) {
-          const motion = this._getAttackMotion(attacker, anchoredEffect);
-          if (motion && motion.active) slashBladeAngle = motion.weaponAngle;
-        }
-      }
-
       if (e.type === 'melee_heavy_arc') {
-        this._drawHeavyCleave(ctx, scr, anchoredEffect, weapon, alpha, slashBladeAngle);
+        this._drawHeavyCleave(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'greatsword_charge') {
         this._drawGreatswordCharge(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'katana_charge') {
         this._drawKatanaCharge(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_sweet_arc') {
-        this._drawScytheSweep(ctx, scr, anchoredEffect, weapon, alpha, slashBladeAngle);
+        this._drawScytheSweep(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'melee_backstab') {
         this._drawDaggerStab(ctx, scr, anchoredEffect, weapon, alpha);
       } else if (e.type === 'dagger_qte_lock') {
@@ -2033,7 +2020,7 @@ export class Renderer {
         if (e.weapon === 'gauntlet') {
           this._drawPunchCombo(ctx, scr, anchoredEffect, weapon, alpha);
         } else {
-          this._drawArcSlash(ctx, scr, anchoredEffect, weapon, alpha, slashBladeAngle);
+          this._drawArcSlash(ctx, scr, anchoredEffect, weapon, alpha);
         }
       } else if (e.type === 'melee_circle') {
         if (e.weapon === 'axe') {
@@ -2187,7 +2174,7 @@ export class Renderer {
     return true;
   }
 
-  _drawArcSlash(ctx, scr, e, weapon, alpha, bladeAngle) {
+  _drawArcSlash(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const finisher = Boolean(e.comboFinisher);
     const isFullCircleSlash = weapon.angle >= 359;
@@ -2200,18 +2187,17 @@ export class Renderer {
       return;
     }
 
-    // Blue crescent (Slash02), LOCKED to the blade. `bladeAngle` is the weapon's
-    // live swing angle from _getAttackMotion, so the crescent sits in the blade's
-    // current direction and rotates with it through the swing. The blade angle
-    // already encodes the swing handedness, so no separate mirror flip is needed.
-    // +1.5π keeps the crescent's belly facing outward (away from the wielder).
-    const slashAngle = Number.isFinite(bladeAngle) ? bladeAngle : e.angle;
+    // Blue crescent (Slash02). The sheet reads correctly when rotated to
+    // e.angle + 270° (picked from the rotation-offset preview): the vertical
+    // crescent stands in front with its belly toward the aim. Flip across the
+    // swing axis for handedness, and nestle it close to the body.
+    const flipY = this._visualSwingDirection(e.weapon, e.swingDirection) < 0;
     const reach = weapon.range * (finisher ? 0.95 : 0.85);
     const targetH = reach * (finisher ? 1.45 : 1.2);
     const fwd = reach * (finisher ? 0.4 : 0.35);
-    const cx = scr.x + Math.cos(slashAngle) * fwd;
-    const cy = scr.y + Math.sin(slashAngle) * fwd;
-    this._drawSlashFrames(ctx, 'fx/slash2', SLASH2_FRAMES, 50, cx, cy, targetH, progress, spriteAlpha, slashAngle + Math.PI * 1.5, false);
+    const cx = scr.x + Math.cos(e.angle) * fwd;
+    const cy = scr.y + Math.sin(e.angle) * fwd;
+    this._drawSlashFrames(ctx, 'fx/slash2', SLASH2_FRAMES, 50, cx, cy, targetH, progress, spriteAlpha, e.angle + Math.PI * 1.5, flipY);
   }
 
   _drawGreatswordWave(ctx, scr, angle, zoom) {
@@ -2256,7 +2242,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  _drawHeavyCleave(ctx, scr, e, weapon, alpha, bladeAngle) {
+  _drawHeavyCleave(ctx, scr, e, weapon, alpha) {
     const progress = clamp01(e.progress);
     const charge = clamp01(progress / 0.42);
     const release = progress < 0.42 ? 0 : easeOutCubic((progress - 0.42) / 0.58);
@@ -2286,7 +2272,7 @@ export class Renderer {
     // lands together with the motion instead of leading it.
     const slashDelay = 100 / (e.lifetime || 720);
     const slashProgress = clamp01(Math.max(progress, release * 0.9) - slashDelay);
-    this._drawArcSlash(ctx, scr, { ...e, progress: slashProgress, comboFinisher: true }, weapon, alpha, bladeAngle);
+    this._drawArcSlash(ctx, scr, { ...e, progress: slashProgress, comboFinisher: true }, weapon, alpha);
   }
 
   _drawGreatswordCharge(ctx, scr, e, weapon, alpha) {
@@ -2376,8 +2362,8 @@ export class Renderer {
     ctx.restore();
   }
 
-  _drawScytheSweep(ctx, scr, e, weapon, alpha, bladeAngle) {
-    this._drawArcSlash(ctx, scr, e, weapon, alpha, bladeAngle);
+  _drawScytheSweep(ctx, scr, e, weapon, alpha) {
+    this._drawArcSlash(ctx, scr, e, weapon, alpha);
   }
 
   _drawDaggerStab(ctx, scr, e, weapon, alpha) {
