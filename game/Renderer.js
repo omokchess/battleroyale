@@ -3485,7 +3485,7 @@ export class Renderer {
 
     } else if (effect.type === 'melee_circle' && effect.weapon !== 'axe') {
       const spin = easeOutCubic(Math.min(1, progress / 0.6));
-      weaponAngle = angle + spin * Math.PI * (effect.comboFinisher ? 2.8 : 2.1);
+      weaponAngle = angle - spin * Math.PI * (effect.comboFinisher ? 2.8 : 2.1);
       bodyScale = (effect.comboFinisher ? 2.4 : 1.5) * Math.sin(Math.PI * clamp01(progress));
 
     } else if (effect.weapon === 'sword' && effect.comboFinisher) {
@@ -3503,7 +3503,7 @@ export class Renderer {
         const fadeOut = Math.max(0, 1 - (motionProgress - 0.08) / 0.55);
         lunge = -4 * fadeOut;
         weaponReach = -12 + 24 * t;
-        weaponAngle = angle + readyOffset + t * Math.PI * 2;
+        weaponAngle = angle + readyOffset - t * Math.PI * 2;
         bodyScale = 1.9 * (1 - easeOutCubic(Math.min(1, (motionProgress - 0.08) / 0.92)));
       }
 
