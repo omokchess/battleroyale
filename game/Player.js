@@ -37,7 +37,7 @@ export class Player {
 
     // Cool down tracker
     this.lastAttackTime = 0;
-    this.swingDirection = 1;   // first triggerAttack flips this to -1 (downward first swing)
+    this.swingDirection = -1;   // first triggerAttack flips this to +1 (downward first swing)
     this.gauntletPunchSide = -1;
     this.comboStep = 0;
     this.comboDelayUntil = 0;
