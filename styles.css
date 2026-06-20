@@ -1062,3 +1062,119 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
   box-shadow: inset 0 0 0 1px rgba(69, 243, 255, 0.45);
   font-weight: 700;
 }
+
+/* ============================================================================
+   MEDIEVAL META-UI KIT (Task: 로비/메타 UI — 중세 테마, 에셋팩 9-슬라이스)
+   Reusable wood/parchment components built from the Ninja Adventure "Theme Wood"
+   UI pack (CC0). 9-slice via border-image from the pack's nine_path_* sprites,
+   kept crisp with image-rendering: pixelated. Colors come from the token table
+   in the task spec; if a sprite fails to load, a solid token fill shows instead
+   so the layout never collapses.
+   ============================================================================ */
+:root {
+  --med-board:       #241710;   /* wooden notice board backdrop */
+  --med-board-frame: #5a3d22;
+  --med-parch:       #e8d5a3;   /* parchment panel */
+  --med-parch-hi:    #f0dca2;   /* emphasised parchment (main room) */
+  --med-wood:        #6b4a2b;   /* timber panel frame */
+  --med-chip:        #3a2817;   /* dark wood chip */
+  --med-ink:         #3a2e1f;   /* ink text on parchment */
+  --med-ink-mute:    #8a6f47;
+  --med-ink-desc:    #6b5836;
+  --med-gold:        #d4af37;   /* gilt: borders / index / accent */
+  --med-gold-dk:     #a8842c;
+  --med-iron:        #6b4a2b;
+  --med-steel:       #b8bcc4;
+  --med-blood:       #b32d2d;   /* blood: main action / warning */
+  --ui-wood-panel:  url('/assets/ninja/ui/Theme/Theme%20Wood/nine_path_panel.png');
+  --ui-wood-board:  url('/assets/ninja/ui/Theme/Theme%20Wood/nine_path_bg.png');
+  --ui-wood-cell:   url('/assets/ninja/ui/Theme/Theme%20Wood/inventory_cell.png');
+  --ui-btn:         url('/assets/ninja/ui/Theme/Theme%20Wood/button_normal.png');
+  --ui-btn-hover:   url('/assets/ninja/ui/Theme/Theme%20Wood/button_hover.png');
+  --ui-btn-press:   url('/assets/ninja/ui/Theme/Theme%20Wood/button_pressed.png');
+  --ui-tab-sel:     url('/assets/ninja/ui/Theme/Theme%20Wood/tab_selected.png');
+  --ui-tab-unsel:   url('/assets/ninja/ui/Theme/Theme%20Wood/tab_unselected.png');
+}
+
+/* Wooden board backdrop (the whole lobby sits on this). */
+.med-board {
+  background-color: var(--med-board);
+  background-image:
+    var(--ui-wood-board),
+    radial-gradient(120% 80% at 50% -10%, rgba(212,175,55,0.10), transparent 60%);
+  border-image: var(--ui-wood-board) 5 fill / 14px / 0 round;
+  image-rendering: pixelated;
+}
+
+/* Timber-framed panel (dark wood interior). Fallback fill = dark chip. */
+.med-panel {
+  position: relative;
+  background-color: var(--med-chip);
+  border: 12px solid var(--med-wood);
+  border-image: var(--ui-wood-panel) 5 fill / 12px / 0 round;
+  image-rendering: pixelated;
+}
+
+/* Parchment panel: light interior + ink text. Wood frame from the pack. */
+.med-parch {
+  position: relative;
+  background-color: var(--med-parch);
+  color: var(--med-ink);
+  border: 12px solid var(--med-wood);
+  border-image: var(--ui-wood-panel) 5 fill / 12px / 0 round;
+  image-rendering: pixelated;
+}
+.med-parch--hi { background-color: var(--med-parch-hi); }
+.med-parch, .med-parch * { image-rendering: auto; }     /* keep text smooth */
+.med-parch .med-muted { color: var(--med-ink-mute); }
+.med-parch .med-desc  { color: var(--med-ink-desc); }
+
+/* Dark wood chip (small inset, e.g. a stat row / id tag). */
+.med-chip {
+  background-color: var(--med-chip);
+  color: var(--med-parch);
+  box-shadow: inset 0 0 0 2px rgba(212,175,55,0.22), inset 0 0 0 3px rgba(0,0,0,0.85);
+}
+
+/* Corner ticks (꺾쇠): gold by default, blood for the main action. Flat, square. */
+.med-ticks::before, .med-ticks::after {
+  content: ""; position: absolute; width: 12px; height: 12px; pointer-events: none;
+  border: 2px solid var(--med-gold);
+}
+.med-ticks::before { top: 4px;  left: 4px;  border-right: 0; border-bottom: 0; }
+.med-ticks::after  { bottom: 4px; right: 4px; border-left: 0;  border-top: 0; }
+.med-ticks--blood::before, .med-ticks--blood::after { border-color: var(--med-blood); }
+
+/* Wood button with pressed/hover states from the pack sprites. */
+.med-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: var(--font-sans); color: var(--med-parch);
+  padding: 8px 16px; border: 6px solid transparent;
+  border-image: var(--ui-btn) 3 fill / 8px / 0 round;
+  background-color: var(--med-wood); image-rendering: pixelated;
+  cursor: pointer; text-transform: uppercase; line-height: 1;
+}
+.med-btn:hover { border-image: var(--ui-btn-hover) 3 fill / 8px / 0 round; }
+.med-btn:active { border-image: var(--ui-btn-press) 3 fill / 8px / 0 round; transform: translateY(1px); }
+.med-btn--blood { color: #fff; box-shadow: inset 0 0 0 2px var(--med-blood); }
+.med-btn > * { image-rendering: auto; }
+
+/* Wood tab (category / mobile nav). */
+.med-tab {
+  font-family: var(--font-sans); color: var(--med-parch);
+  border: 6px solid transparent;
+  border-image: var(--ui-tab-unsel) 4 fill / 8px 8px 0 8px / 0 round;
+  background-color: var(--med-chip); image-rendering: pixelated; cursor: pointer;
+}
+.med-tab[aria-selected="true"], .med-tab.med-tab--active {
+  border-image: var(--ui-tab-sel) 4 fill / 8px 8px 0 8px / 0 round;
+  color: #fff;
+}
+
+/* Inventory / item slot. */
+.med-cell {
+  background-color: var(--med-chip);
+  border: 8px solid transparent;
+  border-image: var(--ui-wood-cell) 5 fill / 8px / 0 round;
+  image-rendering: pixelated;
+}
