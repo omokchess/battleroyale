@@ -1502,6 +1502,9 @@ function setupLobbyHub() {
   const clickTab = (tab) => document.querySelector(`.lobby-tab[data-lobby-tab="${tab}"]`)?.click();
   const setText = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.textContent = val; };
 
+  const shell = document.getElementById('moduleShell');
+  const shellBody = document.getElementById('moduleBody');
+
   function showHub() {
     // Mirror the live account values into the parchment profile card.
     const name = document.getElementById('accountName')?.textContent?.trim();
@@ -1509,16 +1512,30 @@ function setupLobbyHub() {
     setText('hubCoins', document.getElementById('accountCoins')?.textContent?.trim() || '0');
     hub.classList.remove('hidden');
     layout.classList.add('hidden');
+    shell?.classList.add('hidden');
     back?.classList.add('hidden');
     document.getElementById('lobbyTabBar')?.classList.add('hidden');
     lobbyMenu.classList.remove('lobby-module-mode');
   }
   window.showLobbyHub = showHub;
 
+  // Modules built into the common parchment shell (header + body).
+  function openShellModule(crumbKo, crumbEn, builder) {
+    setText('moduleCrumbKo', crumbKo);
+    setText('moduleCrumbEn', crumbEn);
+    setText('moduleCoins', document.getElementById('accountCoins')?.textContent?.trim() || '0');
+    hub.classList.add('hidden');
+    layout.classList.add('hidden');
+    shell?.classList.remove('hidden');
+    if (shellBody) { shellBody.innerHTML = ''; builder?.(shellBody); }
+  }
+
   function openModule(mod) {
     if (mod === 'shop') { document.getElementById('shopBtn')?.click(); return; }
     if (mod === 'rank') { document.getElementById('rankBtn')?.click(); return; }
-    const tab = mod === 'armory' ? 'weapon' : mod === 'arena' ? 'join' : mod === 'create' ? 'create' : 'mypage';
+    if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto); return; }
+    // arena/create/options still reveal the existing panels (single-panel mode).
+    const tab = mod === 'arena' ? 'join' : mod === 'create' ? 'create' : 'mypage';
     hub.classList.add('hidden');
     layout.classList.remove('hidden');
     back?.classList.remove('hidden');
@@ -1532,7 +1549,140 @@ function setupLobbyHub() {
     if (btn) openModule(btn.dataset.module);
   });
   back?.addEventListener('click', showHub);
+  document.getElementById('moduleBackBtn')?.addEventListener('click', showHub);
   showHub();
+}
+
+/* ===== [01] ARMORY module — parchment list + data-driven detail =====
+   Reads weapon stats straight from Weapons.js (no hardcoded numbers); the KO
+   names come from the existing weapon cards; 장착하기 just drives the existing
+   .weapon-card selection so the match-start read is untouched. */
+const ARMORY_SPECIAL = new Set(['gauntlet', 'guardian', 'minebag', 'flamethrower']);
+function armoryCategory(w) {
+  if (ARMORY_SPECIAL.has(w)) return '특수';
+  return (Weapons[w]?.type === 'projectile') ? '원거리' : '근접';
+}
+function armoryStatusTags(w) {
+  const cfg = Weapons[w] || {};
+  const text = `${cfg.description || ''} ${cfg.skill || ''} ${Object.keys(cfg).join(' ')}`;
+  const tags = [];
+  if (cfg.onHitBleed || cfg.sweetBleed || cfg.bleed || /출혈/.test(text)) tags.push(['출혈', '#b32d2d']);
+  if (w === 'flamethrower' || /화상|점화|불태|화염 장판/.test(text)) tags.push(['화상', '#d2691e']);
+  if (cfg.slow || /둔화/.test(text)) tags.push(['둔화', '#3a6ea5']);
+  if (/기절/.test(text)) tags.push(['기절', '#8a6f47']);
+  return tags;
+}
+function armoryWeaponName(w) {
+  const card = document.querySelector(`.weapon-card[data-weapon="${w}"] span`);
+  return card?.textContent?.trim() || w;
+}
+function buildArmoryInto(body) {
+  const cards = [...document.querySelectorAll('.weapon-card')];
+  const weapons = cards.map(c => c.dataset.weapon).filter(w => w && Weapons[w]);
+  // Normalisers for the stat bars (compare across the whole arsenal).
+  const dps = (w) => { const c = Weapons[w]; if (!Number.isFinite(c.damage)) return 0; return c.automaticAttack === false ? c.damage : c.damage / Math.max(0.2, (c.cooldown || 600) / 1000); };
+  const finiteRange = (w) => Number.isFinite(Weapons[w].range) ? Weapons[w].range : 0;
+  const max = (fn) => Math.max(...weapons.map(fn), 1);
+  const maxDps = max(dps), maxHp = max(w => Weapons[w].maxHp || 0), maxMove = max(w => Weapons[w].moveSpeed || 1), maxRange = max(finiteRange);
+
+  body.innerHTML = `
+    <div class="armory-grid">
+      <div class="med-parch relative p-3">
+        <div class="armory-filter" id="armoryFilter">
+          <button class="on" data-cat="전체">전체</button><button data-cat="근접">근접</button>
+          <button data-cat="원거리">원거리</button><button data-cat="특수">특수</button>
+        </div>
+        <div class="armory-chips" id="armoryChips"></div>
+        <div class="font-mono text-[10px] med-muted mt-2 text-center">▼ ${weapons.length}종 · ⚔ ${weapons.filter(w=>armoryCategory(w)==='근접').length}</div>
+      </div>
+      <div class="med-parch med-parch--hi med-ticks relative p-4" id="armoryDetail"></div>
+    </div>`;
+
+  const chipsEl = body.querySelector('#armoryChips');
+  const detailEl = body.querySelector('#armoryDetail');
+  let activeCat = '전체';
+  let selected = document.querySelector('.weapon-card.selected')?.dataset.weapon || weapons[0];
+
+  function renderChips() {
+    chipsEl.innerHTML = weapons
+      .filter(w => activeCat === '전체' || armoryCategory(w) === activeCat)
+      .map(w => `<button class="armory-chip ${w === selected ? 'on' : ''}" data-w="${w}">
+        <span class="dot" style="background:${Weapons[w].color || '#caa84a'}"></span>${armoryWeaponName(w)}</button>`).join('');
+  }
+  function bar(label, val, frac, valText) {
+    const pct = Math.max(4, Math.min(100, Math.round(frac * 100)));
+    return `<div class="armory-stat"><span class="lbl">${label}</span><span class="track"><span class="fill" style="width:${pct}%;background:var(--med-blood)"></span></span><span class="val">${valText}</span></div>`;
+  }
+  function renderDetail() {
+    const w = selected, c = Weapons[w];
+    const skins = accountUI.getEquippedWeaponSkins?.() || {};
+    const skinKey = w === 'pistols' ? 'crossbow' : w;
+    const tags = armoryStatusTags(w).map(([t, col]) => `<span class="armory-tag" style="color:${col}">${t}</span>`).join(' ');
+    const auto = c.automaticAttack !== false;
+    const dmgLabel = auto ? '피해/초' : '피해';
+    const dmgVal = auto ? dps(w) : c.damage;
+    const parsed = {};
+    (c.skill || '').split('\n').forEach(line => {
+      const m = line.match(/^\s*(LMB|F|R)\s*:\s*(.+)$/);
+      if (m) parsed[m[1]] = m[2].split('·')[0].trim();
+    });
+    const abilities = [['기본', auto ? `자동 평타 · 쿨타임 ${(c.cooldown/1000).toFixed(2)}초` : '평타 없음 (차징형)', 'wood']];
+    if (parsed.LMB) abilities.push(['좌클릭', parsed.LMB, 'wood']);
+    if (parsed.F) abilities.push(['F', parsed.F, 'blood']);
+    if (parsed.R) abilities.push(['R', parsed.R, 'blood']);
+    const rangeText = Number.isFinite(c.range) ? `${c.range}` : '벽까지';
+    detailEl.innerHTML = `
+      <div class="armory-head">
+        <div class="armory-sprite med-cell">${weaponIconMarkup(w, { skin: skins[skinKey] || null })}</div>
+        <div class="min-w-0">
+          <div class="font-bold text-lg leading-tight">${armoryWeaponName(w)}</div>
+          <div class="font-mono text-[10px] med-muted">${w.toUpperCase()} · ${armoryCategory(w)}</div>
+          <div class="mt-1 flex gap-1 flex-wrap">${tags}</div>
+        </div>
+      </div>
+      <div class="mt-3">
+        ${bar(dmgLabel, dmgVal, (auto ? dps(w)/maxDps : c.damage/maxDps), Number.isFinite(dmgVal) ? Math.round(dmgVal) : '∞')}
+        ${bar('체력', c.maxHp, (c.maxHp||0)/maxHp, c.maxHp ?? '-')}
+        ${bar('이동', c.moveSpeed, (c.moveSpeed||1)/maxMove, (c.moveSpeed ?? 1).toFixed(2))}
+        ${bar('사거리', finiteRange(w), Number.isFinite(c.range) ? finiteRange(w)/maxRange : 1, rangeText)}
+      </div>
+      <div class="font-mono text-[11px] med-desc mt-3 leading-snug" style="border-top:1px dashed var(--med-wood);padding-top:8px">${c.description || ''}</div>
+      <div class="mt-3 space-y-0.5">
+        ${abilities.map(([k, d, cls]) => `<div class="armory-abil"><span class="armory-key ${cls}">${k}</span><span>${d}</span></div>`).join('')}
+      </div>
+      <div class="mt-3 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-[10px] med-muted">스킨</span>
+          ${['ember','frost','void'].map(s => {
+            const col = s === 'ember' ? '#d2691e' : s === 'frost' ? '#3a6ea5' : '#6b3fa0';
+            const on = (skins[skinKey] === s) ? 'on' : '';
+            return `<span class="armory-skin ${on}" title="${s}" style="background:${col}"></span>`;
+          }).join('')}
+        </div>
+        <button id="armoryEquip" class="med-btn med-btn--blood font-mono text-xs px-5 py-2">장착하기</button>
+      </div>
+      <div id="armoryEquipNote" class="font-mono text-[10px] med-muted mt-2 hidden">다음 부활 시 적용됩니다.</div>`;
+
+    detailEl.querySelector('#armoryEquip')?.addEventListener('click', () => {
+      document.querySelector(`.weapon-card[data-weapon="${w}"]`)?.click();
+      detailEl.querySelector('#armoryEquipNote')?.classList.remove('hidden');
+      const b = detailEl.querySelector('#armoryEquip'); if (b) b.textContent = '장착됨 ✓';
+    });
+    detailEl.querySelectorAll('.armory-skin').forEach(sw => sw.addEventListener('click', () => document.getElementById('shopBtn')?.click()));
+  }
+
+  chipsEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-w]'); if (!b) return;
+    selected = b.dataset.w; renderChips(); renderDetail();
+  });
+  body.querySelector('#armoryFilter').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cat]'); if (!b) return;
+    activeCat = b.dataset.cat;
+    body.querySelectorAll('#armoryFilter button').forEach(x => x.classList.toggle('on', x === b));
+    renderChips();
+  });
+  renderChips();
+  renderDetail();
 }
 
 /**

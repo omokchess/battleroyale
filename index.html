@@ -151,6 +151,18 @@
         </div>
       </div>
 
+      <!-- ===== COMMON MODULE SHELL (header + body) reused by module screens ===== -->
+      <div id="moduleShell" class="hidden w-full max-w-[940px] my-auto flex flex-col gap-3">
+        <div class="med-panel relative flex items-center justify-between gap-3 px-3 py-2.5">
+          <div class="flex items-center gap-3 min-w-0">
+            <button id="moduleBackBtn" type="button" class="med-btn font-mono text-[11px] px-3 py-1.5">← 게시판</button>
+            <span class="font-mono text-[11px] truncate" style="color:var(--med-gold)">로비 › <span id="moduleCrumbKo">무기고</span> <span style="color:var(--med-ink-mute)">/ <span id="moduleCrumbEn">ARMORY</span></span></span>
+          </div>
+          <span class="med-chip font-mono text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0" style="color:var(--med-gold)"><span>◈</span><span id="moduleCoins">0</span></span>
+        </div>
+        <div id="moduleBody"></div>
+      </div>
+
       <button id="lobbyBack" type="button" class="med-btn hidden fixed top-3 left-3 z-[58] font-mono text-[11px] px-3 py-2">◄ 로비로</button>
 
       <div id="lobbyLayout" class="hidden w-full max-w-[1660px] flex flex-col lg:flex-row gap-4 items-stretch my-auto">
