@@ -626,7 +626,7 @@ function _previewGreatswordChargeRelease(p, now) {
   const chargeT = Math.min(1, held / (sk.chargeMaxMs || 1000));
   _previewFire(p, 'greatsword', {
     ...Weapons.greatsword,
-    type: sk.type || 'melee_blade_sweep',
+    type: 'melee_heavy_arc',   // same effect the in-game charged release renders
     range: (sk.range || 128) * (0.38 + 0.62 * chargeT),
     angle: sk.angle || 210,
     bladeHalfWidth: sk.bladeHalfWidth,

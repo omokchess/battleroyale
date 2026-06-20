@@ -2331,7 +2331,10 @@ export class Renderer {
     // motion. Delay the slash by 100ms (converted to progress units) so the arc
     // lands together with the motion instead of leading it.
     const slashDelay = 100 / (e.lifetime || 720);
-    const slashProgress = clamp01(Math.max(progress, release * 0.9) - slashDelay);
+    const rawSlash = clamp01(Math.max(progress, release * 0.9) - slashDelay);
+    // Skip the first of the 6 slash frames on the cleave — it reads as a stray
+    // sliver. Remap progress into [1/6, 1] so playback starts on frame 1.
+    const slashProgress = (1 + 5 * rawSlash) / 6;
     this._drawArcSlash(ctx, scr, { ...e, progress: slashProgress, comboFinisher: true }, weapon, alpha);
   }
 
