@@ -1505,7 +1505,29 @@ function setupLobbyHub() {
   const shell = document.getElementById('moduleShell');
   const shellBody = document.getElementById('moduleBody');
 
+  // Shop/rank: relocate the existing account-ui modal card into the shell (its
+  // listeners + shopBody/leaderboardBody IDs move with the subtree, so the
+  // Firebase-wired purchase/ranking logic is untouched). Restored on leave.
+  let movedCard = null;
+  function restoreMovedCard() {
+    if (!movedCard) return;
+    movedCard.card.classList.remove('med-moved-card');
+    movedCard.modal.appendChild(movedCard.card);
+    movedCard.modal.classList.add('hidden');
+    movedCard = null;
+  }
+  function openShellMove(ko, en, modalId, triggerId) {
+    openShellModule(ko, en, null);
+    const modal = document.getElementById(modalId);
+    document.getElementById(triggerId)?.click();   // account-ui renders + shows it
+    const card = modal?.firstElementChild;
+    if (card && shellBody) { card.classList.add('med-moved-card'); shellBody.appendChild(card); }
+    modal?.classList.add('hidden');
+    movedCard = { card, modal };
+  }
+
   function showHub() {
+    restoreMovedCard();
     if (window.__clearArenaTimer) window.__clearArenaTimer();
     // Mirror the live account values into the parchment profile card.
     const name = document.getElementById('accountName')?.textContent?.trim();
@@ -1522,6 +1544,7 @@ function setupLobbyHub() {
 
   // Modules built into the common parchment shell (header + body).
   function openShellModule(crumbKo, crumbEn, builder) {
+    restoreMovedCard();
     if (window.__clearArenaTimer) window.__clearArenaTimer();
     setText('moduleCrumbKo', crumbKo);
     setText('moduleCrumbEn', crumbEn);
@@ -1533,8 +1556,8 @@ function setupLobbyHub() {
   }
 
   function openModule(mod) {
-    if (mod === 'shop') { document.getElementById('shopBtn')?.click(); return; }
-    if (mod === 'rank') { document.getElementById('rankBtn')?.click(); return; }
+    if (mod === 'shop') { openShellMove('상점', 'SHOP', 'shopModal', 'shopBtn'); return; }
+    if (mod === 'rank') { openShellMove('랭킹', 'RANK', 'leaderboardModal', 'rankBtn'); return; }
     if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto); return; }
     if (mod === 'options') { openShellModule('설정', 'OPTIONS', buildOptionsInto); return; }
     if (mod === 'create') { openShellModule('방 제작', 'CREATE', buildCreateInto); return; }
