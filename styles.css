@@ -1247,3 +1247,12 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 .create-pill { font-size: 12px; padding: 5px 11px; cursor: pointer; background: transparent; border: 1px solid var(--med-wood); color: var(--med-ink); font-family: var(--font-sans); }
 .create-pill:hover { background: var(--med-parch-hi); }
 .create-pill.on { border: 2px solid var(--med-gold); background: var(--med-blood); color: #f0dca2; }
+
+/* ===== [02] Arena module ===== */
+.arena-grid { display: grid; grid-template-columns: 264px 1fr; gap: 12px; align-items: start; }
+@media (max-width: 760px) { .arena-grid { grid-template-columns: 1fr; } }
+.arena-list { max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
+.arena-card { text-align: left; background: var(--med-parch); border: 1px solid var(--med-wood); padding: 9px; cursor: pointer; }
+.arena-card:hover { background: var(--med-parch-hi); }
+.arena-card.on { border: 2px solid var(--med-gold); background: #f4ecc8; }
+.arena-badge { display: inline-block; font-size: 10px; font-family: var(--font-mono); padding: 1px 6px; background: #e3cf98; border: 1px solid #b89a52; color: #6b5320; }

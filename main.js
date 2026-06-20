@@ -1506,6 +1506,7 @@ function setupLobbyHub() {
   const shellBody = document.getElementById('moduleBody');
 
   function showHub() {
+    if (window.__clearArenaTimer) window.__clearArenaTimer();
     // Mirror the live account values into the parchment profile card.
     const name = document.getElementById('accountName')?.textContent?.trim();
     setText('hubName', name && name !== '-' ? name : (document.getElementById('nicknameInput')?.value || '플레이어'));
@@ -1521,6 +1522,7 @@ function setupLobbyHub() {
 
   // Modules built into the common parchment shell (header + body).
   function openShellModule(crumbKo, crumbEn, builder) {
+    if (window.__clearArenaTimer) window.__clearArenaTimer();
     setText('moduleCrumbKo', crumbKo);
     setText('moduleCrumbEn', crumbEn);
     setText('moduleCoins', document.getElementById('accountCoins')?.textContent?.trim() || '0');
@@ -1536,14 +1538,7 @@ function setupLobbyHub() {
     if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto); return; }
     if (mod === 'options') { openShellModule('설정', 'OPTIONS', buildOptionsInto); return; }
     if (mod === 'create') { openShellModule('방 제작', 'CREATE', buildCreateInto); return; }
-    // arena still reveals the existing room-list panel (single-panel mode).
-    const tab = 'join';
-    hub.classList.add('hidden');
-    layout.classList.remove('hidden');
-    back?.classList.remove('hidden');
-    document.getElementById('lobbyTabBar')?.classList.remove('hidden');
-    lobbyMenu.classList.add('lobby-module-mode');
-    clickTab(tab);
+    if (mod === 'arena') { openShellModule('결투장', 'ARENA', buildArenaInto); return; }
   }
 
   modules?.addEventListener('click', (e) => {
@@ -1827,6 +1822,88 @@ function buildCreateInto(body) {
   body.querySelector('#createHost')?.addEventListener('click', () => { mirrorCode(); document.getElementById('hostBtn')?.click(); });
   body.querySelector('#createDummy')?.addEventListener('click', () => { mirrorCode(); document.getElementById('dummyBtn')?.click(); });
   renderSummary();
+}
+
+/* ===== [02] ARENA module — live room list + detail + join ===== */
+const ARENA_SIZE_KO = { tiny: '초소형', small: '소형', medium: '중형', large: '대형', huge: '초대형' };
+const COVER_KO = { none: '없음', few: '적음', some: '보통', many: '많음' };
+const RATE_KO = { fast: '빠름', normal: '보통', slow: '느림' };
+function buildArenaInto(body) {
+  body.innerHTML = `
+    <div class="arena-grid">
+      <div class="med-parch relative p-3">
+        <div class="flex gap-1.5 mb-2.5">
+          <input id="arenaCode" class="opt-input flex-1" maxlength="10" placeholder="방 코드 입장" style="text-transform:uppercase" />
+          <button id="arenaJoinCode" class="med-btn font-mono text-[11px] px-3">입장</button>
+          <button id="arenaRefresh" class="med-btn font-mono text-[11px] px-2" aria-label="새로고침">⟳</button>
+        </div>
+        <div id="arenaList" class="arena-list"></div>
+      </div>
+      <div id="arenaDetail" class="med-parch med-parch--hi med-ticks relative p-4"></div>
+    </div>`;
+
+  const listEl = body.querySelector('#arenaList');
+  const detailEl = body.querySelector('#arenaDetail');
+  let selectedCode = null;
+  let rooms = [];
+
+  function refresh() {
+    rooms = roomRegistry.list() || [];
+    if (selectedCode && !rooms.some(r => r.code === selectedCode)) selectedCode = null;
+    if (!selectedCode && rooms.length) selectedCode = rooms[0].code;
+    renderList(); renderDetail();
+  }
+  function renderList() {
+    if (!rooms.length) {
+      listEl.innerHTML = `<div class="text-center py-10 med-muted font-mono text-[11px]">진행 중인 방이 없습니다.<br>방 제작에서 개설해 보세요.</div>`;
+      return;
+    }
+    listEl.innerHTML = rooms.map(r => {
+      const cfg = Weapons[r.weapon] || Weapons.sword;
+      const badges = roomConfigBadges(r.config).map(b => `<span class="arena-badge">${escapeHtml(b)}</span>`).join('');
+      const sel = r.code === selectedCode ? 'on' : '';
+      const dummy = r.dummy ? '<span class="arena-badge" style="border-color:var(--med-blood);color:#7a3326">더미방</span>' : '';
+      return `<button class="arena-card ${sel}" data-code="${escapeHtml(r.code)}">
+        <div class="flex justify-between items-center mb-0.5"><span class="font-mono text-sm" style="color:var(--med-ink);letter-spacing:1px">${escapeHtml(r.code)}</span><span class="font-mono text-[12px]" style="color:var(--med-ink)">${r.players ?? 1}명</span></div>
+        <div class="med-muted text-[11px] mb-1">방장 · ${escapeHtml(r.host || r.code)} · <span style="color:${cfg.color}">${cfg.name}</span></div>
+        <div class="flex gap-1 flex-wrap">${dummy}${badges}</div>
+      </button>`;
+    }).join('');
+  }
+  function renderDetail() {
+    const r = rooms.find(x => x.code === selectedCode);
+    if (!r) { detailEl.innerHTML = `<div class="med-muted font-mono text-[11px] text-center py-12">방을 선택하세요.</div>`; return; }
+    const cfg = Weapons[r.weapon] || Weapons.sword;
+    const c = normalizeRoomConfig(r.config);
+    const rows = [['경기장', ARENA_SIZE_KO[c.arenaSize] || c.arenaSize], ['자기장', c.storm ? '켜짐' : '꺼짐'],
+      ['엄폐물', COVER_KO[c.cover] || c.cover], ['회복', c.healing ? `켜짐 · ${RATE_KO[c.healingRate] || ''}` : '꺼짐']];
+    detailEl.innerHTML = `
+      <div class="flex justify-between items-start mb-1">
+        <span class="font-mono" style="color:var(--med-ink);font-size:22px;letter-spacing:2px">${escapeHtml(r.code)}</span>
+        <span class="arena-badge" style="${r.dummy ? 'border-color:var(--med-blood);color:#7a3326' : 'border-color:#8aa050;color:#4a5a20;background:#d7e3b8'}">${r.dummy ? '연습방' : '대기 중'}</span>
+      </div>
+      <div class="med-muted text-[12px] mb-3">방장 · ${escapeHtml(r.host || r.code)} · 무기 <span style="color:${cfg.color}">${cfg.name}</span> · 인원 ${r.players ?? 1}</div>
+      <div style="border-top:1px dashed var(--med-wood);padding-top:10px;margin-bottom:14px">
+        <div style="color:var(--med-gold-dk);font-size:11px;letter-spacing:1px;margin-bottom:7px">방 설정</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12px">
+          ${rows.map(([k, v]) => `<div class="flex justify-between"><span class="med-muted">${k}</span><span style="color:var(--med-ink)">${v}</span></div>`).join('')}
+        </div>
+      </div>
+      <button id="arenaJoin" class="med-btn med-btn--blood w-full font-mono text-sm py-2.5">결투장 입장</button>`;
+    detailEl.querySelector('#arenaJoin')?.addEventListener('click', () => startJoin(r.code));
+  }
+
+  listEl.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-code]'); if (!card) return;
+    selectedCode = card.dataset.code; renderList(); renderDetail();
+  });
+  body.querySelector('#arenaRefresh')?.addEventListener('click', refresh);
+  const codeInput = body.querySelector('#arenaCode');
+  body.querySelector('#arenaJoinCode')?.addEventListener('click', () => { const v = codeInput.value.trim(); if (v) startJoin(v); });
+
+  refresh();
+  const timer = setInterval(refresh, 2500);
+  window.__clearArenaTimer = () => { clearInterval(timer); window.__clearArenaTimer = null; };
 }
 
 /**
