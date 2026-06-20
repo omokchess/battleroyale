@@ -1516,16 +1516,17 @@ export class Renderer {
    */
   _drawCharacterSprite(ctx, scr, player, radius, isLocal) {
     if (!this.atlas) return false;
-    const skin = this._charSkinKey(player);
-    const sheet = this.atlas.get(skin);
-    if (!sheet || !sheet.naturalWidth) return false;
 
-    // Direction row from aim angle (y-down). right/down/left/up.
-    const a = ((player.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    let row = CHAR_ROW.right;
-    if (a >= Math.PI * 0.25 && a < Math.PI * 0.75) row = CHAR_ROW.down;
-    else if (a >= Math.PI * 0.75 && a < Math.PI * 1.25) row = CHAR_ROW.left;
-    else if (a >= Math.PI * 1.25 && a < Math.PI * 1.75) row = CHAR_ROW.up;
+    // All characters now share the side-view run sheet (RunBoy.png): 6 frames in
+    // a single horizontal strip. The sprite faces LEFT; we flip horizontally when
+    // the player faces right. Up/down has no dedicated art, so it falls back to
+    // the horizontal facing (left when aiming straight up/down-ish).
+    const runSheet = this.atlas.get('char/run');
+    if (!runSheet || !runSheet.naturalWidth) return false;
+
+    const RUN_FRAMES = 6;
+    const cellW = runSheet.naturalWidth / RUN_FRAMES;
+    const cellH = runSheet.naturalHeight;
 
     // Walk frame: advance only while the player is moving.
     const now = Date.now();
@@ -1535,17 +1536,24 @@ export class Renderer {
     let anim = this._charAnim[player.id];
     if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now };
     if (moving) {
-      if (now - anim.at > 130) { anim.frame = (anim.frame + 1) % CHAR_COLS; anim.at = now; }
+      if (now - anim.at > 110) { anim.frame = (anim.frame + 1) % RUN_FRAMES; anim.at = now; }
     } else { anim.frame = 0; anim.at = now; }
-    const col = anim.frame;
+    const sx = anim.frame * cellW;
 
-    const sx = col * CHAR_FRAME, sy = row * CHAR_FRAME;
-    const size = Math.round(radius * 2.7);
-    const dx = Math.round(scr.x - size / 2);
-    const dy = Math.round(scr.y - size / 2);
+    // Facing: sprite art runs left, so flip when aiming to the right half.
+    const faceRight = Math.cos(player.angle) > 0;
+
+    // Keep the body footprint similar to before but preserve the tall aspect.
+    const drawW = radius * 2.8;
+    const drawH = drawW * (cellH / cellW);
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(sheet, sx, sy, CHAR_FRAME, CHAR_FRAME, dx, dy, size, size);
+    ctx.save();
+    // Anchor the sprite's feet a little below the player dot (top-down footing).
+    ctx.translate(scr.x, scr.y - drawH * 0.12);
+    if (faceRight) ctx.scale(-1, 1);
+    ctx.drawImage(runSheet, sx, 0, cellW, cellH, -drawW / 2, -drawH / 2, drawW, drawH);
+    ctx.restore();
     ctx.imageSmoothingEnabled = prevSmooth;
     return true;
   }
