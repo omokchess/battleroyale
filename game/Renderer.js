@@ -1525,23 +1525,28 @@ export class Renderer {
     if (!runSheet || !runSheet.naturalWidth) return false;
 
     const RUN_FRAMES = 6;
+    const IDLE_FRAME = 5;      // legs most together — reads as a standing pose
     const cellW = runSheet.naturalWidth / RUN_FRAMES;
     const cellH = runSheet.naturalHeight;
 
-    // Walk frame: advance only while the player is moving.
+    // Walk frame + facing both come from ACTUAL movement (position delta), not the
+    // aim angle — a side-view runner should face where it walks, and flip the
+    // instant the move direction flips. Idle / vertical-only keeps the last facing.
     const now = Date.now();
     const prev = this._charPrev[player.id];
-    const moving = prev ? (Math.abs(prev.x - player.x) + Math.abs(prev.y - player.y)) > 0.4 : false;
+    const dxMove = prev ? player.x - prev.x : 0;
+    const moving = prev ? (Math.abs(dxMove) + Math.abs(player.y - prev.y)) > 0.4 : false;
     this._charPrev[player.id] = { x: player.x, y: player.y };
     let anim = this._charAnim[player.id];
-    if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now };
+    if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now, faceRight: false };
+    if (Math.abs(dxMove) > 0.05) anim.faceRight = dxMove > 0;
     if (moving) {
       if (now - anim.at > 110) { anim.frame = (anim.frame + 1) % RUN_FRAMES; anim.at = now; }
-    } else { anim.frame = 0; anim.at = now; }
+    } else { anim.frame = IDLE_FRAME; anim.at = now; }
     const sx = anim.frame * cellW;
 
-    // Facing: sprite art runs left, so flip when aiming to the right half.
-    const faceRight = Math.cos(player.angle) > 0;
+    // Sprite art runs facing left; flip when moving right.
+    const faceRight = anim.faceRight;
 
     // Keep the body footprint similar to before but preserve the tall aspect.
     const drawW = radius * 2.8;
