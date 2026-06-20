@@ -122,6 +122,11 @@ export async function getSession() {
   return { user: firebaseAuth.currentUser };
 }
 
+/** Google account profile photo URL (null for id/password logins). */
+export function getPhotoURL() {
+  return firebaseAuth?.currentUser?.photoURL || null;
+}
+
 export function onAuthChange(cb) {
   if (!firebaseAuth) return () => {};
   return onAuthStateChanged(firebaseAuth, user => {

@@ -10,6 +10,7 @@ import {
   onAuthChange,
   fetchMyProfile,
   isFirebaseConfigured,
+  getPhotoURL,
 } from '../firebase/account.js';
 import {
   fetchLeaderboard,
@@ -50,8 +51,8 @@ let activeSkinWeapon = 'sword'; // 무기 스킨 탭에서 선택된 무기
 
 const WEAPON_KO = {
   axe: '도끼', bow: '활', chakram: '부메랑', crossbow: '쇠뇌', dagger: '단검',
-  flamethrower: '화염 지팡이', greatsword: '대검', guardian: '디펜더',
-  hammer: '망치', harpoon: '작살', katana: '커틀레스', magicstaff: '마법봉',
+  flamethrower: '불지팡이', greatsword: '대검', guardian: '디펜더',
+  hammer: '망치', harpoon: '작살', katana: '커틀레스', magicstaff: '지팡이',
   rapier: '레이피어', scythe: '낫', sniper: '강궁', spear: '창', sword: '검',
 };
 
@@ -108,6 +109,16 @@ export function getEquippedCostume() {
 /** 로비 닉네임 입력 기본값 */
 export function getUsername() {
   return profile?.username || '';
+}
+
+/** Google 프로필 사진 URL (id/비번 로그인은 null) */
+export function getAvatarUrl() {
+  return getPhotoURL();
+}
+
+/** 누적 처치 수 (티어 산출용) */
+export function getTotalKills() {
+  return profile?.total_kills || 0;
 }
 
 /**

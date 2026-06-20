@@ -183,7 +183,7 @@ export const Weapons = {
     color: '#f43f5e'
   },
   magicstaff: {
-    name: '마법 지팡이',
+    name: '지팡이',
     damage: 40,             // fireball direct (display)
     maxHp: 95,
     cooldown: 2000,
@@ -288,7 +288,7 @@ export const Weapons = {
     color: '#f59e0b'
   },
   flamethrower: {
-    name: '화염 지팡이',
+    name: '불지팡이',
     damage: 7,              // per tick (5 ticks/s → DPS 35)
     maxHp: 130,
     cooldown: 200,          // tick reference (no manual swing)

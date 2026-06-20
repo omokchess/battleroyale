@@ -75,7 +75,7 @@
             <span class="med-chip font-mono text-xs px-3 py-1.5 inline-flex items-center gap-1.5" style="color:var(--med-gold)">
               <span style="color:var(--med-gold)">◈</span><span id="hubCoins">0</span>
             </span>
-            <span class="med-chip font-mono text-xs px-3 py-1.5" style="color:var(--med-steel)">금장 III</span>
+            <span id="hubTier" class="med-chip font-mono text-xs px-3 py-1.5" style="color:var(--med-gold)">금장 III</span>
           </div>
         </div>
 
@@ -89,8 +89,9 @@
           <!-- Profile room -->
           <div class="med-parch med-parch--hi med-ticks relative flex flex-col p-4">
             <div class="font-mono text-[10px] uppercase mb-2 med-muted">용병</div>
-            <div class="med-chip w-full max-w-[160px] mx-auto aspect-square flex items-center justify-center mb-3">
-              <svg class="w-12 h-12" viewBox="0 0 24 24" fill="none" stroke="var(--med-parch)" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.4-4.1 4.2-6 8-6s6.6 1.9 8 6"/></svg>
+            <div class="med-chip w-full max-w-[160px] mx-auto aspect-square flex items-center justify-center mb-3 overflow-hidden">
+              <img id="hubAvatar" class="hidden w-full h-full object-cover" alt="프로필" referrerpolicy="no-referrer" />
+              <svg id="hubAvatarFallback" class="w-12 h-12" viewBox="0 0 24 24" fill="none" stroke="var(--med-parch)" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.4-4.1 4.2-6 8-6s6.6 1.9 8 6"/></svg>
             </div>
             <div class="font-bold text-base leading-tight" id="hubName">플레이어</div>
             <div class="font-mono text-[10px] med-muted mb-3">기사번호 <span id="hubKnightNo">P-0451</span></div>
@@ -361,7 +362,7 @@
                     <circle cx="17" cy="6" r="3" />
                   </svg>
                 </div>
-                <span class="font-mono text-[9px] text-gray-400 capitalize">마법 지팡이</span>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">지팡이</span>
               </button>
 
               <button data-weapon="sniper" class="weapon-card relative flex flex-col items-center justify-center p-2 bg-[#14100b] border-2 border-gray-600 hover:border-[#e8d5a3] transition-all cursor-pointer">
@@ -436,7 +437,7 @@
                     <path d="M3 14h6l3-3 4 2 5-3M3 18h7M12 11c0-2 2-3 1-6 3 2 4 5 2 8" />
                   </svg>
                 </div>
-                <span class="font-mono text-[9px] text-gray-400 capitalize">화염 지팡이</span>
+                <span class="font-mono text-[9px] text-gray-400 capitalize">불지팡이</span>
               </button>
 
             </div>

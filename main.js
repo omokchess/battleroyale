@@ -1492,6 +1492,20 @@ function setupLobbyTabs() {
  * panel in single-panel "module mode" by driving the same lobby-tab switch the
  * mobile nav already uses — so no account/matchmaking hook is moved or rewired.
  */
+// Kills → tier ladder (금장 = gold). Each tier splits into III/II/I by progress.
+function tierFromKills(kills) {
+  const T = [
+    { n: '목장', min: 0, c: '#8a6f47' }, { n: '철장', min: 10, c: '#9aa0a8' },
+    { n: '동장', min: 30, c: '#b87333' }, { n: '은장', min: 60, c: '#c0c0c0' },
+    { n: '금장', min: 120, c: '#d4af37' }, { n: '백금장', min: 300, c: '#7fd4d4' },
+  ];
+  let i = 0; for (let k = 0; k < T.length; k++) if (kills >= T[k].min) i = k;
+  const cur = T[i], next = T[i + 1];
+  const span = (next ? next.min : cur.min * 2 + 10) - cur.min;
+  const prog = Math.min(0.999, Math.max(0, (kills - cur.min) / Math.max(1, span)));
+  return { label: `${cur.n} ${['III', 'II', 'I'][Math.floor(prog * 3)]}`, color: cur.c };
+}
+
 function setupLobbyHub() {
   const hub = document.getElementById('lobbyHub');
   const layout = document.getElementById('lobbyLayout');
@@ -1530,9 +1544,29 @@ function setupLobbyHub() {
     restoreMovedCard();
     if (window.__clearArenaTimer) window.__clearArenaTimer();
     // Mirror the live account values into the parchment profile card.
+    const profile = accountUI.getProfile?.() || null;
     const name = document.getElementById('accountName')?.textContent?.trim();
     setText('hubName', name && name !== '-' ? name : (document.getElementById('nicknameInput')?.value || '플레이어'));
-    setText('hubCoins', document.getElementById('accountCoins')?.textContent?.trim() || '0');
+    const coinsRaw = profile?.coins ?? document.getElementById('accountCoins')?.textContent?.trim() ?? 0;
+    const coins = (Number(String(coinsRaw).replace(/,/g, '')) || 0).toLocaleString();
+    setText('hubCoins', coins);
+    setText('moduleCoins', coins);
+    // Stats + kills-based tier.
+    const kills = accountUI.getTotalKills?.() ?? 0;
+    setText('hubKills', kills.toLocaleString());
+    setText('hubDeaths', (profile?.deaths ?? 0).toLocaleString());
+    setText('hubLoadout', document.querySelector('.weapon-card.selected span')?.textContent?.trim() || '검');
+    const tier = tierFromKills(kills);
+    const tierEl = document.getElementById('hubTier');
+    if (tierEl) { tierEl.textContent = tier.label; tierEl.style.color = tier.color; }
+    // Google profile photo (falls back to the icon for id/password logins).
+    const photo = accountUI.getAvatarUrl?.();
+    const avatar = document.getElementById('hubAvatar');
+    const fallback = document.getElementById('hubAvatarFallback');
+    if (avatar && fallback) {
+      if (photo) { avatar.src = photo; avatar.classList.remove('hidden'); fallback.classList.add('hidden'); avatar.onerror = () => { avatar.classList.add('hidden'); fallback.classList.remove('hidden'); }; }
+      else { avatar.classList.add('hidden'); fallback.classList.remove('hidden'); }
+    }
     hub.classList.remove('hidden');
     layout.classList.add('hidden');
     shell?.classList.add('hidden');
