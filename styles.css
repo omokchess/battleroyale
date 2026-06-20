@@ -1239,3 +1239,11 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 .opt-keys { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 18px; }
 @media (max-width: 560px) { .opt-keys { grid-template-columns: 1fr 1fr; } }
 .opt-key { background: var(--med-chip); color: var(--med-parch); font-size: 11px; font-family: var(--font-mono); padding: 2px 8px; }
+
+/* ===== [03] Create module ===== */
+.create-grid { display: grid; grid-template-columns: 1fr 232px; gap: 12px; align-items: start; }
+@media (max-width: 700px) { .create-grid { grid-template-columns: 1fr; } }
+.create-pills { display: flex; gap: 5px; flex-wrap: wrap; }
+.create-pill { font-size: 12px; padding: 5px 11px; cursor: pointer; background: transparent; border: 1px solid var(--med-wood); color: var(--med-ink); font-family: var(--font-sans); }
+.create-pill:hover { background: var(--med-parch-hi); }
+.create-pill.on { border: 2px solid var(--med-gold); background: var(--med-blood); color: #f0dca2; }

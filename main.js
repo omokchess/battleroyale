@@ -1535,8 +1535,9 @@ function setupLobbyHub() {
     if (mod === 'rank') { document.getElementById('rankBtn')?.click(); return; }
     if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto); return; }
     if (mod === 'options') { openShellModule('설정', 'OPTIONS', buildOptionsInto); return; }
-    // arena/create/options still reveal the existing panels (single-panel mode).
-    const tab = mod === 'arena' ? 'join' : mod === 'create' ? 'create' : 'mypage';
+    if (mod === 'create') { openShellModule('방 제작', 'CREATE', buildCreateInto); return; }
+    // arena still reveals the existing room-list panel (single-panel mode).
+    const tab = 'join';
     hub.classList.add('hidden');
     layout.classList.remove('hidden');
     back?.classList.remove('hidden');
@@ -1760,6 +1761,72 @@ function buildOptionsInto(body) {
     body.querySelector('#optVolVal').textContent = vol.value;
   });
   body.querySelector('#optLogout')?.addEventListener('click', () => { offMute(); document.getElementById('logoutBtn')?.click(); });
+}
+
+/* ===== [03] CREATE module — parchment room-setup form ===== */
+/* Drives the existing roomCustomModal cfg-opt groups (the source of truth that
+   readRoomConfig reads) + hostBtn/dummyBtn, so room creation is untouched. */
+function buildCreateInto(body) {
+  const modal = document.getElementById('roomCustomModal');
+  const groupEl = (g) => modal?.querySelector(`[data-config-group="${g}"]`);
+  const opts = (g) => [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].map(b => ({ label: b.textContent.trim(), value: b.dataset.value, on: b.classList.contains('selected') }));
+  const selectedOf = (g) => opts(g).find(o => o.on) || opts(g)[0];
+  const pickHidden = (g, value) => { [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].find(b => b.dataset.value === value)?.click(); };
+  const GROUPS = [['arenaSize', '경기장 크기'], ['storm', '자기장'], ['cover', '엄폐물'], ['healing', '회복 아이템']];
+
+  const pillRow = (g) => opts(g).map(o => `<button class="create-pill ${o.on ? 'on' : ''}" data-g="${g}" data-v="${o.value}">${o.label}</button>`).join('');
+  const healingOn = () => selectedOf('healing')?.value === 'on';
+
+  body.innerHTML = `
+    <div class="create-grid">
+      <div class="med-parch relative p-4">
+        ${GROUPS.map(([g, label]) => `
+          <div class="mb-3.5">
+            <div class="med-muted text-[12px] mb-1.5">${label}</div>
+            <div class="create-pills" data-group="${g}">${pillRow(g)}</div>
+          </div>`).join('')}
+        <div id="createHealRate" class="${healingOn() ? '' : 'hidden'}">
+          <div class="med-muted text-[12px] mb-1.5">회복 스폰 주기</div>
+          <div class="create-pills" data-group="healingRate">${pillRow('healingRate')}</div>
+        </div>
+      </div>
+
+      <div class="med-parch relative p-4 flex flex-col">
+        <div class="opt-head">개설 요약</div>
+        <div id="createSummary" class="space-y-1.5 mb-3"></div>
+        <div style="height:1px;background:var(--med-gold-dk);opacity:.5;margin:6px 0 12px"></div>
+        <div class="med-muted text-[11px] mb-1.5">방 코드</div>
+        <input id="createCode" class="opt-input mb-3" maxlength="10" placeholder="3글자 이상" value="${(document.getElementById('hostRoomInput')?.value || '').replace(/"/g, '&quot;')}" />
+        <button id="createHost" class="med-btn med-btn--blood font-mono text-sm py-2.5 mb-2">방 개설</button>
+        <button id="createDummy" class="med-btn font-mono text-[12px] py-2" style="color:#7a3326;border-color:var(--med-blood)">더미방으로 연습</button>
+      </div>
+    </div>`;
+
+  const summaryEl = body.querySelector('#createSummary');
+  function renderSummary() {
+    const rows = [['경기장', selectedOf('arenaSize')?.label], ['자기장', selectedOf('storm')?.label],
+      ['엄폐물', selectedOf('cover')?.label], ['회복', healingOn() ? `${selectedOf('healing')?.label}·${selectedOf('healingRate')?.label || '보통'}` : selectedOf('healing')?.label]];
+    summaryEl.innerHTML = rows.map(([k, v]) => `<div class="flex justify-between text-[12px]"><span class="med-muted">${k}</span><span style="color:var(--med-ink)">${v || '-'}</span></div>`).join('');
+  }
+  function syncPills() {
+    body.querySelectorAll('.create-pills').forEach(row => {
+      const g = row.dataset.group; const sel = selectedOf(g)?.value;
+      row.querySelectorAll('.create-pill').forEach(p => p.classList.toggle('on', p.dataset.v === sel));
+    });
+    body.querySelector('#createHealRate')?.classList.toggle('hidden', !healingOn());
+    renderSummary();
+  }
+
+  body.addEventListener('click', (e) => {
+    const p = e.target.closest('.create-pill'); if (!p) return;
+    pickHidden(p.dataset.g, p.dataset.v);   // drive the source-of-truth cfg-opt
+    syncPills();
+  });
+  const mirrorCode = () => { const h = document.getElementById('hostRoomInput'); if (h) h.value = body.querySelector('#createCode').value.trim(); };
+  body.querySelector('#createCode')?.addEventListener('input', mirrorCode);
+  body.querySelector('#createHost')?.addEventListener('click', () => { mirrorCode(); document.getElementById('hostBtn')?.click(); });
+  body.querySelector('#createDummy')?.addEventListener('click', () => { mirrorCode(); document.getElementById('dummyBtn')?.click(); });
+  renderSummary();
 }
 
 /**
