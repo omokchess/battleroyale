@@ -1524,9 +1524,9 @@ export class Renderer {
     const runSheet = this.atlas.get('char/run');
     if (!runSheet || !runSheet.naturalWidth) return false;
 
+    const TOTAL_FRAMES = 8;   // 0-5 run (faces right), 6 stand-right, 7 stand-left
     const RUN_FRAMES = 6;
-    const IDLE_FRAME = 5;      // legs most together — reads as a standing pose
-    const cellW = runSheet.naturalWidth / RUN_FRAMES;
+    const cellW = runSheet.naturalWidth / TOTAL_FRAMES;
     const cellH = runSheet.naturalHeight;
 
     // Walk frame + facing both come from ACTUAL movement (position delta), not the
@@ -1540,23 +1540,30 @@ export class Renderer {
     let anim = this._charAnim[player.id];
     if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now, faceRight: false };
     if (Math.abs(dxMove) > 0.05) anim.faceRight = dxMove > 0;
+
+    let drawFrame, flip;
     if (moving) {
       if (now - anim.at > 110) { anim.frame = (anim.frame + 1) % RUN_FRAMES; anim.at = now; }
-    } else { anim.frame = IDLE_FRAME; anim.at = now; }
-    const sx = anim.frame * cellW;
+      // Run art faces right; flip when moving left.
+      drawFrame = anim.frame;
+      flip = !anim.faceRight;
+    } else {
+      // Idle: dedicated standing frame for each side, already drawn directional.
+      anim.at = now;
+      drawFrame = anim.faceRight ? 6 : 7;
+      flip = false;
+    }
+    const sx = drawFrame * cellW;
 
-    // Sprite art runs facing right; flip when moving left.
-    const faceRight = anim.faceRight;
-
-    // Keep the body footprint similar to before but preserve the tall aspect.
-    const drawW = radius * 2.8;
-    const drawH = drawW * (cellH / cellW);
+    // Keep the on-screen height stable; width follows the (slimmed) cell aspect.
+    const drawH = radius * 4.15;
+    const drawW = drawH * (cellW / cellH);
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     ctx.save();
     // Anchor the sprite's feet a little below the player dot (top-down footing).
     ctx.translate(scr.x, scr.y - drawH * 0.12);
-    if (!faceRight) ctx.scale(-1, 1);
+    if (flip) ctx.scale(-1, 1);
     ctx.drawImage(runSheet, sx, 0, cellW, cellH, -drawW / 2, -drawH / 2, drawW, drawH);
     ctx.restore();
     ctx.imageSmoothingEnabled = prevSmooth;

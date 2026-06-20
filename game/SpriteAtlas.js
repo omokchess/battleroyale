@@ -76,13 +76,14 @@ export class SpriteAtlas {
  */
 // Bump when vendored sprite FILES change (same path, new pixels) so browsers /
 // the service worker fetch fresh instead of serving a cached image.
-export const ASSET_VERSION = '20260620a';
+export const ASSET_VERSION = '20260620b';
 
 export const SPRITE_MANIFEST = {
   // --- character body sheets (64×112 = 16×16, 4 cols × 7 rows) ---
-  // Side-view run sheet shared by every character: 6 frames in one strip,
-  // 204×303 per cell. The renderer flips it horizontally for right-facing.
-  'char/run': 'character/RunBoy.png',
+  // Side-view character sheet shared by every character: 8 frames in one strip.
+  // 0–5 = run cycle (faces right, flipped for left), 6 = stand-right, 7 =
+  // stand-left (standing frames are pre-directional, no flip).
+  'char/run': 'character/CharBoy.png',
   'char/Boy': 'character/Boy.png',
   'char/Knight': 'character/Knight.png',
   'char/KnightGold': 'character/KnightGold.png',
