@@ -1274,6 +1274,7 @@ function enterGameScreen(isHost) {
 
 function showLobbyScreen() {
   lobbyMenu.classList.remove('hidden');
+  if (typeof window.showLobbyHub === 'function') window.showLobbyHub();
   gameScreen.classList.add('hidden');
   hostServerIndicator.classList.add('hidden');
   lockPortraitForLobby();
@@ -1485,6 +1486,56 @@ function setupLobbyTabs() {
 }
 
 /**
+ * Limbus-style hub navigation. The hub is the lobby landing (resource bar +
+ * profile + 6-module grid + notice). Picking a module either opens an overlay
+ * (shop/rank reuse the existing buttons) or reveals the existing functional
+ * panel in single-panel "module mode" by driving the same lobby-tab switch the
+ * mobile nav already uses — so no account/matchmaking hook is moved or rewired.
+ */
+function setupLobbyHub() {
+  const hub = document.getElementById('lobbyHub');
+  const layout = document.getElementById('lobbyLayout');
+  const back = document.getElementById('lobbyBack');
+  const modules = document.getElementById('hubModules');
+  if (!hub || !layout) return;
+
+  const clickTab = (tab) => document.querySelector(`.lobby-tab[data-lobby-tab="${tab}"]`)?.click();
+  const setText = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.textContent = val; };
+
+  function showHub() {
+    // Mirror the live account values into the parchment profile card.
+    const name = document.getElementById('accountName')?.textContent?.trim();
+    setText('hubName', name && name !== '-' ? name : (document.getElementById('nicknameInput')?.value || '플레이어'));
+    setText('hubCoins', document.getElementById('accountCoins')?.textContent?.trim() || '0');
+    hub.classList.remove('hidden');
+    layout.classList.add('hidden');
+    back?.classList.add('hidden');
+    document.getElementById('lobbyTabBar')?.classList.add('hidden');
+    lobbyMenu.classList.remove('lobby-module-mode');
+  }
+  window.showLobbyHub = showHub;
+
+  function openModule(mod) {
+    if (mod === 'shop') { document.getElementById('shopBtn')?.click(); return; }
+    if (mod === 'rank') { document.getElementById('rankBtn')?.click(); return; }
+    const tab = mod === 'armory' ? 'weapon' : mod === 'arena' ? 'join' : mod === 'create' ? 'create' : 'mypage';
+    hub.classList.add('hidden');
+    layout.classList.remove('hidden');
+    back?.classList.remove('hidden');
+    document.getElementById('lobbyTabBar')?.classList.remove('hidden');
+    lobbyMenu.classList.add('lobby-module-mode');
+    clickTab(tab);
+  }
+
+  modules?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-module]');
+    if (btn) openModule(btn.dataset.module);
+  });
+  back?.addEventListener('click', showHub);
+  showHub();
+}
+
+/**
  * Low Detail (performance mode) toggle surfaced in the lobby's 내 페이지 tab so
  * mobile players can enable it without entering a match first. Persists to the
  * same localStorage key the in-game Renderer reads on start.
@@ -1540,6 +1591,7 @@ registerPwa();
 setupWeaponSelector();
 buildWeaponSwitchPanel();
 setupLobbyTabs();
+setupLobbyHub();
 setupLobbyPerfToggle();
 
 // Auth gate: account-ui resolves the session and tells us which screen to show.
@@ -1552,6 +1604,7 @@ accountUI.init({
     bootScreen?.classList.add('hidden');
     authScreen?.classList.add('hidden');
     lobbyMenu.classList.remove('hidden');
+    if (typeof window.showLobbyHub === 'function') window.showLobbyHub();
 
     // Prefill the nickname from the account, unless the user already typed one.
     if (profile && nicknameInput && !nicknameInput.value.trim()) {
