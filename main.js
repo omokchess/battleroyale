@@ -1492,17 +1492,18 @@ function setupLobbyTabs() {
  * panel in single-panel "module mode" by driving the same lobby-tab switch the
  * mobile nav already uses — so no account/matchmaking hook is moved or rewired.
  */
-// Kills → tier ladder (금장 = gold). Each tier splits into III/II/I by progress.
-function tierFromKills(kills) {
+// Tier score → ladder (금장 = gold). Score = kills*4 − deaths*10 (see account-ui
+// getTierScore). Each tier splits into III/II/I by progress within the band.
+function tierFromScore(score) {
   const T = [
-    { n: '목장', min: 0, c: '#8a6f47' }, { n: '철장', min: 10, c: '#9aa0a8' },
-    { n: '동장', min: 30, c: '#b87333' }, { n: '은장', min: 60, c: '#c0c0c0' },
-    { n: '금장', min: 120, c: '#d4af37' }, { n: '백금장', min: 300, c: '#7fd4d4' },
+    { n: '목장', min: 0, c: '#8a6f47' }, { n: '철장', min: 40, c: '#9aa0a8' },
+    { n: '동장', min: 120, c: '#b87333' }, { n: '은장', min: 240, c: '#c0c0c0' },
+    { n: '금장', min: 480, c: '#d4af37' }, { n: '백금장', min: 1200, c: '#7fd4d4' },
   ];
-  let i = 0; for (let k = 0; k < T.length; k++) if (kills >= T[k].min) i = k;
+  let i = 0; for (let k = 0; k < T.length; k++) if (score >= T[k].min) i = k;
   const cur = T[i], next = T[i + 1];
-  const span = (next ? next.min : cur.min * 2 + 10) - cur.min;
-  const prog = Math.min(0.999, Math.max(0, (kills - cur.min) / Math.max(1, span)));
+  const span = (next ? next.min : cur.min * 2 + 40) - cur.min;
+  const prog = Math.min(0.999, Math.max(0, (score - cur.min) / Math.max(1, span)));
   return { label: `${cur.n} ${['III', 'II', 'I'][Math.floor(prog * 3)]}`, color: cur.c };
 }
 
@@ -1551,12 +1552,13 @@ function setupLobbyHub() {
     const coins = (Number(String(coinsRaw).replace(/,/g, '')) || 0).toLocaleString();
     setText('hubCoins', coins);
     setText('moduleCoins', coins);
-    // Stats + kills-based tier.
+    // Stats + score-based tier (kills*4 − deaths*10).
     const kills = accountUI.getTotalKills?.() ?? 0;
+    const deaths = accountUI.getTotalDeaths?.() ?? 0;
     setText('hubKills', kills.toLocaleString());
-    setText('hubDeaths', (profile?.deaths ?? 0).toLocaleString());
+    setText('hubDeaths', deaths.toLocaleString());
     setText('hubLoadout', document.querySelector('.weapon-card.selected span')?.textContent?.trim() || '검');
-    const tier = tierFromKills(kills);
+    const tier = tierFromScore(accountUI.getTierScore?.() ?? 0);
     const tierEl = document.getElementById('hubTier');
     if (tierEl) { tierEl.textContent = tier.label; tierEl.style.color = tier.color; }
     // Google profile photo (falls back to the icon for id/password logins).

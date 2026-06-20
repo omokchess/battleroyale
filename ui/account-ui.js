@@ -121,6 +121,16 @@ export function getTotalKills() {
   return profile?.total_kills || 0;
 }
 
+/** 누적 데스 수 */
+export function getTotalDeaths() {
+  return profile?.total_deaths || 0;
+}
+
+/** 티어 점수: 1킬당 +4, 1데스당 −10 (0 미만으로 안 떨어짐). */
+export function getTierScore() {
+  return Math.max(0, (profile?.total_kills || 0) * 4 - (profile?.total_deaths || 0) * 10);
+}
+
 /**
  * 게임에 넘길 착용 코스메틱 전체 세트(치장 전용). 각 카테고리의 표현 데이터를
  * 풀어서 반환 → P2P 로 다른 플레이어에게 전달해 그대로 그릴 수 있게 한다.
