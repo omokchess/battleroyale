@@ -1538,7 +1538,7 @@ export class Renderer {
     const moving = prev ? (Math.abs(dxMove) + Math.abs(player.y - prev.y)) > 0.4 : false;
     this._charPrev[player.id] = { x: player.x, y: player.y };
     let anim = this._charAnim[player.id];
-    if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now, faceRight: false };
+    if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now, faceRight: true };
     if (Math.abs(dxMove) > 0.05) anim.faceRight = dxMove > 0;
 
     let drawFrame, flip;
