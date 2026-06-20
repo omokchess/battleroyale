@@ -164,6 +164,7 @@ class SoundEngine {
     this.ctx = null;
     this.master = null;
     this.volume = 0.5;
+    try { const v = parseFloat(localStorage.getItem(STORE_KEY + ':vol')); if (Number.isFinite(v)) this.volume = Math.max(0, Math.min(1, v)); } catch {}
     this.muted = this._loadMuted();
     this._last = Object.create(null);
     this._listeners = new Set();
@@ -203,6 +204,14 @@ class SoundEngine {
   }
 
   toggleMute() { this.setMuted(!this.muted); return this.muted; }
+
+  /** Master volume 0..1 (persisted). Applied live unless muted. */
+  setVolume(v) {
+    this.volume = Math.max(0, Math.min(1, Number(v) || 0));
+    try { localStorage.setItem(STORE_KEY + ':vol', String(this.volume)); } catch {}
+    if (this.master) this.master.gain.value = this.muted ? 0 : this.volume;
+  }
+  getVolume() { return this.volume; }
 
   /** Subscribe to mute changes (so every toggle button stays in sync). */
   onMuteChange(fn) { this._listeners.add(fn); return () => this._listeners.delete(fn); }

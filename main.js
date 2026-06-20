@@ -1534,6 +1534,7 @@ function setupLobbyHub() {
     if (mod === 'shop') { document.getElementById('shopBtn')?.click(); return; }
     if (mod === 'rank') { document.getElementById('rankBtn')?.click(); return; }
     if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto); return; }
+    if (mod === 'options') { openShellModule('설정', 'OPTIONS', buildOptionsInto); return; }
     // arena/create/options still reveal the existing panels (single-panel mode).
     const tab = mod === 'arena' ? 'join' : mod === 'create' ? 'create' : 'mypage';
     hub.classList.add('hidden');
@@ -1683,6 +1684,82 @@ function buildArmoryInto(body) {
   });
   renderChips();
   renderDetail();
+}
+
+/* ===== [06] OPTIONS module — consolidates the scattered lobby settings ===== */
+function buildOptionsInto(body) {
+  const nick = document.getElementById('nicknameInput');
+  const perf = document.getElementById('lobbyPerfMode');
+  const seg = (onLabel, offLabel, on) =>
+    `<span class="opt-seg" role="group"><button data-seg="on" class="${on ? 'on' : ''}">${onLabel}</button><button data-seg="off" class="${on ? '' : 'on'}">${offLabel}</button></span>`;
+  const keyRows = [['이동', 'WASD'], ['조준', '마우스'], ['평타', '자동/좌클릭'], ['스킬', 'F'], ['보조', 'R'], ['대시', 'Space']];
+
+  body.innerHTML = `
+    <div class="opts-grid">
+      <div class="med-parch relative p-4">
+        <div class="opt-head">계정</div>
+        <div class="med-muted text-[12px] mb-1">닉네임</div>
+        <div class="flex gap-2 mb-4">
+          <input id="optNick" class="opt-input flex-1" maxlength="12" value="${(nick?.value || '').replace(/"/g, '&quot;')}" placeholder="플레이어" />
+          <button id="optNickSave" class="med-btn font-mono text-[11px] px-3">저장</button>
+        </div>
+        <div class="opt-head" style="border-top:1px dashed var(--med-wood);padding-top:12px">그래픽</div>
+        <div class="flex justify-between items-center">
+          <span class="text-[13px]" style="color:var(--med-ink)">성능 모드 (저사양)</span>
+          <span id="optPerf">${seg('켜짐', '꺼짐', !!perf?.checked)}</span>
+        </div>
+      </div>
+
+      <div class="med-parch relative p-4">
+        <div class="opt-head">음향</div>
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-[13px]" style="color:var(--med-ink)">전체 음소거</span>
+          <span id="optMute">${seg('켜짐', '꺼짐', Sound.isMuted())}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="med-muted text-[12px]" style="width:54px">볼륨</span>
+          <input id="optVol" type="range" min="0" max="100" step="1" value="${Math.round(Sound.getVolume() * 100)}" class="opt-range flex-1" />
+          <span id="optVolVal" class="font-mono text-[11px]" style="width:30px;text-align:right;color:var(--med-ink)">${Math.round(Sound.getVolume() * 100)}</span>
+        </div>
+      </div>
+
+      <div class="med-parch relative p-4" style="grid-column:1 / -1">
+        <div class="opt-head">조작 안내</div>
+        <div class="opt-keys">
+          ${keyRows.map(([k, v]) => `<div class="flex justify-between"><span class="med-muted text-[12px]">${k}</span><span class="opt-key">${v}</span></div>`).join('')}
+        </div>
+        <div class="flex justify-end mt-4">
+          <button id="optLogout" class="med-btn font-mono text-[12px] px-5" style="border-color:var(--med-blood);box-shadow:inset 0 0 0 2px var(--med-blood)">로그아웃</button>
+        </div>
+      </div>
+    </div>`;
+
+  // Nickname save → mirror into the real input the match reads.
+  body.querySelector('#optNickSave')?.addEventListener('click', () => {
+    if (nick) nick.value = body.querySelector('#optNick').value.trim();
+    const b = body.querySelector('#optNickSave'); if (b) { b.textContent = '저장됨 ✓'; setTimeout(() => b.textContent = '저장', 1200); }
+  });
+  // Performance mode → drive the existing checkbox (its change handler persists it).
+  body.querySelector('#optPerf')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-seg]'); if (!btn || !perf) return;
+    perf.checked = btn.dataset.seg === 'on';
+    perf.dispatchEvent(new Event('change', { bubbles: true }));
+    body.querySelectorAll('#optPerf button').forEach(x => x.classList.toggle('on', x === btn));
+  });
+  // Mute → Sound engine (stays in sync with the other mute toggles).
+  const syncMute = (m) => body.querySelectorAll('#optMute button').forEach(x => x.classList.toggle('on', (x.dataset.seg === 'on') === m));
+  body.querySelector('#optMute')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-seg]'); if (!btn) return;
+    Sound.setMuted(btn.dataset.seg === 'on');
+  });
+  const offMute = Sound.onMuteChange(syncMute);
+  // Volume.
+  const vol = body.querySelector('#optVol');
+  vol?.addEventListener('input', () => {
+    Sound.setVolume(vol.value / 100);
+    body.querySelector('#optVolVal').textContent = vol.value;
+  });
+  body.querySelector('#optLogout')?.addEventListener('click', () => { offMute(); document.getElementById('logoutBtn')?.click(); });
 }
 
 /**
