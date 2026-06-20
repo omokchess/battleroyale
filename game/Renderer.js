@@ -1556,15 +1556,19 @@ export class Renderer {
     const sx = drawFrame * cellW;
 
     // Keep the on-screen height stable; width follows the (slimmed) cell aspect.
-    const drawH = radius * 4.15;
-    const drawW = drawH * (cellW / cellH);
+    // Idle frames are squashed a touch vertically so the standing pose reads less
+    // lanky; width is unchanged, so it just looks slightly flatter.
+    const IDLE_SQUASH = 0.92;
+    const refH = radius * 4.15;
+    const drawW = refH * (cellW / cellH);
+    const drawH = refH * (moving ? 1 : IDLE_SQUASH);
+    const feetY = scr.y + refH * 0.38;   // keep feet planted regardless of squash
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     ctx.save();
-    // Anchor the sprite's feet a little below the player dot (top-down footing).
-    ctx.translate(scr.x, scr.y - drawH * 0.12);
+    ctx.translate(scr.x, feetY);
     if (flip) ctx.scale(-1, 1);
-    ctx.drawImage(runSheet, sx, 0, cellW, cellH, -drawW / 2, -drawH / 2, drawW, drawH);
+    ctx.drawImage(runSheet, sx, 0, cellW, cellH, -drawW / 2, -drawH, drawW, drawH);
     ctx.restore();
     ctx.imageSmoothingEnabled = prevSmooth;
     return true;
