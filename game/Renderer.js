@@ -1545,7 +1545,7 @@ export class Renderer {
     } else { anim.frame = IDLE_FRAME; anim.at = now; }
     const sx = anim.frame * cellW;
 
-    // Sprite art runs facing left; flip when moving right.
+    // Sprite art runs facing right; flip when moving left.
     const faceRight = anim.faceRight;
 
     // Keep the body footprint similar to before but preserve the tall aspect.
@@ -1556,7 +1556,7 @@ export class Renderer {
     ctx.save();
     // Anchor the sprite's feet a little below the player dot (top-down footing).
     ctx.translate(scr.x, scr.y - drawH * 0.12);
-    if (faceRight) ctx.scale(-1, 1);
+    if (!faceRight) ctx.scale(-1, 1);
     ctx.drawImage(runSheet, sx, 0, cellW, cellH, -drawW / 2, -drawH / 2, drawW, drawH);
     ctx.restore();
     ctx.imageSmoothingEnabled = prevSmooth;
