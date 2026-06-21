@@ -10,6 +10,7 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
+  linkWithPopup,
 } from 'firebase/auth';
 import {
   doc,
@@ -125,6 +126,18 @@ export async function getSession() {
 /** Google account profile photo URL (null for id/password logins). */
 export function getPhotoURL() {
   return firebaseAuth?.currentUser?.photoURL || null;
+}
+
+/** Whether the current user already has a Google provider linked. */
+export function hasGoogleLinked() {
+  return Boolean(firebaseAuth?.currentUser?.providerData?.some((p) => p.providerId === 'google.com'));
+}
+
+/** Link a Google account to the signed-in user (so they get a photo + Google login). */
+export async function linkGoogle() {
+  if (!firebaseAuth?.currentUser) throw new Error('로그인이 필요합니다');
+  const provider = new GoogleAuthProvider();
+  await linkWithPopup(firebaseAuth.currentUser, provider);
 }
 
 export function onAuthChange(cb) {

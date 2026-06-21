@@ -12,6 +12,8 @@ import {
   fetchMyProfile,
   isFirebaseConfigured,
   getPhotoURL,
+  linkGoogle,
+  hasGoogleLinked,
 } from '../firebase/account.js';
 import {
   fetchLeaderboard,
@@ -114,6 +116,17 @@ export function getUsername() {
 
 /** Google 프로필 사진 URL (id/비번 로그인은 null) */
 export function getAvatarUrl() {
+  return getPhotoURL();
+}
+
+/** 현재 계정에 구글이 연동돼 있는지 */
+export function isGoogleLinked() {
+  return hasGoogleLinked();
+}
+
+/** 구글 계정 연동 (성공 시 프로필 사진 사용 가능) */
+export async function linkGoogleAccount() {
+  await linkGoogle();
   return getPhotoURL();
 }
 
