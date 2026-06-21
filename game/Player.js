@@ -180,11 +180,9 @@ export class Player {
       this._tickTimers(deltaTime);
       return;
     }
-    // Axe rage roots the wielder: no movement (or dash) until the buff expires.
-    if (this.buffType === 'axe_rage' && this.buffTimeLeft > 0) {
-      this._tickTimers(deltaTime);
-      return;
-    }
+    // Axe rage slows the wielder: 70% speed reduction (30% movement) while spinning.
+    // Dash is still blocked.
+    const axeRageActive = this.buffType === 'axe_rage' && this.buffTimeLeft > 0;
 
     // A dash overrides normal locomotion with a fixed-direction burst. Consume
     // (up to) the remaining dash window *before* advancing the timers so even a
@@ -213,10 +211,11 @@ export class Player {
       const length = Math.sqrt(dx * dx + dy * dy);
       const weaponConfig = Weapons[this.weapon] || Weapons.sword;
       const slowMul = this.slowTimeLeft > 0 ? STATUS.slow.moveFactor : 1; // −30% slow
+      const rageSlowMul = axeRageActive ? 0.3 : 1; // axe spin: 70% reduction
       // Flamethrower is dragged down while actively spraying.
       let baseMul = weaponConfig.moveSpeed ?? 1;
       if (this.weapon === 'flamethrower' && this.flameSpraying) baseMul = weaponConfig.sprayMoveSpeed ?? baseMul;
-      const moveSpeed = this.speed * baseMul * slowMul;
+      const moveSpeed = this.speed * baseMul * slowMul * rageSlowMul;
       this.x += (dx / length) * moveSpeed * deltaTime;
       this.y += (dy / length) * moveSpeed * deltaTime;
     }
