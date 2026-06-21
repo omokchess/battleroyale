@@ -70,8 +70,15 @@
     <!-- MAIN LOBBY/START MENU -->
     <div id="lobbyMenu" class="med-board hidden absolute inset-0 z-50 flex items-start justify-center transition-all duration-300 p-3 sm:p-4 overflow-y-auto">
 
-      <!-- ===== LIMBUS-STYLE HUB (landing) — medieval parchment menu board ===== -->
-      <div id="lobbyHub" class="w-full max-w-[920px] my-auto flex flex-col gap-3">
+      <!-- ===== Push-transition track: the hub and the module shell coexist as two
+           screens inside a horizontal track that slides via transform only. Both
+           stay mounted, so the incoming module is built off-screen and there is
+           never a blank frame (the old in-place innerHTML swap caused the flash). -->
+      <div id="lobbyViewport" class="w-full max-w-[960px] my-auto">
+        <div id="lobbyTrack">
+          <!-- Screen 0: LIMBUS-STYLE HUB (landing) -->
+          <div class="lobby-scr">
+      <div id="lobbyHub" class="w-full max-w-[920px] flex flex-col gap-3">
 
         <!-- Top resource bar -->
         <div class="med-panel med-ticks relative flex items-center justify-between gap-3 px-4 py-3">
@@ -163,8 +170,11 @@
         </div>
       </div>
 
-      <!-- ===== COMMON MODULE SHELL (header + body) reused by module screens ===== -->
-      <div id="moduleShell" class="hidden w-full max-w-[940px] my-auto flex flex-col gap-3">
+          </div><!-- /.lobby-scr (hub) -->
+
+          <!-- Screen 1: COMMON MODULE SHELL (header + body) reused by module screens -->
+          <div class="lobby-scr">
+      <div id="moduleShell" class="w-full max-w-[940px] flex flex-col gap-3">
         <div class="med-panel relative flex items-center justify-between gap-3 px-3 py-2.5">
           <div class="flex items-center gap-3 min-w-0">
             <button id="moduleBackBtn" type="button" class="med-btn font-mono text-[11px] px-3 py-1.5">← 게시판</button>
@@ -174,6 +184,9 @@
         </div>
         <div id="moduleBody"></div>
       </div>
+          </div><!-- /.lobby-scr (shell) -->
+        </div><!-- /#lobbyTrack -->
+      </div><!-- /#lobbyViewport -->
 
       <button id="lobbyBack" type="button" class="med-btn hidden fixed top-3 left-3 z-[58] font-mono text-[11px] px-3 py-2">◄ 로비로</button>
 

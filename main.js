@@ -1626,6 +1626,17 @@ function setupLobbyHub() {
 
   const shell = document.getElementById('moduleShell');
   const shellBody = document.getElementById('moduleBody');
+  const track = document.getElementById('lobbyTrack');
+  // Push transition: 'hub' = track at 0 (hub visible), 'shell' = translateX(-50%)
+  // (module visible). Both screens stay mounted, so navigation never blanks.
+  let navState = 'hub';
+  // After the track finishes sliding back to the hub, tidy up the (now off-screen)
+  // shell — restoring the moved shop/rank card. Doing it here (not mid-slide) keeps
+  // the outgoing screen intact while it slides away (no flash, no end-jump).
+  track?.addEventListener('transitionend', (e) => {
+    if (e.target !== track || e.propertyName !== 'transform') return;
+    if (navState === 'hub') restoreMovedCard();
+  });
 
   // Shop/rank: relocate the existing account-ui modal card into the shell (its
   // listeners + shopBody/leaderboardBody IDs move with the subtree, so the
@@ -1638,12 +1649,25 @@ function setupLobbyHub() {
     movedCard.modal?.classList.add('hidden');
     movedCard = null;
   }
+  // Prepare the (off-screen) shell: header text + a cleared body. Content is
+  // built into it BEFORE the slide, so the module is fully rendered on arrival.
+  function prepShell(crumbKo, crumbEn) {
+    restoreMovedCard();
+    if (window.__clearArenaTimer) window.__clearArenaTimer();
+    setText('moduleCrumbKo', crumbKo);
+    setText('moduleCrumbEn', crumbEn);
+    setText('moduleCoins', (Number(String(document.getElementById('accountCoins')?.textContent ?? '0').replace(/,/g, '')) || 0).toLocaleString());
+    layout.classList.add('hidden');
+    if (shellBody) shellBody.innerHTML = '';
+  }
+  function slideToShell() { navState = 'shell'; track?.classList.add('show-shell'); }
+
   // Move just the rendered BODY (shopBody / leaderboardBody) into a fresh
   // parchment panel — moving the whole modal card dragged in a stale composited
   // layer that refused to repaint the parchment. account-ui re-queries the body
-  // by id, so its render + listeners stay intact.
+  // by id, so its render + listeners stay intact. Built off-screen, THEN slid in.
   function openShellMove(ko, en, modalId, triggerId, bodyId) {
-    openShellModule(ko, en, null);
+    prepShell(ko, en);
     const modal = document.getElementById(modalId);
     document.getElementById(triggerId)?.click();   // account-ui renders into bodyId
     const bodyEl = document.getElementById(bodyId);
@@ -1653,15 +1677,14 @@ function setupLobbyHub() {
       movedCard = { node: bodyEl, parent: bodyEl.parentElement, panel, modal };
       panel.appendChild(bodyEl);
       shellBody.appendChild(panel);
-      crossfade(bodyEl);   // shop/rank: opacity-only (scrolls → no scrollbar flash)
     } else {
       movedCard = { modal };
     }
     modal?.classList.add('hidden');
+    slideToShell();
   }
 
   function showHub() {
-    restoreMovedCard();
     if (window.__clearArenaTimer) window.__clearArenaTimer();
     // Mirror the live account values into the parchment profile card.
     const profile = accountUI.getProfile?.() || null;
@@ -1688,29 +1711,28 @@ function setupLobbyHub() {
       if (photo) { avatar.src = photo; avatar.classList.remove('hidden'); fallback.classList.add('hidden'); avatar.onerror = () => { avatar.classList.add('hidden'); fallback.classList.remove('hidden'); }; }
       else { avatar.classList.add('hidden'); fallback.classList.remove('hidden'); }
     }
-    hub.classList.remove('hidden');
     layout.classList.add('hidden');
-    shell?.classList.add('hidden');
     back?.classList.add('hidden');
     document.getElementById('lobbyTabBar')?.classList.add('hidden');
     lobbyMenu.classList.remove('lobby-module-mode');
-    playEnter(hub, 'screen-back');     // reverse slide back to the board
+    // Slide the track back to the hub (screen 0). The shell stays mounted and
+    // slides off to the right; its cleanup runs on transitionend (or now, if
+    // motion is reduced, since no transition fires).
+    navState = 'hub';
+    track?.classList.remove('show-shell');
+    if (motionReduced() || !track) restoreMovedCard();
   }
   window.showLobbyHub = showHub;
 
-  // Modules built into the common parchment shell (header + body).
+  // Modules built into the common parchment shell (header + body). The shell is
+  // ALWAYS mounted (screen 1); we build the module into it while it is still
+  // off-screen, then slide the track — so the incoming screen is fully rendered
+  // before it appears (no blank-frame flash, no in-place swap of a visible node).
   function openShellModule(crumbKo, crumbEn, builder) {
-    restoreMovedCard();
-    if (window.__clearArenaTimer) window.__clearArenaTimer();
-    setText('moduleCrumbKo', crumbKo);
-    setText('moduleCrumbEn', crumbEn);
-    setText('moduleCoins', (Number(String(document.getElementById('accountCoins')?.textContent ?? '0').replace(/,/g, '')) || 0).toLocaleString());
-    hub.classList.add('hidden');
-    layout.classList.add('hidden');
-    shell?.classList.remove('hidden');
-    if (shellBody) { shellBody.innerHTML = ''; builder?.(shellBody); }
-    playEnter(shell, 'screen-in');             // forward slide into the module
+    prepShell(crumbKo, crumbEn);
+    if (shellBody) builder?.(shellBody);
     playStagger(shellBody?.firstElementChild); // cards/rows rise in sequence
+    slideToShell();                            // slide the (already-built) module in
   }
 
   function openModule(mod) {
@@ -1781,11 +1803,24 @@ function buildArmoryInto(body) {
   let activeCat = '전체';
   let selected = document.querySelector('.weapon-card.selected')?.dataset.weapon || weapons[0];
 
-  function renderChips() {
+  // Build every chip ONCE. Filtering and selection then only toggle classes —
+  // the DOM is never re-created, so chips can't blank out or restart their
+  // entrance animation when tabs are spammed.
+  function buildChips() {
     chipsEl.innerHTML = weapons
-      .filter(w => activeCat === '전체' || armoryCategory(w) === activeCat)
-      .map(w => `<button class="armory-chip ${w === selected ? 'on' : ''}" data-w="${w}">
+      .map(w => `<button class="armory-chip ${w === selected ? 'on' : ''}" data-w="${w}" data-cat="${armoryCategory(w)}">
         <span class="dot" style="background:${Weapons[w].color || '#caa84a'}"></span>${armoryWeaponName(w)}</button>`).join('');
+  }
+  // Show/hide chips by category (no re-render). 전체 shows all.
+  function applyFilter() {
+    chipsEl.querySelectorAll('.armory-chip').forEach(chip => {
+      const match = activeCat === '전체' || chip.dataset.cat === activeCat;
+      chip.classList.toggle('chip-hidden', !match);
+    });
+  }
+  // Mark the selected chip without rebuilding the list.
+  function markSelected() {
+    chipsEl.querySelectorAll('.armory-chip').forEach(chip => chip.classList.toggle('on', chip.dataset.w === selected));
   }
   // Persistent stat bars: the four <fill> elements are created ONCE and only
   // their scaleX/value update on weapon switch, so the CSS transition
@@ -1888,16 +1923,17 @@ function buildArmoryInto(body) {
 
   chipsEl.addEventListener('click', (e) => {
     const b = e.target.closest('[data-w]'); if (!b) return;
-    selected = b.dataset.w; renderChips(); renderDetail();
+    selected = b.dataset.w; markSelected(); renderDetail();
   });
   body.querySelector('#armoryFilter').addEventListener('click', (e) => {
     const b = e.target.closest('[data-cat]'); if (!b) return;
     activeCat = b.dataset.cat;
     body.querySelectorAll('#armoryFilter button').forEach(x => x.classList.toggle('on', x === b));
-    renderChips();
-    crossfade(chipsEl);   // tab switch → opacity crossfade (no blank, no scrollbar)
+    applyFilter();        // visibility toggle only — no re-render
+    crossfade(chipsEl);   // tab switch → short opacity crossfade
   });
-  renderChips();
+  buildChips();
+  applyFilter();
   renderDetail();
 }
 

@@ -1198,6 +1198,9 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
   padding: 7px 8px; background: var(--med-parch); border: 2px solid var(--med-wood); cursor: pointer;
 }
 .armory-chip:hover { background: var(--med-parch-hi); }
+/* Filter tabs hide non-matching chips without removing them from the DOM (so the
+   list never re-renders → no blank/flash on tab spam). */
+.armory-chip.chip-hidden { display: none; }
 .armory-chip.on { border-color: var(--med-gold); background: var(--med-parch-hi); box-shadow: inset 0 0 0 1px var(--med-gold); }
 .armory-chip .dot { width: 10px; height: 10px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35); }
 
@@ -1350,7 +1353,32 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 /* --- list selection pop (chip / room / pill gets the gold border) --- */
 .armory-chip.on, .arena-card.on, .create-pill.on { animation: med-pop var(--dur-base) var(--ease-out); }
 
-/* --- screen transition (hub <-> sub-screen): one smooth crossfade. --- */
+/* --- push transition: hub + module shell are two screens in a sliding track.
+   Only the track's transform animates (no reflow/repaint of content, no in-place
+   innerHTML swap) → there is never a blank frame to flash. Both screens stay
+   mounted; the incoming module is built while it sits off-screen. --- */
+#lobbyViewport { width: 100%; overflow: hidden; }
+#lobbyTrack {
+  display: flex;
+  width: 200%;
+  transition: transform var(--dur-screen) var(--ease-out);
+  will-change: transform;
+}
+#lobbyTrack > .lobby-scr {
+  flex: 0 0 50%;
+  box-sizing: border-box;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;   /* centre each screen's content (matches the old my-auto) */
+  padding: 0 2px;
+}
+#lobbyTrack.show-shell { transform: translateX(-50%); }
+.motion-reduced #lobbyTrack { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { #lobbyTrack { transition: none !important; } }
+
+/* (legacy crossfade classes kept for any other callers; the track now drives the
+   hub<->module transition.) */
 .screen-in   { animation: med-screen-in var(--dur-screen) var(--ease-out); will-change: opacity; }
 .screen-back { animation: med-screen-bk var(--dur-screen) var(--ease-out); will-change: opacity; }
 
