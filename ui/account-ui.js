@@ -405,7 +405,7 @@ function renderAccountBar() {
     const nameEl = $('accountName');
     const coinEl = $('accountCoins');
     if (nameEl) nameEl.textContent = profile.username;
-    if (coinEl) coinEl.textContent = profile.coins;
+    if (coinEl) coinEl.textContent = Number(profile.coins || 0).toLocaleString();
   }
   $('adminBtn')?.classList.toggle('hidden', !profile || !isAdmin);
 }
@@ -520,11 +520,11 @@ function renderItemCard(it) {
   } else if (lockedAch) {
     btn = `<button disabled class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-gray-600 text-gray-500 cursor-default">킬 ${it.unlock_threshold} 해금</button>`;
   } else {
-    btn = `<button data-buy="${it.id}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-yellow-500 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">${it.price} 코인 구매</button>`;
+    btn = `<button data-buy="${it.id}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-yellow-500 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">${Number(it.price).toLocaleString()} 코인 구매</button>`;
   }
   const priceText = it.price === 0
     ? (it.unlock_type === 'achievement' ? `누적 킬 ${it.unlock_threshold}` : '무료')
-    : `${it.price} 코인`;
+    : `${Number(it.price).toLocaleString()} 코인`;
   return `
     <div class="bg-[#0b0c10] border-2 border-gray-700 p-3 flex flex-col items-center">
       ${itemSwatch(it)}
@@ -538,8 +538,8 @@ function renderWeaponSkinTab() {
   const weaponBtns = WEAPON_LIST.map(wpn => {
     const active = wpn === activeSkinWeapon;
     const hasSkin = !!(equipped.weaponskins?.[wpn]);
-    const dot = hasSkin ? '<span class="inline-block w-1.5 h-1.5 rounded-full bg-[#45f3ff] ml-1 align-middle"></span>' : '';
-    return `<button data-skin-weapon="${wpn}" class="px-2 py-1 text-[10px] font-mono border cursor-pointer active:scale-95 transition-all whitespace-nowrap ${active ? 'border-[#45f3ff] text-[#45f3ff] bg-[#0b3038]' : 'border-gray-700 text-gray-400 hover:border-gray-500'}">${WEAPON_KO[wpn] || wpn}${dot}</button>`;
+    const dot = hasSkin ? '<span class="inline-block w-1.5 h-1.5 rounded-full bg-[#45f3ff] align-middle"></span>' : '';
+    return `<button data-skin-weapon="${wpn}" class="flex items-center justify-between gap-1 px-3 py-2 text-xs font-mono border-2 cursor-pointer transition-all ${active ? 'border-[#45f3ff] text-[#45f3ff] bg-[#0b3038]' : 'border-gray-700 text-gray-300 hover:border-gray-500'}"><span class="truncate">${WEAPON_KO[wpn] || wpn}</span>${dot}</button>`;
   }).join('');
 
   const wpn = activeSkinWeapon;
@@ -567,18 +567,18 @@ function renderWeaponSkinTab() {
     } else if (owned) {
       btn = `<button data-equip="${itemId}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-teal-400 text-teal-300 hover:bg-teal-900/40 cursor-pointer active:scale-95 transition-all">착용하기</button>`;
     } else {
-      btn = `<button data-buy="${itemId}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-yellow-500 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">${sk.price} 코인 구매</button>`;
+      btn = `<button data-buy="${itemId}" class="w-full mt-2 py-1.5 text-[10px] font-bold uppercase border border-yellow-500 text-yellow-300 hover:bg-yellow-900/30 cursor-pointer active:scale-95 transition-all">${Number(sk.price).toLocaleString()} 코인 구매</button>`;
     }
     return `<div class="bg-[#0b0c10] border-2 border-gray-700 p-3 flex flex-col items-center">
       ${preview}
       <div class="font-mono text-xs text-white font-bold">${sk.name}</div>
-      <div class="font-mono text-[10px] text-gray-400 mt-0.5">${sk.id === 'none' ? '무료' : `${sk.price} 코인`}</div>
+      <div class="font-mono text-[10px] text-gray-400 mt-0.5">${sk.id === 'none' ? '무료' : `${Number(sk.price).toLocaleString()} 코인`}</div>
       ${btn}
     </div>`;
   }).join('');
 
-  return `<div class="col-span-full flex flex-wrap gap-1 mb-3">${weaponBtns}</div>
-    <div class="col-span-full font-mono text-[11px] text-gray-400 mb-2">${WEAPON_KO[wpn] || wpn} 스킨 선택</div>
+  return `<div class="col-span-full grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-3">${weaponBtns}</div>
+    <div class="col-span-full font-mono text-[11px] text-gray-400 mb-2 mt-1" style="border-top:1px dashed var(--med-wood);padding-top:8px">${WEAPON_KO[wpn] || wpn} 스킨 선택</div>
     ${skinCards}`;
 }
 
@@ -586,7 +586,7 @@ function renderShop() {
   const body = $('shopBody');
   const coinEl = $('shopCoins');
   if (!body) return;
-  if (coinEl) coinEl.textContent = profile?.coins ?? 0;
+  if (coinEl) coinEl.textContent = Number(profile?.coins ?? 0).toLocaleString();
 
   // 마이그레이션 전(items 없음)이면 레거시 코스튬 카탈로그로 폴백.
   const items = itemCatalog.length

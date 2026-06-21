@@ -1210,8 +1210,8 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 /* Stat bars */
 .armory-stat { display: grid; grid-template-columns: 48px 1fr 40px; gap: 8px; align-items: center; margin: 5px 0; font-family: var(--font-mono); font-size: 11px; }
 .armory-stat .lbl { color: var(--med-ink-desc); }
-.armory-stat .track { height: 10px; background: #d8c08c; box-shadow: inset 0 0 0 1px var(--med-wood); }
-.armory-stat .fill { height: 100%; }
+.armory-stat .track { height: 10px; background: #d8c08c; box-shadow: inset 0 0 0 1px var(--med-wood); display: block; overflow: hidden; }
+.armory-stat .fill { display: block; height: 100%; }
 .armory-stat .val { text-align: right; color: var(--med-ink); }
 
 /* Ability rows */

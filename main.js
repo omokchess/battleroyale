@@ -1595,7 +1595,7 @@ function setupLobbyHub() {
     if (window.__clearArenaTimer) window.__clearArenaTimer();
     setText('moduleCrumbKo', crumbKo);
     setText('moduleCrumbEn', crumbEn);
-    setText('moduleCoins', document.getElementById('accountCoins')?.textContent?.trim() || '0');
+    setText('moduleCoins', (Number(String(document.getElementById('accountCoins')?.textContent ?? '0').replace(/,/g, '')) || 0).toLocaleString());
     hub.classList.add('hidden');
     layout.classList.add('hidden');
     shell?.classList.remove('hidden');
