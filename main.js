@@ -1267,7 +1267,7 @@ async function lockPortraitForLobby() {
 function enterGameScreen(isHost) {
   lobbyMenu.classList.add('hidden');
   gameScreen.classList.remove('hidden');
-  hostServerIndicator.classList.toggle('hidden', !isHost);
+  hostServerIndicator?.classList.toggle('hidden', !isHost);
   stopLobbyBrowsing();
   lockLandscapeForArena();
 }
@@ -1276,7 +1276,7 @@ function showLobbyScreen() {
   lobbyMenu.classList.remove('hidden');
   if (typeof window.showLobbyHub === 'function') window.showLobbyHub();
   gameScreen.classList.add('hidden');
-  hostServerIndicator.classList.add('hidden');
+  hostServerIndicator?.classList.add('hidden');
   lockPortraitForLobby();
 
   // Tear down any room advertisement and resume browsing the list.
@@ -1307,7 +1307,24 @@ function closeLeaveConfirm() {
   if (leaveConfirmModal) leaveConfirmModal.classList.add('hidden');
 }
 
-leaveBtn.addEventListener('click', openLeaveConfirm);
+// Small in-game pause menu (D): the ⚙ button (or ESC) opens a tiny menu with
+// 소리 토글 + 게임 나가기. Leave still routes through leaveConfirmModal.
+const pauseMenu = document.getElementById('pauseMenu');
+const pauseMenuBtn = document.getElementById('pauseMenuBtn');
+function setPauseMenu(open) {
+  if (!pauseMenu) return;
+  pauseMenu.classList.toggle('hidden', !open);
+  pauseMenu.classList.toggle('flex', open);
+}
+pauseMenuBtn?.addEventListener('click', () => setPauseMenu(pauseMenu?.classList.contains('hidden')));
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  // ESC closes the leave dialog first, else toggles the pause menu (in-game only).
+  if (leaveConfirmModal && !leaveConfirmModal.classList.contains('hidden')) { closeLeaveConfirm(); return; }
+  if (!gameScreen.classList.contains('hidden')) setPauseMenu(pauseMenu?.classList.contains('hidden'));
+});
+
+leaveBtn.addEventListener('click', () => { setPauseMenu(false); openLeaveConfirm(); });
 if (leaveConfirmYes) leaveConfirmYes.addEventListener('click', () => {
   closeLeaveConfirm();
   if (activeGame) activeGame.quit();
@@ -1885,9 +1902,22 @@ function buildArmoryInto(body) {
 }
 
 /* ===== [06] OPTIONS module — consolidates the scattered lobby settings ===== */
+// Visual + control settings moved out of the in-game HUD (C-2). The lobby writes
+// localStorage; Game.js / Input.js read it on battle entry (read-only in-match).
+const VIS_KEY = 'battle_visual_settings_v1';
+function readVisual() { try { return JSON.parse(localStorage.getItem(VIS_KEY) || '{}') || {}; } catch { return {}; } }
+function writeVisual(patch) {
+  const s = readVisual(); Object.assign(s, patch);
+  try { localStorage.setItem(VIS_KEY, JSON.stringify(s)); } catch { /* storage blocked */ }
+}
+// Joystick (Input.js key). Default ON for touch devices when never set.
+function readJoystick() { const v = localStorage.getItem('joystick_enabled'); return v === null ? isMobileDevice() : v === 'true'; }
+function writeJoystick(on) { try { localStorage.setItem('joystick_enabled', on ? 'true' : 'false'); } catch { /* storage blocked */ } }
+
 function buildOptionsInto(body) {
   const nick = document.getElementById('nicknameInput');
   const perf = document.getElementById('lobbyPerfMode');
+  const vis = readVisual();
   // Sliding ON/OFF switch (label + knob). The knob slides + track recolors on toggle.
   const swit = (on) =>
     `<span class="flex items-center gap-2"><span class="med-switch-label font-mono text-[11px]" data-swlbl style="width:30px;text-align:right;color:${on ? 'var(--med-blood)' : 'var(--med-ink-mute)'}">${on ? '켜짐' : '꺼짐'}</span><button class="med-switch ${on ? 'on' : ''}" role="switch" aria-checked="${on}" aria-label="토글"><span class="med-switch-knob"></span></button></span>`;
@@ -1912,9 +1942,17 @@ function buildOptionsInto(body) {
         </button>
         <div id="optLinkNote" class="hidden font-mono text-[10px] mb-3" style="color:var(--med-blood)"></div>
         <div class="opt-head" style="border-top:1px dashed var(--med-wood);padding-top:12px">그래픽</div>
-        <div class="flex justify-between items-center">
+        <div class="flex justify-between items-center mb-2.5">
           <span class="text-[13px]" style="color:var(--med-ink)">성능 모드 (저사양)</span>
           <span id="optPerf">${swit(!!perf?.checked)}</span>
+        </div>
+        <div class="flex justify-between items-center mb-2.5">
+          <span class="text-[13px]" style="color:var(--med-ink)">적 공격 미리보기 끄기</span>
+          <span id="optHidePreview">${swit(!!vis.hideEnemyAttackPreviews)}</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-[13px]" style="color:var(--med-ink)">적 이펙트 최소화</span>
+          <span id="optMinFx">${swit(!!vis.minimizeEnemyAttackEffects)}</span>
         </div>
       </div>
 
@@ -1932,7 +1970,12 @@ function buildOptionsInto(body) {
       </div>
 
       <div class="med-parch relative p-4" style="grid-column:1 / -1">
-        <div class="opt-head">조작 안내</div>
+        <div class="opt-head">조작</div>
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-[13px]" style="color:var(--med-ink)">조이스틱 (모바일 가상 조작)</span>
+          <span id="optJoystick">${swit(readJoystick())}</span>
+        </div>
+        <div class="opt-head" style="border-top:1px dashed var(--med-wood);padding-top:12px">조작 안내</div>
         <div class="opt-keys">
           ${keyRows.map(([k, v]) => `<div class="flex justify-between"><span class="med-muted text-[12px]">${k}</span><span class="opt-key">${v}</span></div>`).join('')}
         </div>
@@ -1964,6 +2007,22 @@ function buildOptionsInto(body) {
     perf.checked = !perf.checked;
     perf.dispatchEvent(new Event('change', { bubbles: true }));
     setSwitch(body.querySelector('#optPerf'), perf.checked);
+  });
+  // Moved visual settings → localStorage (read by Game.js on battle entry).
+  const visToggle = (wrapId, key) => body.querySelector(`#${wrapId}`)?.addEventListener('click', (e) => {
+    if (!e.target.closest('.med-switch')) return;
+    const on = !readVisual()[key];
+    writeVisual({ [key]: on });
+    setSwitch(body.querySelector(`#${wrapId}`), on);
+  });
+  visToggle('optHidePreview', 'hideEnemyAttackPreviews');
+  visToggle('optMinFx', 'minimizeEnemyAttackEffects');
+  // Joystick (mobile virtual controls) → Input.js key, applied next battle.
+  body.querySelector('#optJoystick')?.addEventListener('click', (e) => {
+    if (!e.target.closest('.med-switch')) return;
+    const on = !readJoystick();
+    writeJoystick(on);
+    setSwitch(body.querySelector('#optJoystick'), on);
   });
   // Mute → Sound engine (stays in sync with the other mute toggles).
   const syncMute = (m) => setSwitch(body.querySelector('#optMute'), m);

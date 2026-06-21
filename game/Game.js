@@ -4417,42 +4417,10 @@ export class Game {
     // rewarding; only `local.kills` (real) is ever reported to the server.
     if (killsEl) killsEl.textContent = local.kills + (local.dummyKills || 0);
 
-    const aliveEl = document.getElementById('hudAlive');
-    if (aliveEl) {
-      if (this.networkManager.isHost) {
-        aliveEl.textContent = this.remainingPlayersCount;
-      } else {
-        aliveEl.textContent = this.remainingPlayersCount || Object.keys(this.players).filter(id => !this.players[id].isDead).length;
-      }
-    }
-
+    // Minimal HUD (C-4): only the local player's name + HP + kills remain.
+    // Survivor count, weapon badge, room code and ping panels were removed.
     const nameEl = document.getElementById('hudName');
     if (nameEl) nameEl.textContent = local.nickname.toUpperCase();
-
-    const weaponEl = document.getElementById('hudWeapon');
-    if (weaponEl) weaponEl.textContent = Weapons[local.weapon]?.name || 'UNKNOWN';
-
-    const roomEl = document.getElementById('hudRoomCode');
-    if (roomEl) roomEl.textContent = this.networkManager.roomCode || 'NONE';
-
-    // Latency
-    const pingEl = document.getElementById('hudPing');
-    const indicatorEl = document.getElementById('latencyIndicator');
-    if (pingEl) {
-      if (this.networkManager.isHost) {
-        pingEl.textContent = '지연 시간: 0 ms';
-        if (indicatorEl) indicatorEl.className = 'inline-block w-2.5 h-2.5 rounded-full bg-teal-400';
-      } else {
-        const pingVal = this.networkManager.latency;
-        pingEl.textContent = `지연 시간: ${pingVal} ms`;
-
-        if (indicatorEl) {
-          if (pingVal < 80) indicatorEl.className = 'inline-block w-2.5 h-2.5 rounded-full bg-green-500';
-          else if (pingVal < 185) indicatorEl.className = 'inline-block w-2.5 h-2.5 rounded-full bg-yellow-500';
-          else indicatorEl.className = 'inline-block w-2.5 h-2.5 rounded-full bg-red-600';
-        }
-      }
-    }
 
     // Skill (F) + Dash (Space) cooldown indicators
     this._updateAbilityHud(local);

@@ -35,19 +35,19 @@
 .hidden { display: none !important; }
 
 /* In-game weapon switch: a vertical bar in the arena's right gutter.
-   Desktop (>=1024px): always visible. Mobile: hidden until the toggle opens it. */
+   Toggle-driven on EVERY width now (C-3): the always-on desktop bar blocked the
+   view, so both desktop and mobile open/close it with the 무기 button. */
 #weaponSwitchPanel {
-  display: none;                 /* mobile default: closed */
+  display: none;                 /* closed until the toggle opens it */
   flex-direction: column;
   width: 9.5rem;
-  top: 50%;                      /* vertical centre when shown (mobile open) */
+  top: 50%;                      /* vertical centre when shown */
   transform: translateY(-50%);   /* own transform — the element no longer carries Tailwind's translate */
 }
-#weaponSwitchPanel.open { display: flex; }              /* mobile: opened via the toggle */
+#weaponSwitchPanel.open { display: flex; }              /* opened via the 무기 toggle */
 @media (min-width: 1024px) {
   #weaponSwitchPanel {
-    display: flex;
-    width: 16rem;                  /* clearly wider */
+    width: 16rem;                  /* clearly wider when opened */
     top: 44%;                      /* centred in the right gutter, aligned with the arena middle */
     bottom: auto;
     transform: translateY(-50%);   /* own transform — reliable vertical centre */
