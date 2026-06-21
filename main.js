@@ -1805,9 +1805,19 @@ function buildOptionsInto(body) {
     </div>`;
 
   // Nickname save → mirror into the real input the match reads.
-  body.querySelector('#optNickSave')?.addEventListener('click', () => {
-    if (nick) nick.value = body.querySelector('#optNick').value.trim();
-    const b = body.querySelector('#optNickSave'); if (b) { b.textContent = '저장됨 ✓'; setTimeout(() => b.textContent = '저장', 1200); }
+  body.querySelector('#optNickSave')?.addEventListener('click', async () => {
+    const val = body.querySelector('#optNick').value.trim();
+    if (!val) return;
+    if (nick) nick.value = val;
+    const b = body.querySelector('#optNickSave');
+    if (b) b.textContent = '저장 중...';
+    try {
+      await accountUI.saveUsername(val);   // persist to the account (survives reload)
+      if (b) { b.textContent = '저장됨 ✓'; setTimeout(() => { if (b) b.textContent = '저장'; }, 1200); }
+    } catch (e) {
+      if (b) { b.textContent = '저장 실패'; setTimeout(() => { if (b) b.textContent = '저장'; }, 1500); }
+      console.error('username save failed', e);
+    }
   });
   // Performance mode → drive the existing checkbox (its change handler persists it).
   body.querySelector('#optPerf')?.addEventListener('click', (e) => {

@@ -123,9 +123,14 @@ export async function getSession() {
   return { user: firebaseAuth.currentUser };
 }
 
-/** Google account profile photo URL (null for id/password logins). */
+/** Profile photo URL. For id/password users who linked Google, the top-level
+ *  photoURL stays null, so fall back to the google.com provider entry. */
 export function getPhotoURL() {
-  return firebaseAuth?.currentUser?.photoURL || null;
+  const u = firebaseAuth?.currentUser;
+  if (!u) return null;
+  if (u.photoURL) return u.photoURL;
+  const g = u.providerData?.find((p) => p.providerId === 'google.com');
+  return g?.photoURL || null;
 }
 
 /** Whether the current user already has a Google provider linked. */

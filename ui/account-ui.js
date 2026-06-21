@@ -14,6 +14,7 @@ import {
   getPhotoURL,
   linkGoogle,
   hasGoogleLinked,
+  updateUsername,
 } from '../firebase/account.js';
 import {
   fetchLeaderboard,
@@ -112,6 +113,16 @@ export function getEquippedCostume() {
 /** 로비 닉네임 입력 기본값 */
 export function getUsername() {
   return profile?.username || '';
+}
+
+/** 닉네임을 계정에 저장(영속). 성공 시 로컬 프로필·상단바도 갱신. */
+export async function saveUsername(name) {
+  const clean = await updateUsername(name);
+  const finalName = (typeof clean === 'string' && clean) || String(name || '').trim().slice(0, 20);
+  if (profile) profile.username = finalName;
+  const nameEl = $('accountName');
+  if (nameEl) nameEl.textContent = finalName;
+  return finalName;
 }
 
 /** Google 프로필 사진 URL (id/비번 로그인은 null) */
