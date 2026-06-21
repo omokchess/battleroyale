@@ -6,6 +6,7 @@
 import {
   signUpWithId,
   signInWithId,
+  signInWithGoogle,
   signOut,
   onAuthChange,
   fetchMyProfile,
@@ -290,6 +291,16 @@ function wireStaticButtons() {
       if (!session) {
         showAuthNote('가입 완료! "로그인"을 눌러주세요.', 'text-teal-300');
       }
+    } catch (e) {
+      showAuthNote(authErrorMessage(e));
+    }
+  });
+
+  // 구글 로그인 (성공 시 onAuthChange 가 프로필을 불러와 로비로 전환)
+  $('googleLoginBtn')?.addEventListener('click', async () => {
+    showAuthNote('구글 로그인 중...', 'text-gray-400');
+    try {
+      await signInWithGoogle();
     } catch (e) {
       showAuthNote(authErrorMessage(e));
     }
