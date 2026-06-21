@@ -1514,7 +1514,9 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 .size-map { position: absolute; inset: 0; transform-origin: top left; transform: scale(.32); background: var(--med-blood); opacity: .3; box-shadow: inset 0 0 0 1px var(--med-gold-dk); transition: transform var(--dur-bar) var(--ease-out); }
 .size-dot { position: absolute; top: 3px; left: 3px; width: 5px; height: 5px; background: var(--med-ink); border: 1px solid var(--med-gold); }
 .size-meta { font-family: var(--font-mono); min-width: 0; }
-.size-px { font-size: 13px; color: var(--med-ink); font-weight: 700; }
+/* NOTE: do NOT name this `.size-px` — Tailwind ships a `size-px` utility
+   (width:1px;height:1px) that collapses it and overlaps the text below. */
+.size-dim { font-size: 13px; color: var(--med-ink); font-weight: 700; }
 .size-sub { font-size: 10px; color: var(--med-ink-mute); line-height: 1.5; }
 .motion-reduced .size-map { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .size-map { transition: none !important; } }

@@ -2159,7 +2159,7 @@ function buildCreateInto(body) {
                  <div id="createSizeInfo" class="size-info">
                    <div class="size-fig"><div class="size-map" id="sizeMap"></div><div class="size-dot"></div></div>
                    <div class="size-meta">
-                     <div class="size-px" id="sizePx"></div>
+                     <div class="size-dim" id="sizePx"></div>
                      <div class="size-sub" id="sizeMul"></div>
                      <div class="size-sub" id="sizeCam"></div>
                    </div>
