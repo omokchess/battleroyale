@@ -1211,7 +1211,11 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 .armory-stat { display: grid; grid-template-columns: 48px 1fr 40px; gap: 8px; align-items: center; margin: 5px 0; font-family: var(--font-mono); font-size: 11px; }
 .armory-stat .lbl { color: var(--med-ink-desc); }
 .armory-stat .track { height: 10px; background: #d8c08c; box-shadow: inset 0 0 0 1px var(--med-wood); display: block; overflow: hidden; }
-.armory-stat .fill { display: block; height: 100%; }
+/* Fill uses scaleX so weapon switches interpolate prev→new in one motion (no
+   DOM regen). transform-origin left, width:100% = the scale baseline. */
+.armory-stat .fill { display: block; height: 100%; width: 100%; transform-origin: left center; transform: scaleX(0); transition: transform var(--dur-bar) var(--ease-out); }
+.motion-reduced .armory-stat .fill { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .armory-stat .fill { transition: none !important; } }
 .armory-stat .val { text-align: right; color: var(--med-ink); }
 
 /* Ability rows */
@@ -1297,10 +1301,11 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
    `prefers-reduced-motion: reduce` query.
    ========================================================================== */
 :root {
-  --dur-fast:   120ms;  /* button / chip press */
-  --dur-base:   200ms;  /* hover / select / fade */
-  --dur-slow:   350ms;  /* tab indicator / emphasis */
-  --dur-screen: 420ms;  /* hub <-> sub-screen */
+  --dur-fast:   220ms;  /* button / chip press */
+  --dur-base:   400ms;  /* hover / select / toggle / fade */
+  --dur-slow:   600ms;  /* tab indicator / emphasis */
+  --dur-bar:    700ms;  /* stat bars / value roll-up */
+  --dur-screen: 700ms;  /* hub <-> sub-screen */
   --ease-out:   cubic-bezier(.2,.8,.2,1);
   --ease-press: ease;
 }
@@ -1348,13 +1353,13 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 
 /* --- entrance stagger: direct children rise + fade in sequence. --- */
 .stagger-group > * { opacity: 0; animation: med-fadeup var(--dur-base) var(--ease-out) forwards; }
-.stagger-group > *:nth-child(1) { animation-delay: 30ms; }
-.stagger-group > *:nth-child(2) { animation-delay: 105ms; }
-.stagger-group > *:nth-child(3) { animation-delay: 180ms; }
-.stagger-group > *:nth-child(4) { animation-delay: 255ms; }
-.stagger-group > *:nth-child(5) { animation-delay: 330ms; }
-.stagger-group > *:nth-child(6) { animation-delay: 405ms; }
-.stagger-group > *:nth-child(n+7) { animation-delay: 480ms; }
+.stagger-group > *:nth-child(1) { animation-delay: 40ms; }
+.stagger-group > *:nth-child(2) { animation-delay: 160ms; }
+.stagger-group > *:nth-child(3) { animation-delay: 280ms; }
+.stagger-group > *:nth-child(4) { animation-delay: 400ms; }
+.stagger-group > *:nth-child(5) { animation-delay: 520ms; }
+.stagger-group > *:nth-child(6) { animation-delay: 640ms; }
+.stagger-group > *:nth-child(n+7) { animation-delay: 760ms; }
 
 /* --- confirm pop (equip / save button kick) --- */
 .med-pop-anim { animation: med-pop var(--dur-base) var(--ease-out); }
@@ -1409,4 +1414,46 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
   }
   .stagger-group > * { opacity: 1 !important; }
   #hubModules button:hover, .med-btn:hover { transform: none; }
+}
+
+/* ===== Sliding ON/OFF switch (settings + room create) ===== */
+@keyframes med-fadein { from { opacity: 0; } to { opacity: 1; } }
+.med-switch {
+  position: relative; width: 48px; height: 24px; flex: none; padding: 0; cursor: pointer;
+  background: #cdb589; border: 2px solid var(--med-wood);
+  box-shadow: inset 0 0 0 1px var(--med-gold-dk);
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+.med-switch.on { background: var(--med-blood); }
+.med-switch-knob {
+  position: absolute; top: 1px; left: 1px; width: 18px; height: 18px;
+  background: var(--med-parch); border: 1px solid var(--med-wood);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.med-switch.on .med-switch-knob { transform: translateX(24px); }
+.med-switch-label { transition: color var(--dur-base) var(--ease-out); }
+
+/* ===== Segment group with a sliding selection indicator (room create) =====
+   The indicator is absolutely positioned and out of flow; it animates left/width
+   only on click (not per frame), so it never thrashes layout during scroll. */
+.create-seg { position: relative; display: flex; gap: 5px; flex-wrap: wrap; }
+.create-seg .create-pill { position: relative; z-index: 1; }
+.create-seg .create-pill.on { background: transparent; border: 1px solid var(--med-wood); color: #f0dca2; }
+.create-seg-ind {
+  position: absolute; top: 0; left: 0; width: 0; height: 0; z-index: 0;
+  background: var(--med-blood); border: 2px solid var(--med-gold); pointer-events: none;
+  transition: left var(--dur-base) var(--ease-out), top var(--dur-base) var(--ease-out),
+              width var(--dur-base) var(--ease-out), height var(--dur-base) var(--ease-out);
+}
+.create-seg-ind.placed { /* becomes visible once JS measures the first selection */ }
+
+/* Detail sub-region crossfade on weapon switch (no flicker). */
+.armory-fade { animation: med-fadein var(--dur-base) var(--ease-out); }
+
+/* Motion gate for the new pieces. */
+.motion-reduced :where(.med-switch, .med-switch-knob, .med-switch-label, .create-seg-ind) { transition: none !important; }
+.motion-reduced .armory-fade { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  :where(.med-switch, .med-switch-knob, .med-switch-label, .create-seg-ind) { transition: none !important; }
+  .armory-fade { animation: none !important; }
 }

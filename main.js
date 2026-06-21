@@ -1514,6 +1514,29 @@ function motionReduced() {
   return document.documentElement.classList.contains('motion-reduced') ||
     (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
+/** Read a duration CSS token (e.g. '--dur-bar') as milliseconds. Single source
+    of truth so JS-driven rollups stay in sync with the CSS transitions. */
+function durMs(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!v) return fallback;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? (v.endsWith('ms') ? n : n * 1000) : fallback;
+}
+/** Interpolate a numeric label from→to (easeOutCubic) over --dur-bar.
+    `dec` = decimal places (0 = integer). Rounds each frame to kill fp noise. */
+function rollStat(el, from, to, dec) {
+  if (!el) return;
+  const fmt = (v) => (dec ? v.toFixed(dec) : String(Math.round(v)));
+  if (motionReduced() || from === to) { el.textContent = fmt(to); return; }
+  const dur = durMs('--dur-bar', 700), t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(from + (to - from) * e);
+    if (k < 1) requestAnimationFrame(step); else el.textContent = fmt(to);
+  };
+  requestAnimationFrame(step);
+}
 /** Replay a screen-enter animation by restarting it with a forced reflow. */
 function playEnter(el, cls) {
   if (!el) return;
@@ -1548,7 +1571,7 @@ function rollNumber(el, target) {
   const to = Number(target) || 0;
   const from = Number(String(el.textContent).replace(/[^\d.-]/g, '')) || 0;
   if (motionReduced() || from === to) { el.textContent = to.toLocaleString(); return; }
-  const dur = 420, t0 = performance.now();
+  const dur = durMs('--dur-bar', 700), t0 = performance.now();
   const step = (now) => {
     const k = Math.min(1, (now - t0) / dur);
     const v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
@@ -1739,10 +1762,22 @@ function buildArmoryInto(body) {
       .map(w => `<button class="armory-chip ${w === selected ? 'on' : ''}" data-w="${w}">
         <span class="dot" style="background:${Weapons[w].color || '#caa84a'}"></span>${armoryWeaponName(w)}</button>`).join('');
   }
-  function bar(label, val, frac, valText) {
-    const pct = Math.max(4, Math.min(100, Math.round(frac * 100)));
-    return `<div class="armory-stat"><span class="lbl">${label}</span><span class="track"><span class="fill" style="width:${pct}%;background:var(--med-blood)"></span></span><span class="val">${valText}</span></div>`;
+  // Persistent stat bars: the four <fill> elements are created ONCE and only
+  // their scaleX/value update on weapon switch, so the CSS transition
+  // interpolates prev-weapon → new-weapon in one motion (no DOM regen / 0-reset).
+  const BAR_DEFS = [['dmg', '피해', 'var(--med-blood)'], ['hp', '체력', '#5a8f3c'],
+    ['spd', '이동', '#c9a227'], ['rng', '사거리', '#8a6f47']];
+  const curStat = { dmg: 0, hp: 0, spd: 0, rng: 0 };
+  const fadeIn = (el) => { if (!el || motionReduced()) return; el.classList.remove('armory-fade'); void el.offsetWidth; el.classList.add('armory-fade'); };
+
+  function ensureDetailShell() {
+    if (detailEl.querySelector('#armoryBars')) return false;
+    const bars = BAR_DEFS.map(([k, lbl, col]) =>
+      `<div class="armory-stat"><span class="lbl" data-lbl="${k}">${lbl}</span><span class="track"><span class="fill" data-fill="${k}" style="background:${col}"></span></span><span class="val" data-val="${k}">0</span></div>`).join('');
+    detailEl.innerHTML = `<div id="armoryHead"></div><div id="armoryBars" class="mt-3">${bars}</div><div id="armoryMeta"></div>`;
+    return true;
   }
+
   function renderDetail() {
     const w = selected, c = Weapons[w];
     const skins = accountUI.getEquippedWeaponSkins?.() || {};
@@ -1760,8 +1795,12 @@ function buildArmoryInto(body) {
     if (parsed.LMB) abilities.push(['좌클릭', parsed.LMB, 'wood']);
     if (parsed.F) abilities.push(['F', parsed.F, 'blood']);
     if (parsed.R) abilities.push(['R', parsed.R, 'blood']);
-    const rangeText = Number.isFinite(c.range) ? `${c.range}` : '벽까지';
-    detailEl.innerHTML = `
+
+    const first = ensureDetailShell();
+
+    // --- head (sprite + name + tags): crossfade ---
+    const head = detailEl.querySelector('#armoryHead');
+    head.innerHTML = `
       <div class="armory-head">
         <div class="armory-sprite med-cell">${weaponIconMarkup(w, { skin: skins[skinKey] || null })}</div>
         <div class="min-w-0">
@@ -1769,13 +1808,12 @@ function buildArmoryInto(body) {
           <div class="font-mono text-[10px] med-muted">${w.toUpperCase()} · ${armoryCategory(w)}</div>
           <div class="mt-1 flex gap-1 flex-wrap">${tags}</div>
         </div>
-      </div>
-      <div class="mt-3">
-        ${bar(dmgLabel, dmgVal, (auto ? dps(w)/maxDps : c.damage/maxDps), Number.isFinite(dmgVal) ? Math.round(dmgVal) : '∞')}
-        ${bar('체력', c.maxHp, (c.maxHp||0)/maxHp, c.maxHp ?? '-')}
-        ${bar('이동', c.moveSpeed, (c.moveSpeed||1)/maxMove, (c.moveSpeed ?? 1).toFixed(2))}
-        ${bar('사거리', finiteRange(w), Number.isFinite(c.range) ? finiteRange(w)/maxRange : 1, rangeText)}
-      </div>
+      </div>`;
+    fadeIn(head);
+
+    // --- meta (desc + abilities + skins + equip): crossfade ---
+    const meta = detailEl.querySelector('#armoryMeta');
+    meta.innerHTML = `
       <div class="font-mono text-[11px] med-desc mt-3 leading-snug" style="border-top:1px dashed var(--med-wood);padding-top:8px">${c.description || ''}</div>
       <div class="mt-3 space-y-0.5">
         ${abilities.map(([k, d, cls]) => `<div class="armory-abil"><span class="armory-key ${cls}">${k}</span><span>${d}</span></div>`).join('')}
@@ -1792,14 +1830,35 @@ function buildArmoryInto(body) {
         <button id="armoryEquip" class="med-btn med-btn--blood font-mono text-xs px-5 py-2">장착하기</button>
       </div>
       <div id="armoryEquipNote" class="font-mono text-[10px] med-muted mt-2 hidden">다음 부활 시 적용됩니다.</div>`;
-
-    detailEl.querySelector('#armoryEquip')?.addEventListener('click', () => {
+    fadeIn(meta);
+    meta.querySelector('#armoryEquip')?.addEventListener('click', () => {
       document.querySelector(`.weapon-card[data-weapon="${w}"]`)?.click();
-      detailEl.querySelector('#armoryEquipNote')?.classList.remove('hidden');
-      const b = detailEl.querySelector('#armoryEquip'); if (b) { b.textContent = '장착됨 ✓'; popElement(b); }
+      meta.querySelector('#armoryEquipNote')?.classList.remove('hidden');
+      const b = meta.querySelector('#armoryEquip'); if (b) { b.textContent = '장착됨 ✓'; popElement(b); }
       showToast(`${armoryWeaponName(w)} 장착 완료`);
     });
-    detailEl.querySelectorAll('.armory-skin').forEach(sw => sw.addEventListener('click', () => document.getElementById('shopBtn')?.click()));
+    meta.querySelectorAll('.armory-skin').forEach(sw => sw.addEventListener('click', () => document.getElementById('shopBtn')?.click()));
+
+    // --- bars (persistent): update scaleX + roll values from previous weapon ---
+    const specs = [
+      { key: 'dmg', label: dmgLabel, frac: (auto ? dps(w) / maxDps : c.damage / maxDps), to: Number.isFinite(dmgVal) ? dmgVal : null, dec: 0, fallback: '∞' },
+      { key: 'hp', label: '체력', frac: (c.maxHp || 0) / maxHp, to: (c.maxHp != null) ? c.maxHp : null, dec: 0, fallback: '-' },
+      { key: 'spd', label: '이동', frac: (c.moveSpeed || 1) / maxMove, to: (c.moveSpeed ?? 1), dec: 2, fallback: null },
+      { key: 'rng', label: '사거리', frac: Number.isFinite(c.range) ? finiteRange(w) / maxRange : 1, to: Number.isFinite(c.range) ? finiteRange(w) : null, dec: 0, fallback: '벽까지' },
+    ];
+    const applyBars = () => specs.forEach(s => {
+      const fill = detailEl.querySelector(`[data-fill="${s.key}"]`);
+      const val = detailEl.querySelector(`[data-val="${s.key}"]`);
+      const lbl = detailEl.querySelector(`[data-lbl="${s.key}"]`);
+      if (lbl) lbl.textContent = s.label;
+      if (fill) fill.style.transform = `scaleX(${Math.max(0.04, Math.min(1, s.frac || 0))})`;
+      if (!val) return;
+      if (s.to == null) { val.textContent = s.fallback; return; }
+      rollStat(val, curStat[s.key] ?? 0, s.to, s.dec);
+      curStat[s.key] = s.to;
+    });
+    // First paint: defer one frame so the 0→value fill transition runs.
+    if (first && !motionReduced()) requestAnimationFrame(applyBars); else applyBars();
   }
 
   chipsEl.addEventListener('click', (e) => {
@@ -1821,8 +1880,14 @@ function buildArmoryInto(body) {
 function buildOptionsInto(body) {
   const nick = document.getElementById('nicknameInput');
   const perf = document.getElementById('lobbyPerfMode');
-  const seg = (onLabel, offLabel, on) =>
-    `<span class="opt-seg" role="group"><button data-seg="on" class="${on ? 'on' : ''}">${onLabel}</button><button data-seg="off" class="${on ? '' : 'on'}">${offLabel}</button></span>`;
+  // Sliding ON/OFF switch (label + knob). The knob slides + track recolors on toggle.
+  const swit = (on) =>
+    `<span class="flex items-center gap-2"><span class="med-switch-label font-mono text-[11px]" data-swlbl style="width:30px;text-align:right;color:${on ? 'var(--med-blood)' : 'var(--med-ink-mute)'}">${on ? '켜짐' : '꺼짐'}</span><button class="med-switch ${on ? 'on' : ''}" role="switch" aria-checked="${on}" aria-label="토글"><span class="med-switch-knob"></span></button></span>`;
+  const setSwitch = (wrap, on) => {
+    const sw = wrap?.querySelector('.med-switch'); const lbl = wrap?.querySelector('[data-swlbl]');
+    if (sw) { sw.classList.toggle('on', on); sw.setAttribute('aria-checked', String(on)); }
+    if (lbl) { lbl.textContent = on ? '켜짐' : '꺼짐'; lbl.style.color = on ? 'var(--med-blood)' : 'var(--med-ink-mute)'; }
+  };
   const keyRows = [['이동', 'WASD'], ['조준', '마우스'], ['평타', '자동/좌클릭'], ['스킬', 'F'], ['보조', 'R'], ['대시', 'Space']];
 
   body.innerHTML = `
@@ -1841,7 +1906,7 @@ function buildOptionsInto(body) {
         <div class="opt-head" style="border-top:1px dashed var(--med-wood);padding-top:12px">그래픽</div>
         <div class="flex justify-between items-center">
           <span class="text-[13px]" style="color:var(--med-ink)">성능 모드 (저사양)</span>
-          <span id="optPerf">${seg('켜짐', '꺼짐', !!perf?.checked)}</span>
+          <span id="optPerf">${swit(!!perf?.checked)}</span>
         </div>
       </div>
 
@@ -1849,7 +1914,7 @@ function buildOptionsInto(body) {
         <div class="opt-head">음향</div>
         <div class="flex justify-between items-center mb-3">
           <span class="text-[13px]" style="color:var(--med-ink)">전체 음소거</span>
-          <span id="optMute">${seg('켜짐', '꺼짐', Sound.isMuted())}</span>
+          <span id="optMute">${swit(Sound.isMuted())}</span>
         </div>
         <div class="flex items-center gap-2">
           <span class="med-muted text-[12px]" style="width:54px">볼륨</span>
@@ -1887,16 +1952,16 @@ function buildOptionsInto(body) {
   });
   // Performance mode → drive the existing checkbox (its change handler persists it).
   body.querySelector('#optPerf')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-seg]'); if (!btn || !perf) return;
-    perf.checked = btn.dataset.seg === 'on';
+    if (!e.target.closest('.med-switch') || !perf) return;
+    perf.checked = !perf.checked;
     perf.dispatchEvent(new Event('change', { bubbles: true }));
-    body.querySelectorAll('#optPerf button').forEach(x => x.classList.toggle('on', x === btn));
+    setSwitch(body.querySelector('#optPerf'), perf.checked);
   });
   // Mute → Sound engine (stays in sync with the other mute toggles).
-  const syncMute = (m) => body.querySelectorAll('#optMute button').forEach(x => x.classList.toggle('on', (x.dataset.seg === 'on') === m));
+  const syncMute = (m) => setSwitch(body.querySelector('#optMute'), m);
   body.querySelector('#optMute')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-seg]'); if (!btn) return;
-    Sound.setMuted(btn.dataset.seg === 'on');
+    if (!e.target.closest('.med-switch')) return;
+    Sound.setMuted(!Sound.isMuted());
   });
   const offMute = Sound.onMuteChange(syncMute);
   // Volume.
@@ -1944,21 +2009,32 @@ function buildCreateInto(body) {
   const selectedOf = (g) => opts(g).find(o => o.on) || opts(g)[0];
   const pickHidden = (g, value) => { [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].find(b => b.dataset.value === value)?.click(); };
   const GROUPS = [['arenaSize', '경기장 크기'], ['storm', '자기장'], ['cover', '엄폐물'], ['healing', '회복 아이템']];
-
-  const pillRow = (g) => opts(g).map(o => `<button class="create-pill ${o.on ? 'on' : ''}" data-g="${g}" data-v="${o.value}">${o.label}</button>`).join('');
+  const ONOFF = new Set(['storm', 'healing']);   // rendered as sliding switches
   const healingOn = () => selectedOf('healing')?.value === 'on';
+
+  // Segment group: pills + a sliding indicator that glides prev→new selection.
+  const segRow = (g) => `<div class="create-seg" data-group="${g}">${opts(g).map(o =>
+    `<button class="create-pill ${o.on ? 'on' : ''}" data-g="${g}" data-v="${o.value}">${o.label}</button>`).join('')}<span class="create-seg-ind"></span></div>`;
+  // Inline ON/OFF switch markup (knob slides, track recolors, label updates).
+  const switchMarkup = (g) => {
+    const on = selectedOf(g)?.value === 'on';
+    return `<span class="flex items-center gap-2"><span class="med-switch-label font-mono text-[11px]" data-swlbl style="color:${on ? 'var(--med-blood)' : 'var(--med-ink-mute)'}">${on ? '켜짐' : '꺼짐'}</span><button class="med-switch ${on ? 'on' : ''}" role="switch" aria-checked="${on}" data-g="${g}"><span class="med-switch-knob"></span></button></span>`;
+  };
 
   body.innerHTML = `
     <div class="create-grid">
       <div class="med-parch relative p-4">
-        ${GROUPS.map(([g, label]) => `
-          <div class="mb-3.5">
-            <div class="med-muted text-[12px] mb-1.5">${label}</div>
-            <div class="create-pills" data-group="${g}">${pillRow(g)}</div>
-          </div>`).join('')}
+        ${GROUPS.map(([g, label]) => ONOFF.has(g)
+          ? `<div class="mb-3.5 flex items-center justify-between" data-switch-group="${g}">
+               <span class="med-muted text-[12px]">${label}</span>${switchMarkup(g)}
+             </div>`
+          : `<div class="mb-3.5">
+               <div class="med-muted text-[12px] mb-1.5">${label}</div>
+               ${segRow(g)}
+             </div>`).join('')}
         <div id="createHealRate" class="${healingOn() ? '' : 'hidden'}">
           <div class="med-muted text-[12px] mb-1.5">회복 스폰 주기</div>
-          <div class="create-pills" data-group="healingRate">${pillRow('healingRate')}</div>
+          ${segRow('healingRate')}
         </div>
       </div>
 
@@ -1979,20 +2055,50 @@ function buildCreateInto(body) {
       ['엄폐물', selectedOf('cover')?.label], ['회복', healingOn() ? `${selectedOf('healing')?.label}·${selectedOf('healingRate')?.label || '보통'}` : selectedOf('healing')?.label]];
     summaryEl.innerHTML = rows.map(([k, v]) => `<div class="flex justify-between text-[12px]"><span class="med-muted">${k}</span><span style="color:var(--med-ink)">${v || '-'}</span></div>`).join('');
   }
-  function syncPills() {
-    body.querySelectorAll('.create-pills').forEach(row => {
-      const g = row.dataset.group; const sel = selectedOf(g)?.value;
-      row.querySelectorAll('.create-pill').forEach(p => p.classList.toggle('on', p.dataset.v === sel));
+  // Move a segment's indicator over its selected pill. `instant` skips the
+  // transition (used for the very first placement so it doesn't grow from 0).
+  function placeIndicator(seg, instant) {
+    const ind = seg?.querySelector('.create-seg-ind');
+    const on = seg?.querySelector('.create-pill.on') || seg?.querySelector('.create-pill');
+    if (!ind || !on) return;
+    if (instant) ind.style.transition = 'none';
+    ind.style.left = on.offsetLeft + 'px';
+    ind.style.top = on.offsetTop + 'px';
+    ind.style.width = on.offsetWidth + 'px';
+    ind.style.height = on.offsetHeight + 'px';
+    ind.classList.add('placed');
+    if (instant) { void ind.offsetWidth; ind.style.transition = ''; }
+  }
+  function syncControls(instant) {
+    body.querySelectorAll('.create-seg').forEach(seg => {
+      const g = seg.dataset.group; const sel = selectedOf(g)?.value;
+      seg.querySelectorAll('.create-pill').forEach(p => p.classList.toggle('on', p.dataset.v === sel));
+      placeIndicator(seg, instant);
+    });
+    body.querySelectorAll('[data-switch-group]').forEach(row => {
+      const g = row.dataset.switchGroup; const on = selectedOf(g)?.value === 'on';
+      const sw = row.querySelector('.med-switch'); const lbl = row.querySelector('[data-swlbl]');
+      if (sw) { sw.classList.toggle('on', on); sw.setAttribute('aria-checked', String(on)); }
+      if (lbl) { lbl.textContent = on ? '켜짐' : '꺼짐'; lbl.style.color = on ? 'var(--med-blood)' : 'var(--med-ink-mute)'; }
     });
     body.querySelector('#createHealRate')?.classList.toggle('hidden', !healingOn());
     renderSummary();
   }
 
   body.addEventListener('click', (e) => {
-    const p = e.target.closest('.create-pill'); if (!p) return;
-    pickHidden(p.dataset.g, p.dataset.v);   // drive the source-of-truth cfg-opt
-    syncPills();
+    const pill = e.target.closest('.create-pill');
+    if (pill) { pickHidden(pill.dataset.g, pill.dataset.v); syncControls(false); return; }
+    const sw = e.target.closest('.med-switch');
+    if (sw?.dataset.g) {
+      const on = selectedOf(sw.dataset.g)?.value === 'on';
+      pickHidden(sw.dataset.g, on ? 'off' : 'on');
+      syncControls(false);
+      // The healing-rate segment may have just un-hidden → place its indicator.
+      requestAnimationFrame(() => placeIndicator(body.querySelector('#createHealRate .create-seg'), true));
+    }
   });
+  // First placement needs layout — defer one frame, place without animating.
+  requestAnimationFrame(() => body.querySelectorAll('.create-seg').forEach(s => placeIndicator(s, true)));
   const mirrorCode = () => { const h = document.getElementById('hostRoomInput'); if (h) h.value = body.querySelector('#createCode').value.trim(); };
   body.querySelector('#createCode')?.addEventListener('input', mirrorCode);
   body.querySelector('#createHost')?.addEventListener('click', () => { mirrorCode(); document.getElementById('hostBtn')?.click(); });
