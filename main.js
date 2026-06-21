@@ -14,7 +14,7 @@ import { Protocol } from './multiplayer/Protocol.js';
 import { RoomRegistry } from './multiplayer/RoomRegistry.js';
 import * as accountUI from './ui/account-ui.js';
 import { isMobileDevice, isPhoneDevice } from './game/Device.js';
-import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
+import { normalizeRoomConfig, roomConfigBadges, ARENA_SIZES } from './game/RoomConfig.js';
 import { Sound } from './game/Sound.js';
 
 // Dom Elements
@@ -2039,6 +2039,15 @@ function buildCreateInto(body) {
           : `<div class="mb-3.5">
                <div class="med-muted text-[12px] mb-1.5">${label}</div>
                ${segRow(g)}
+               ${g === 'arenaSize' ? `
+                 <div id="createSizeInfo" class="size-info">
+                   <div class="size-fig"><div class="size-map" id="sizeMap"></div><div class="size-dot"></div></div>
+                   <div class="size-meta">
+                     <div class="size-px" id="sizePx"></div>
+                     <div class="size-sub" id="sizeMul"></div>
+                     <div class="size-sub" id="sizeCam"></div>
+                   </div>
+                 </div>` : ''}
              </div>`).join('')}
         <div id="createHealRate" class="${healingOn() ? '' : 'hidden'}">
           <div class="med-muted text-[12px] mb-1.5">회복 스폰 주기</div>
@@ -2056,6 +2065,24 @@ function buildCreateInto(body) {
         <button id="createDummy" class="med-btn font-mono text-[12px] py-2" style="color:#7a3326;border-color:var(--med-blood)">더미방으로 연습</button>
       </div>
     </div>`;
+
+  // Arena-size indicator: map px + character multiple + camera behaviour, with a
+  // square that scales to the chosen size (vs. the largest preset). Camera split
+  // mirrors Camera.js: only the reference 700 (tiny) fits the whole map on screen.
+  function updateSizeInfo(instant) {
+    const v = selectedOf('arenaSize')?.value || 'tiny';
+    const side = ARENA_SIZES[v] || 700;
+    const maxSide = ARENA_SIZES.huge || 2200;
+    const map = body.querySelector('#sizeMap');
+    if (map) {
+      if (instant) map.style.transition = 'none';
+      map.style.transform = `scale(${(side / maxSide).toFixed(3)})`;
+      if (instant) { void map.offsetWidth; map.style.transition = ''; }
+    }
+    const px = body.querySelector('#sizePx'); if (px) px.textContent = `${side}×${side}px`;
+    const mul = body.querySelector('#sizeMul'); if (mul) mul.textContent = `캐릭터 약 ${Math.round(side / 28)}배 크기`;
+    const cam = body.querySelector('#sizeCam'); if (cam) cam.textContent = side <= 700 ? '맵 전체가 한 화면에' : '플레이어 추적 · 미니맵';
+  }
 
   const summaryEl = body.querySelector('#createSummary');
   function renderSummary() {
@@ -2090,6 +2117,7 @@ function buildCreateInto(body) {
       if (lbl) { lbl.textContent = on ? '켜짐' : '꺼짐'; lbl.style.color = on ? 'var(--med-blood)' : 'var(--med-ink-mute)'; }
     });
     body.querySelector('#createHealRate')?.classList.toggle('hidden', !healingOn());
+    updateSizeInfo(instant);
     renderSummary();
   }
 
@@ -2107,6 +2135,7 @@ function buildCreateInto(body) {
   });
   // First placement needs layout — defer one frame, place without animating.
   requestAnimationFrame(() => body.querySelectorAll('.create-seg').forEach(s => placeIndicator(s, true)));
+  updateSizeInfo(true);   // initial size indicator (instant, no scale-in)
   const mirrorCode = () => { const h = document.getElementById('hostRoomInput'); if (h) h.value = body.querySelector('#createCode').value.trim(); };
   body.querySelector('#createCode')?.addEventListener('input', mirrorCode);
   body.querySelector('#createHost')?.addEventListener('click', () => { mirrorCode(); document.getElementById('hostBtn')?.click(); });
