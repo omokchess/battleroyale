@@ -1772,6 +1772,7 @@ function buildOptionsInto(body) {
         <button id="optLinkGoogle" class="med-btn w-full font-mono text-[12px] py-2 mb-4 flex items-center justify-center gap-2">
           ${accountUI.isGoogleLinked?.() ? '구글 연동됨 ✓' : '<svg width="14" height="14" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.6 2.4 30.1 0 24 0 14.6 0 6.4 5.4 2.5 13.3l7.9 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 2.9-2.2 5.4-4.7 7.1l7.3 5.7c4.3-3.9 6.8-9.7 6.8-17.3z"/><path fill="#FBBC05" d="M10.4 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6l-7.9-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.5 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.1 0 11.3-2 15-5.5l-7.3-5.7c-2 1.4-4.6 2.2-7.7 2.2-6.3 0-11.7-3.7-13.6-9.4l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>구글 계정에 연동'}
         </button>
+        <div id="optLinkNote" class="hidden font-mono text-[10px] mb-3" style="color:var(--med-blood)"></div>
         <div class="opt-head" style="border-top:1px dashed var(--med-wood);padding-top:12px">그래픽</div>
         <div class="flex justify-between items-center">
           <span class="text-[13px]" style="color:var(--med-ink)">성능 모드 (저사양)</span>
@@ -1831,14 +1832,26 @@ function buildOptionsInto(body) {
   body.querySelector('#optLogout')?.addEventListener('click', () => { offMute(); document.getElementById('logoutBtn')?.click(); });
   // Link a Google account → enables the profile photo for id/password users.
   const linkBtn = body.querySelector('#optLinkGoogle');
+  const linkNote = body.querySelector('#optLinkNote');
   if (linkBtn && !accountUI.isGoogleLinked?.()) {
     linkBtn.addEventListener('click', async () => {
       linkBtn.textContent = '연동 중...';
+      if (linkNote) linkNote.classList.add('hidden');
       try {
         await accountUI.linkGoogleAccount();
         linkBtn.textContent = '구글 연동됨 ✓';
       } catch (e) {
-        linkBtn.textContent = '연동 실패 — 다시 시도';
+        linkBtn.textContent = '구글 계정에 연동 (다시 시도)';
+        const code = e?.code || '';
+        const msg = {
+          'auth/operation-not-allowed': 'Firebase 콘솔에서 Google 로그인이 비활성화돼 있어요.',
+          'auth/credential-already-in-use': '이 구글 계정은 이미 다른 계정에 연결돼 있어요.',
+          'auth/provider-already-linked': '이미 구글이 연동돼 있어요.',
+          'auth/popup-blocked': '팝업이 차단됐어요. 팝업 허용 후 다시 시도하세요.',
+          'auth/popup-closed-by-user': '팝업을 닫았어요. 다시 시도하세요.',
+          'auth/unauthorized-domain': '이 도메인이 Firebase 승인 목록에 없어요.',
+        }[code] || (`${code || '오류'} ${e?.message || ''}`).trim();
+        if (linkNote) { linkNote.textContent = msg; linkNote.classList.remove('hidden'); }
         console.error('google link failed', e);
       }
     });
