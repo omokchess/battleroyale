@@ -1553,6 +1553,14 @@ function playStagger(wrapper) {
   void wrapper.offsetWidth;
   wrapper.classList.add('stagger-group');
 }
+/** Opacity-only crossfade for scroll containers (no translate → no scrollbar). */
+function crossfade(el) {
+  if (!el || motionReduced()) return;
+  el.classList.remove('med-fade');
+  void el.offsetWidth;
+  el.classList.add('med-fade');
+  el.addEventListener('animationend', () => el.classList.remove('med-fade'), { once: true });
+}
 /** Brief slide-in toast that fades out on its own. */
 function showToast(msg) {
   let wrap = document.getElementById('medToastWrap');
@@ -1628,7 +1636,7 @@ function setupLobbyHub() {
       movedCard = { node: bodyEl, parent: bodyEl.parentElement, panel, modal };
       panel.appendChild(bodyEl);
       shellBody.appendChild(panel);
-      playStagger(bodyEl);   // shop/rank rows rise in sequence
+      crossfade(bodyEl);   // shop/rank: opacity-only (scrolls → no scrollbar flash)
     } else {
       movedCard = { modal };
     }
@@ -1870,7 +1878,7 @@ function buildArmoryInto(body) {
     activeCat = b.dataset.cat;
     body.querySelectorAll('#armoryFilter button').forEach(x => x.classList.toggle('on', x === b));
     renderChips();
-    playStagger(chipsEl);   // tab switch → chips crossfade/rise back in
+    crossfade(chipsEl);   // tab switch → opacity crossfade (no blank, no scrollbar)
   });
   renderChips();
   renderDetail();

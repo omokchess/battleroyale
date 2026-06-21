@@ -1310,9 +1310,12 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
   --ease-press: ease;
 }
 
-@keyframes med-fadeup    { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@keyframes med-screen-in { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }
-@keyframes med-screen-bk { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+@keyframes med-fadeup    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* Screen transition is an opacity crossfade (no translateX): a horizontal slide
+   extends the scroll-overflow of the scrolling #lobbyMenu and flashed a scrollbar
+   + a one-frame jump. A pure fade is smooth and overflow-free. */
+@keyframes med-screen-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes med-screen-bk { from { opacity: 0; } to { opacity: 1; } }
 @keyframes med-pop       { 0% { transform: scale(1); } 45% { transform: scale(1.05); } 100% { transform: scale(1); } }
 @keyframes med-toast-in  { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes med-toast-out { to { opacity: 0; transform: translateY(14px); } }
@@ -1347,19 +1350,25 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 /* --- list selection pop (chip / room / pill gets the gold border) --- */
 .armory-chip.on, .arena-card.on, .create-pill.on { animation: med-pop var(--dur-base) var(--ease-out); }
 
-/* --- screen transition (hub <-> sub-screen), reversible. JS toggles classes. */
-.screen-in   { animation: med-screen-in var(--dur-screen) var(--ease-out); will-change: transform, opacity; }
-.screen-back { animation: med-screen-bk var(--dur-screen) var(--ease-out); will-change: transform, opacity; }
+/* --- screen transition (hub <-> sub-screen): one smooth crossfade. --- */
+.screen-in   { animation: med-screen-in var(--dur-screen) var(--ease-out); will-change: opacity; }
+.screen-back { animation: med-screen-bk var(--dur-screen) var(--ease-out); will-change: opacity; }
 
-/* --- entrance stagger: direct children rise + fade in sequence. --- */
-.stagger-group > * { opacity: 0; animation: med-fadeup var(--dur-base) var(--ease-out) forwards; }
+/* --- entrance stagger: direct children rise + fade in sequence. ---
+   `backwards` fill (NOT `forwards`) + no base opacity:0 means the resting state
+   is fully visible: if the animation is cancelled, never runs, or the class is
+   toggled mid-flight (rapid tab switching), the child always lands at opacity 1
+   / transform none — so items can never stick blank. `overflow: clip` on the
+   wrapper keeps the 8px rise from extending the scroll area (no scrollbar flash). */
+.stagger-group { overflow: clip; }
+.stagger-group > * { animation: med-fadeup var(--dur-base) var(--ease-out) backwards; }
 .stagger-group > *:nth-child(1) { animation-delay: 40ms; }
-.stagger-group > *:nth-child(2) { animation-delay: 160ms; }
-.stagger-group > *:nth-child(3) { animation-delay: 280ms; }
-.stagger-group > *:nth-child(4) { animation-delay: 400ms; }
-.stagger-group > *:nth-child(5) { animation-delay: 520ms; }
-.stagger-group > *:nth-child(6) { animation-delay: 640ms; }
-.stagger-group > *:nth-child(n+7) { animation-delay: 760ms; }
+.stagger-group > *:nth-child(2) { animation-delay: 130ms; }
+.stagger-group > *:nth-child(3) { animation-delay: 220ms; }
+.stagger-group > *:nth-child(4) { animation-delay: 310ms; }
+.stagger-group > *:nth-child(5) { animation-delay: 400ms; }
+.stagger-group > *:nth-child(6) { animation-delay: 490ms; }
+.stagger-group > *:nth-child(n+7) { animation-delay: 560ms; }
 
 /* --- confirm pop (equip / save button kick) --- */
 .med-pop-anim { animation: med-pop var(--dur-base) var(--ease-out); }
@@ -1449,6 +1458,11 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 
 /* Detail sub-region crossfade on weapon switch (no flicker). */
 .armory-fade { animation: med-fadein var(--dur-base) var(--ease-out); }
+/* Generic opacity-only crossfade for scroll containers (chips list, shop/rank
+   body) where a translateY rise would extend scroll-overflow → scrollbar flash. */
+.med-fade { animation: med-fadein var(--dur-base) var(--ease-out); }
+.motion-reduced .med-fade { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .med-fade { animation: none !important; } }
 
 /* Motion gate for the new pieces. */
 .motion-reduced :where(.med-switch, .med-switch-knob, .med-switch-label, .create-seg-ind) { transition: none !important; }

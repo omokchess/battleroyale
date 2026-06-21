@@ -61,16 +61,18 @@ export class Game {
     // Fire patches (flamethrower F): timed ground burn, synced via GAME_STATE.
     this.firePatches = [];
     this._patchSeq = 0;
-    // Storm zone (Task 5): cycle-based safe circle. Host simulates, syncs state.
-    this.zone = (this.roomConfig.storm)
-      ? new Zone(this.mapWidth, this.mapHeight, this.roomConfig.arenaSize)
-      : null;
-
     // Arena Boundaries — derived from the room's arena-size preset (tiny=700
     // keeps the legacy default). Clients re-derive this from ROOM_JOINED.
     const dims = arenaDimensions(this.roomConfig);
     this.mapWidth = dims.mapWidth;
     this.mapHeight = dims.mapHeight;
+
+    // Storm zone (Task 5): cycle-based safe circle. Host simulates, syncs state.
+    // NOTE: must come AFTER mapWidth/mapHeight are set — the Zone needs the real
+    // arena dimensions (previously it read undefined and the storm never ran).
+    this.zone = (this.roomConfig.storm)
+      ? new Zone(this.mapWidth, this.mapHeight, this.roomConfig.arenaSize)
+      : null;
 
     this.renderer = new Renderer(canvas);
     this.camera = new Camera();
