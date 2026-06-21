@@ -1382,6 +1382,27 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 .screen-in   { animation: med-screen-in var(--dur-screen) var(--ease-out); will-change: opacity; }
 .screen-back { animation: med-screen-bk var(--dur-screen) var(--ease-out); will-change: opacity; }
 
+/* --- Hub module buttons: left column enters FROM THE LEFT, right column FROM THE
+   RIGHT (re-triggered each time the hub is shown). In the 2-col grid the odd
+   children are the left column (무기고/방 제작/랭킹), even are the right. --- */
+@keyframes med-from-left  { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+@keyframes med-from-right { from { opacity: 0; transform: translateX(26px);  } to { opacity: 1; transform: none; } }
+#hubModules.reveal > button { animation-duration: var(--dur-base); animation-timing-function: var(--ease-out); animation-fill-mode: backwards; }
+#hubModules.reveal > button:nth-child(odd)  { animation-name: med-from-left; }
+#hubModules.reveal > button:nth-child(even) { animation-name: med-from-right; }
+#hubModules.reveal > button:nth-child(1), #hubModules.reveal > button:nth-child(2) { animation-delay: 30ms; }
+#hubModules.reveal > button:nth-child(3), #hubModules.reveal > button:nth-child(4) { animation-delay: 110ms; }
+#hubModules.reveal > button:nth-child(5), #hubModules.reveal > button:nth-child(6) { animation-delay: 190ms; }
+
+/* --- List reveal (rank rows / shop cards): each item slides in from the left and
+   fades up, staggered — so opacity "rises starting from the left". JS assigns the
+   per-item delay; `backwards` fill keeps items visible if the animation is cut. --- */
+@keyframes med-list-in { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+.med-list-item { animation: med-list-in var(--dur-base) var(--ease-out) backwards; }
+
+.motion-reduced :where(#hubModules.reveal > button, .med-list-item) { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { :where(#hubModules.reveal > button, .med-list-item) { animation: none !important; } }
+
 /* --- entrance stagger: direct children rise + fade in sequence. ---
    `backwards` fill (NOT `forwards`) + no base opacity:0 means the resting state
    is fully visible: if the animation is cancelled, never runs, or the class is

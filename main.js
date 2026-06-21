@@ -1644,10 +1644,24 @@ function setupLobbyHub() {
   let movedCard = null;
   function restoreMovedCard() {
     if (!movedCard) return;
+    movedCard.obs?.disconnect();
     if (movedCard.node && movedCard.parent) movedCard.parent.appendChild(movedCard.node);
     movedCard.panel?.remove();
     movedCard.modal?.classList.add('hidden');
     movedCard = null;
+  }
+  // List reveal: rank table rows / shop cards slide in from the left, fading up,
+  // staggered — so opacity rises starting from the left. Re-applied on internal
+  // re-renders (e.g. the shop's category tabs replace shopBody's contents).
+  function revealList(root) {
+    if (!root || motionReduced()) return;
+    let items = [...root.querySelectorAll('tbody tr')];
+    if (!items.length) items = [...root.querySelectorAll('[class*="bg-[#0b0c10]"]')];
+    items.forEach((el, i) => {
+      el.classList.remove('med-list-item'); void el.offsetWidth;
+      el.style.animationDelay = Math.min(i * 40, 520) + 'ms';
+      el.classList.add('med-list-item');
+    });
   }
   // Prepare the (off-screen) shell: header text + a cleared body. Content is
   // built into it BEFORE the slide, so the module is fully rendered on arrival.
@@ -1677,6 +1691,11 @@ function setupLobbyHub() {
       movedCard = { node: bodyEl, parent: bodyEl.parentElement, panel, modal };
       panel.appendChild(bodyEl);
       shellBody.appendChild(panel);
+      revealList(bodyEl);
+      // Re-reveal when account-ui re-renders the list in place (shop category tabs).
+      const obs = new MutationObserver(() => revealList(bodyEl));
+      obs.observe(bodyEl, { childList: true });
+      movedCard.obs = obs;
     } else {
       movedCard = { modal };
     }
@@ -1721,6 +1740,8 @@ function setupLobbyHub() {
     navState = 'hub';
     track?.classList.remove('show-shell');
     if (motionReduced() || !track) restoreMovedCard();
+    // Re-play the module buttons' directional entrance (left col ← left, right col ← right).
+    if (modules && !motionReduced()) { modules.classList.remove('reveal'); void modules.offsetWidth; modules.classList.add('reveal'); }
   }
   window.showLobbyHub = showHub;
 
