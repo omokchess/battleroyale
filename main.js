@@ -1527,6 +1527,7 @@ function setupLobbyHub() {
   function restoreMovedCard() {
     if (!movedCard) return;
     movedCard.card.classList.remove('med-moved-card');
+    movedCard.card.style.removeProperty('background-color');
     movedCard.modal.appendChild(movedCard.card);
     movedCard.modal.classList.add('hidden');
     movedCard = null;
@@ -1536,7 +1537,12 @@ function setupLobbyHub() {
     const modal = document.getElementById(modalId);
     document.getElementById(triggerId)?.click();   // account-ui renders + shows it
     const card = modal?.firstElementChild;
-    if (card && shellBody) { card.classList.add('med-moved-card'); shellBody.appendChild(card); }
+    if (card && shellBody) {
+      card.classList.add('med-moved-card');
+      // Bulletproof the parchment fill against the global .bg-[#2c2016] override.
+      card.style.setProperty('background-color', 'var(--med-parch)', 'important');
+      shellBody.appendChild(card);
+    }
     modal?.classList.add('hidden');
     movedCard = { card, modal };
   }
