@@ -1627,9 +1627,36 @@ function setupLobbyHub() {
   const shell = document.getElementById('moduleShell');
   const shellBody = document.getElementById('moduleBody');
   const track = document.getElementById('lobbyTrack');
-  // Push transition: 'hub' = track at 0 (hub visible), 'shell' = translateX(-50%)
-  // (module visible). Both screens stay mounted, so navigation never blanks.
-  let navState = 'hub';
+  const hubScreen = hub.closest('.lobby-scr');     // the two sliding screens
+  const shellScreen = shell?.closest('.lobby-scr');
+  // Per-side entry direction: left-column buttons (무기고/방 제작/랭킹) push the
+  // module in FROM THE LEFT; the right column enters from the right.
+  const LEFT_MODULES = new Set(['armory', 'create', 'rank']);
+  let navState = 'hub';     // 'hub' | 'shell'
+  let lastFromLeft = false; // direction the current module entered from (to reverse on back)
+
+  // Slide so `incoming` reveals while `outgoing` exits. The track is reordered so
+  // the incoming screen sits on the side it should enter from, then we set the
+  // start transform (still showing `outgoing` — no visual jump) and animate.
+  // Transform-only; both screens stay mounted, so there is never a blank frame.
+  function pushTo(incoming, outgoing, fromLeft) {
+    if (!track || !incoming || !outgoing) return;
+    if (fromLeft) {
+      track.append(incoming, outgoing);              // [incoming, outgoing]
+      track.style.transition = 'none';
+      track.style.transform = 'translateX(-50%)';    // show outgoing (2nd)
+      void track.offsetWidth;
+      track.style.transition = '';
+      track.style.transform = 'translateX(0)';       // → incoming (1st): enters from left
+    } else {
+      track.append(outgoing, incoming);              // [outgoing, incoming]
+      track.style.transition = 'none';
+      track.style.transform = 'translateX(0)';       // show outgoing (1st)
+      void track.offsetWidth;
+      track.style.transition = '';
+      track.style.transform = 'translateX(-50%)';    // → incoming (2nd): enters from right
+    }
+  }
   // After the track finishes sliding back to the hub, tidy up the (now off-screen)
   // shell — restoring the moved shop/rank card. Doing it here (not mid-slide) keeps
   // the outgoing screen intact while it slides away (no flash, no end-jump).
@@ -1674,13 +1701,17 @@ function setupLobbyHub() {
     layout.classList.add('hidden');
     if (shellBody) shellBody.innerHTML = '';
   }
-  function slideToShell() { navState = 'shell'; track?.classList.add('show-shell'); }
+  function slideToShell(fromLeft) {
+    navState = 'shell';
+    lastFromLeft = !!fromLeft;
+    pushTo(shellScreen, hubScreen, lastFromLeft);
+  }
 
   // Move just the rendered BODY (shopBody / leaderboardBody) into a fresh
   // parchment panel — moving the whole modal card dragged in a stale composited
   // layer that refused to repaint the parchment. account-ui re-queries the body
   // by id, so its render + listeners stay intact. Built off-screen, THEN slid in.
-  function openShellMove(ko, en, modalId, triggerId, bodyId) {
+  function openShellMove(ko, en, modalId, triggerId, bodyId, fromLeft) {
     prepShell(ko, en);
     const modal = document.getElementById(modalId);
     document.getElementById(triggerId)?.click();   // account-ui renders into bodyId
@@ -1700,7 +1731,7 @@ function setupLobbyHub() {
       movedCard = { modal };
     }
     modal?.classList.add('hidden');
-    slideToShell();
+    slideToShell(fromLeft);
   }
 
   function showHub() {
@@ -1734,12 +1765,23 @@ function setupLobbyHub() {
     back?.classList.add('hidden');
     document.getElementById('lobbyTabBar')?.classList.add('hidden');
     lobbyMenu.classList.remove('lobby-module-mode');
-    // Slide the track back to the hub (screen 0). The shell stays mounted and
-    // slides off to the right; its cleanup runs on transitionend (or now, if
-    // motion is reduced, since no transition fires).
+    // Slide back to the hub, REVERSING the direction the module entered from
+    // (entered from left → hub returns from the right, and vice-versa). The shell
+    // stays mounted and slides off; cleanup runs on transitionend (or now, if
+    // motion is reduced / first paint, since no transition fires).
+    const wasShell = navState === 'shell';
     navState = 'hub';
-    track?.classList.remove('show-shell');
-    if (motionReduced() || !track) restoreMovedCard();
+    if (wasShell && !motionReduced() && track) {
+      pushTo(hubScreen, shellScreen, !lastFromLeft);
+    } else if (track) {
+      // Instant: ensure the hub screen is the one shown (order [hub, shell] @ 0).
+      track.append(hubScreen, shellScreen);
+      track.style.transition = 'none';
+      track.style.transform = 'translateX(0)';
+      void track.offsetWidth;
+      track.style.transition = '';
+      restoreMovedCard();
+    }
     // Re-play the module buttons' directional entrance (left col ← left, right col ← right).
     if (modules && !motionReduced()) { modules.classList.remove('reveal'); void modules.offsetWidth; modules.classList.add('reveal'); }
   }
@@ -1749,20 +1791,21 @@ function setupLobbyHub() {
   // ALWAYS mounted (screen 1); we build the module into it while it is still
   // off-screen, then slide the track — so the incoming screen is fully rendered
   // before it appears (no blank-frame flash, no in-place swap of a visible node).
-  function openShellModule(crumbKo, crumbEn, builder) {
+  function openShellModule(crumbKo, crumbEn, builder, fromLeft) {
     prepShell(crumbKo, crumbEn);
     if (shellBody) builder?.(shellBody);
     playStagger(shellBody?.firstElementChild); // cards/rows rise in sequence
-    slideToShell();                            // slide the (already-built) module in
+    slideToShell(fromLeft);                    // slide the (already-built) module in
   }
 
   function openModule(mod) {
-    if (mod === 'shop') { openShellMove('상점', 'SHOP', 'shopModal', 'shopBtn', 'shopBody'); return; }
-    if (mod === 'rank') { openShellMove('랭킹', 'RANK', 'leaderboardModal', 'rankBtn', 'leaderboardBody'); return; }
-    if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto); return; }
-    if (mod === 'options') { openShellModule('설정', 'OPTIONS', buildOptionsInto); return; }
-    if (mod === 'create') { openShellModule('방 제작', 'CREATE', buildCreateInto); return; }
-    if (mod === 'arena') { openShellModule('결투장', 'ARENA', buildArenaInto); return; }
+    const fromLeft = LEFT_MODULES.has(mod);   // 무기고/방 제작/랭킹 enter from the left
+    if (mod === 'shop') { openShellMove('상점', 'SHOP', 'shopModal', 'shopBtn', 'shopBody', fromLeft); return; }
+    if (mod === 'rank') { openShellMove('랭킹', 'RANK', 'leaderboardModal', 'rankBtn', 'leaderboardBody', fromLeft); return; }
+    if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto, fromLeft); return; }
+    if (mod === 'options') { openShellModule('설정', 'OPTIONS', buildOptionsInto, fromLeft); return; }
+    if (mod === 'create') { openShellModule('방 제작', 'CREATE', buildCreateInto, fromLeft); return; }
+    if (mod === 'arena') { openShellModule('결투장', 'ARENA', buildArenaInto, fromLeft); return; }
   }
 
   modules?.addEventListener('click', (e) => {

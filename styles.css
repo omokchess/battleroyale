@@ -1373,7 +1373,8 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
   align-items: center;   /* centre each screen's content (matches the old my-auto) */
   padding: 0 2px;
 }
-#lobbyTrack.show-shell { transform: translateX(-50%); }
+/* The transform itself is driven inline by JS (direction depends on which side
+   the pressed module button is on); this rule only supplies the animation. */
 .motion-reduced #lobbyTrack { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { #lobbyTrack { transition: none !important; } }
 
