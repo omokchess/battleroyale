@@ -1507,6 +1507,65 @@ function tierFromScore(score) {
   return { label: `${cur.n} ${['III', 'II', 'I'][Math.floor(prog * 3)]}`, color: cur.c };
 }
 
+/* ===== UI interaction motion helpers (lobby / meta UI; transform+opacity only).
+   All effects are additive: when motion is reduced (perf mode or OS reduced-
+   motion) they no-op and the layout/values are set instantly. ===== */
+function motionReduced() {
+  return document.documentElement.classList.contains('motion-reduced') ||
+    (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+/** Replay a screen-enter animation by restarting it with a forced reflow. */
+function playEnter(el, cls) {
+  if (!el) return;
+  el.classList.remove('screen-in', 'screen-back');
+  if (motionReduced()) return;
+  void el.offsetWidth;                 // reflow → restart the keyframes
+  el.classList.add(cls);
+  el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+}
+/** (Re)trigger the entrance stagger on a wrapper's direct children. */
+function playStagger(wrapper) {
+  if (!wrapper || motionReduced()) return;
+  wrapper.classList.remove('stagger-group');
+  void wrapper.offsetWidth;
+  wrapper.classList.add('stagger-group');
+}
+/** Brief slide-in toast that fades out on its own. */
+function showToast(msg) {
+  let wrap = document.getElementById('medToastWrap');
+  if (!wrap) { wrap = document.createElement('div'); wrap.id = 'medToastWrap'; document.body.appendChild(wrap); }
+  const t = document.createElement('div');
+  t.className = 'med-toast';
+  t.textContent = msg;
+  wrap.appendChild(t);
+  if (motionReduced()) { setTimeout(() => t.remove(), 1400); return; }
+  t.addEventListener('animationend', (e) => { if (e.animationName === 'med-toast-out') t.remove(); });
+  setTimeout(() => { if (t.isConnected) t.remove(); }, 2200);   // safety net
+}
+/** Count-up a numeric element to `target`, with a small pop at the end. */
+function rollNumber(el, target) {
+  if (!el) return;
+  const to = Number(target) || 0;
+  const from = Number(String(el.textContent).replace(/[^\d.-]/g, '')) || 0;
+  if (motionReduced() || from === to) { el.textContent = to.toLocaleString(); return; }
+  const dur = 420, t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / dur);
+    const v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
+    el.textContent = v.toLocaleString();
+    if (k < 1) { requestAnimationFrame(step); return; }
+    el.textContent = to.toLocaleString();
+    el.classList.remove('med-roll-pop'); void el.offsetWidth; el.classList.add('med-roll-pop');
+  };
+  requestAnimationFrame(step);
+}
+/** One-shot pop on an element (equip/save confirm kick). */
+function popElement(el) {
+  if (!el || motionReduced()) return;
+  el.classList.remove('med-pop-anim'); void el.offsetWidth; el.classList.add('med-pop-anim');
+  el.addEventListener('animationend', () => el.classList.remove('med-pop-anim'), { once: true });
+}
+
 function setupLobbyHub() {
   const hub = document.getElementById('lobbyHub');
   const layout = document.getElementById('lobbyLayout');
@@ -1546,6 +1605,7 @@ function setupLobbyHub() {
       movedCard = { node: bodyEl, parent: bodyEl.parentElement, panel, modal };
       panel.appendChild(bodyEl);
       shellBody.appendChild(panel);
+      playStagger(bodyEl);   // shop/rank rows rise in sequence
     } else {
       movedCard = { modal };
     }
@@ -1560,14 +1620,14 @@ function setupLobbyHub() {
     const name = document.getElementById('accountName')?.textContent?.trim();
     setText('hubName', name && name !== '-' ? name : (document.getElementById('nicknameInput')?.value || '플레이어'));
     const coinsRaw = profile?.coins ?? document.getElementById('accountCoins')?.textContent?.trim() ?? 0;
-    const coins = (Number(String(coinsRaw).replace(/,/g, '')) || 0).toLocaleString();
-    setText('hubCoins', coins);
-    setText('moduleCoins', coins);
+    const coinsNum = Number(String(coinsRaw).replace(/,/g, '')) || 0;
+    rollNumber(document.getElementById('hubCoins'), coinsNum);   // coin tick + pop
+    setText('moduleCoins', coinsNum.toLocaleString());
     // Stats + score-based tier (kills*4 − deaths*10).
     const kills = accountUI.getTotalKills?.() ?? 0;
     const deaths = accountUI.getTotalDeaths?.() ?? 0;
-    setText('hubKills', kills.toLocaleString());
-    setText('hubDeaths', deaths.toLocaleString());
+    rollNumber(document.getElementById('hubKills'), kills);
+    rollNumber(document.getElementById('hubDeaths'), deaths);
     setText('hubLoadout', document.querySelector('.weapon-card.selected span')?.textContent?.trim() || '검');
     const tier = tierFromScore(accountUI.getTierScore?.() ?? 0);
     const tierEl = document.getElementById('hubTier');
@@ -1586,6 +1646,7 @@ function setupLobbyHub() {
     back?.classList.add('hidden');
     document.getElementById('lobbyTabBar')?.classList.add('hidden');
     lobbyMenu.classList.remove('lobby-module-mode');
+    playEnter(hub, 'screen-back');     // reverse slide back to the board
   }
   window.showLobbyHub = showHub;
 
@@ -1600,6 +1661,8 @@ function setupLobbyHub() {
     layout.classList.add('hidden');
     shell?.classList.remove('hidden');
     if (shellBody) { shellBody.innerHTML = ''; builder?.(shellBody); }
+    playEnter(shell, 'screen-in');             // forward slide into the module
+    playStagger(shellBody?.firstElementChild); // cards/rows rise in sequence
   }
 
   function openModule(mod) {
@@ -1733,7 +1796,8 @@ function buildArmoryInto(body) {
     detailEl.querySelector('#armoryEquip')?.addEventListener('click', () => {
       document.querySelector(`.weapon-card[data-weapon="${w}"]`)?.click();
       detailEl.querySelector('#armoryEquipNote')?.classList.remove('hidden');
-      const b = detailEl.querySelector('#armoryEquip'); if (b) b.textContent = '장착됨 ✓';
+      const b = detailEl.querySelector('#armoryEquip'); if (b) { b.textContent = '장착됨 ✓'; popElement(b); }
+      showToast(`${armoryWeaponName(w)} 장착 완료`);
     });
     detailEl.querySelectorAll('.armory-skin').forEach(sw => sw.addEventListener('click', () => document.getElementById('shopBtn')?.click()));
   }
@@ -1747,6 +1811,7 @@ function buildArmoryInto(body) {
     activeCat = b.dataset.cat;
     body.querySelectorAll('#armoryFilter button').forEach(x => x.classList.toggle('on', x === b));
     renderChips();
+    playStagger(chipsEl);   // tab switch → chips crossfade/rise back in
   });
   renderChips();
   renderDetail();
@@ -1813,7 +1878,8 @@ function buildOptionsInto(body) {
     if (b) b.textContent = '저장 중...';
     try {
       await accountUI.saveUsername(val);   // persist to the account (survives reload)
-      if (b) { b.textContent = '저장됨 ✓'; setTimeout(() => { if (b) b.textContent = '저장'; }, 1200); }
+      if (b) { b.textContent = '저장됨 ✓'; popElement(b); setTimeout(() => { if (b) b.textContent = '저장'; }, 1200); }
+      showToast('닉네임이 저장됐어요');
     } catch (e) {
       if (b) { b.textContent = '저장 실패'; setTimeout(() => { if (b) b.textContent = '저장'; }, 1500); }
       console.error('username save failed', e);
@@ -1947,7 +2013,9 @@ function buildArenaInto(body) {
           <button id="arenaJoinCode" class="med-btn font-mono text-[11px] px-3">입장</button>
           <button id="arenaRefresh" class="med-btn font-mono text-[11px] px-2" aria-label="새로고침">⟳</button>
         </div>
-        <div id="arenaList" class="arena-list"></div>
+        <div id="arenaList" class="arena-list">
+          ${'<div class="med-skeleton" style="height:62px;margin-bottom:6px"></div>'.repeat(3)}
+        </div>
       </div>
       <div id="arenaDetail" class="med-parch med-parch--hi med-ticks relative p-4"></div>
     </div>`;
@@ -2011,7 +2079,8 @@ function buildArenaInto(body) {
   const codeInput = body.querySelector('#arenaCode');
   body.querySelector('#arenaJoinCode')?.addEventListener('click', () => { const v = codeInput.value.trim(); if (v) startJoin(v); });
 
-  refresh();
+  // Let the skeleton paint one frame before the (synchronous) first fill.
+  requestAnimationFrame(refresh);
   const timer = setInterval(refresh, 2500);
   window.__clearArenaTimer = () => { clearInterval(timer); window.__clearArenaTimer = null; };
 }
@@ -2029,6 +2098,9 @@ function setupLobbyPerfToggle() {
     try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; }
   };
   box.checked = read().performanceMode === undefined ? isMobileDevice() : Boolean(read().performanceMode);
+  // Perf mode also gates decorative UI motion (see styles.css .motion-reduced).
+  const applyMotion = () => document.documentElement.classList.toggle('motion-reduced', box.checked);
+  applyMotion();
   // If we're defaulting it ON for mobile, persist that once so the in-game panel
   // and Renderer agree on first entry (still fully togglable afterwards).
   if (read().performanceMode === undefined && box.checked) {
@@ -2040,6 +2112,7 @@ function setupLobbyPerfToggle() {
     const s = read();
     s.performanceMode = box.checked;
     try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* storage blocked */ }
+    applyMotion();
     // Keep the in-game settings checkbox in sync if it's already in the DOM.
     const inGame = document.getElementById('settingPerformanceMode');
     if (inGame) inGame.checked = box.checked;

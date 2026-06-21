@@ -1288,3 +1288,125 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 .med-moved-card .border-\[\#45f3ff\], .med-moved-card .border-teal-400, .med-moved-card .border-yellow-500 { border-color: var(--med-wood) !important; }
 /* Buy button: make it the blood CTA. */
 .med-moved-card button[data-buy] { border-color: var(--med-blood) !important; color: #7a2222 !important; }
+
+/* ============================================================================
+   UI INTERACTION MOTION (lobby / meta UI only — canvas combat is untouched).
+   Rules: animate ONLY transform & opacity (no width/height/top/left/margin/
+   box-shadow). Purely additive — with motion off, layout & function are
+   identical. Gated by `.motion-reduced` (perf mode, set in JS) and the OS
+   `prefers-reduced-motion: reduce` query.
+   ========================================================================== */
+:root {
+  --dur-fast:   120ms;  /* button / chip press */
+  --dur-base:   200ms;  /* hover / select / fade */
+  --dur-slow:   350ms;  /* tab indicator / emphasis */
+  --dur-screen: 420ms;  /* hub <-> sub-screen */
+  --ease-out:   cubic-bezier(.2,.8,.2,1);
+  --ease-press: ease;
+}
+
+@keyframes med-fadeup    { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes med-screen-in { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }
+@keyframes med-screen-bk { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+@keyframes med-pop       { 0% { transform: scale(1); } 45% { transform: scale(1.05); } 100% { transform: scale(1); } }
+@keyframes med-toast-in  { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes med-toast-out { to { opacity: 0; transform: translateY(14px); } }
+@keyframes med-pulse     { 0%,100% { opacity: .45; } 50% { opacity: .85; } }
+
+/* --- hover lift + press, focus ring (buttons / chips / tabs / pills) --- */
+.med-btn, .med-tab, .armory-filter button, .create-pill, .armory-skin,
+.armory-chip, .arena-card {
+  transition: transform var(--dur-fast) var(--ease-out),
+              background-color var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              color var(--dur-base) var(--ease-out);
+}
+.med-btn:hover { transform: translateY(-2px); }
+.med-btn:active { transform: translateY(1px) scale(.97); }
+.armory-filter button:hover, .create-pill:hover { transform: translateY(-2px); }
+.armory-filter button:active, .create-pill:active,
+.armory-chip:active, .arena-card:active, .armory-skin:active { transform: scale(.96); }
+:where(.med-btn, .med-tab, .armory-filter button, .create-pill, .armory-chip,
+  .arena-card, .armory-skin, #hubModules button, .opt-seg button):focus-visible {
+  outline: 2px solid var(--med-gold);
+  outline-offset: 2px;
+}
+
+/* --- hub module cards: hover lift + gold brighten, active press --- */
+#hubModules button {
+  transition: transform var(--dur-base) var(--ease-out), filter var(--dur-base) var(--ease-out);
+}
+#hubModules button:hover { transform: translateY(-3px); filter: brightness(1.05) saturate(1.05); }
+#hubModules button:active { transform: translateY(-1px) scale(.985); }
+
+/* --- list selection pop (chip / room / pill gets the gold border) --- */
+.armory-chip.on, .arena-card.on, .create-pill.on { animation: med-pop var(--dur-base) var(--ease-out); }
+
+/* --- screen transition (hub <-> sub-screen), reversible. JS toggles classes. */
+.screen-in   { animation: med-screen-in var(--dur-screen) var(--ease-out); will-change: transform, opacity; }
+.screen-back { animation: med-screen-bk var(--dur-screen) var(--ease-out); will-change: transform, opacity; }
+
+/* --- entrance stagger: direct children rise + fade in sequence. --- */
+.stagger-group > * { opacity: 0; animation: med-fadeup var(--dur-base) var(--ease-out) forwards; }
+.stagger-group > *:nth-child(1) { animation-delay: 30ms; }
+.stagger-group > *:nth-child(2) { animation-delay: 105ms; }
+.stagger-group > *:nth-child(3) { animation-delay: 180ms; }
+.stagger-group > *:nth-child(4) { animation-delay: 255ms; }
+.stagger-group > *:nth-child(5) { animation-delay: 330ms; }
+.stagger-group > *:nth-child(6) { animation-delay: 405ms; }
+.stagger-group > *:nth-child(n+7) { animation-delay: 480ms; }
+
+/* --- confirm pop (equip / save button kick) --- */
+.med-pop-anim { animation: med-pop var(--dur-base) var(--ease-out); }
+
+/* --- toast (slide-in, auto fade after 1.2s) --- */
+#medToastWrap {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  z-index: 80; display: flex; flex-direction: column; align-items: center;
+  gap: 8px; pointer-events: none;
+}
+.med-toast {
+  font-family: var(--font-mono); font-size: 12px; color: var(--med-parch);
+  background: var(--med-chip); border: 2px solid var(--med-gold);
+  box-shadow: inset 0 0 0 1px var(--med-gold-dk), 0 4px 10px rgba(0,0,0,.45);
+  padding: 8px 16px; white-space: nowrap;
+  animation: med-toast-in var(--dur-base) var(--ease-out),
+             med-toast-out var(--dur-base) var(--ease-out) 1.2s forwards;
+}
+
+/* --- skeleton shimmer (loading list / rank) --- */
+.med-skeleton {
+  background: var(--med-parch-hi); border: 1px solid var(--med-wood);
+  animation: med-pulse 1.1s ease-in-out infinite;
+}
+
+/* --- coin / value tick pop --- */
+.med-roll-pop { animation: med-pop var(--dur-base) var(--ease-out); }
+
+/* ============ MOTION GATE: perf mode + OS reduced-motion ============ */
+.motion-reduced :where(.med-btn, .med-tab, .armory-filter button, .create-pill,
+  .armory-skin, .armory-chip, .arena-card, #hubModules button) {
+  transition-duration: 1ms !important;
+}
+.motion-reduced :where(.screen-in, .screen-back, .med-pop-anim, .med-roll-pop,
+  .armory-chip.on, .arena-card.on, .create-pill.on),
+.motion-reduced .stagger-group > *,
+.motion-reduced .med-toast,
+.motion-reduced .med-skeleton,
+.motion-reduced .med-notice-flavor { animation: none !important; }
+.motion-reduced .stagger-group > * { opacity: 1 !important; }
+.motion-reduced #hubModules button:hover { transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.med-btn, .med-tab, .armory-filter button, .create-pill, .armory-skin,
+    .armory-chip, .arena-card, #hubModules button) {
+    transition-duration: 1ms !important;
+  }
+  :where(.screen-in, .screen-back, .med-pop-anim, .med-roll-pop, .armory-chip.on,
+    .arena-card.on, .create-pill.on),
+  .stagger-group > *, .med-toast, .med-skeleton, .med-notice-flavor {
+    animation: none !important;
+  }
+  .stagger-group > * { opacity: 1 !important; }
+  #hubModules button:hover, .med-btn:hover { transform: none; }
+}
