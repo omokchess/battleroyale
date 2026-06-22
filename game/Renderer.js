@@ -19,6 +19,20 @@ const SLASH2_FRAMES = [[0, 26], [66, 120], [134, 193], [205, 263], [290, 329], [
 const CIRC_FRAMES = [[0, 0, 63, 55], [63, 0, 63, 55], [126, 0, 63, 55], [189, 0, 63, 55], [252, 0, 63, 55], [315, 0, 63, 55]];
 const CIRC_CELL = 63;   // reference full-ring size; scale = targetSize / CIRC_CELL
 
+// Cover obstacle textures, cut from the nature tileset (tile/nature). Each entry
+// is [sx, sy, sw, sh] in sheet px — a roughly tile-sized boulder/bush. Each cover
+// tile deterministically picks one (+ optional flip) from its world position, so
+// the look is varied but identical on every client (no sync needed, like grass).
+const COVER_SPRITES = [
+  [336, 162, 42, 56],  // brown boulder (tall)
+  [336, 226, 42, 62],  // gray boulder (tall)
+  [240, 224, 46, 50],  // gray rock cluster
+  [240, 178, 44, 38],  // tan sandstone boulder
+  [112, 226, 46, 32],  // green bush, orange berries
+  [112, 258, 46, 30],  // green bush, blue berries
+  [160, 258, 46, 30],  // autumn bush, berries
+];
+
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
   axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0, noAimFlip: true },
@@ -612,24 +626,55 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** Solid cover tiles — pixel blocks with a lighter top bevel. */
+  /**
+   * Cover tiles. Each draws a boulder/bush texture cut from the nature tileset,
+   * chosen deterministically from the tile's world position (so it's varied but
+   * identical on every client — same idea as the grass field). Width-fit to the
+   * tile so the visual footprint matches the 46px hitbox; taller rocks overhang
+   * upward. Falls back to a flat gray block until the tileset finishes loading.
+   */
   _drawCover(ctx, camera, cw, ch, cover) {
     const z = camera.zoom || 1;
+    const sheet = this.atlas?.get('tile/nature');
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     for (const t of cover) {
       const a = camera.toScreen(t.x, t.y, cw, ch);
       const w = t.w * z, h = t.h * z;
-      // Cull off-screen tiles.
-      if (a.x + w < -20 || a.x > cw + 20 || a.y + h < -20 || a.y > ch + 20) continue;
+      // Cull off-screen tiles (extra top margin for the upward boulder overhang).
+      if (a.x + w < -40 || a.x > cw + 40 || a.y + h < -120 || a.y > ch + 40) continue;
       const x = Math.round(a.x), y = Math.round(a.y);
-      ctx.fillStyle = '#3a4250';
-      ctx.fillRect(x, y, Math.ceil(w), Math.ceil(h));
-      ctx.fillStyle = '#4b5566';                 // top bevel
-      ctx.fillRect(x, y, Math.ceil(w), Math.max(2, Math.round(h * 0.18)));
-      ctx.strokeStyle = '#222831';
-      ctx.lineWidth = Math.max(1, z);
-      ctx.strokeRect(x + 0.5, y + 0.5, Math.ceil(w) - 1, Math.ceil(h) - 1);
+
+      if (!sheet) {
+        // Tileset not ready yet — flat gray block fallback.
+        ctx.fillStyle = '#3a4250';
+        ctx.fillRect(x, y, Math.ceil(w), Math.ceil(h));
+        ctx.fillStyle = '#4b5566';
+        ctx.fillRect(x, y, Math.ceil(w), Math.max(2, Math.round(h * 0.18)));
+        continue;
+      }
+
+      // Deterministic per-tile pick from world position (stable across clients).
+      const key = (Math.round(t.x) * 73856093) ^ (Math.round(t.y) * 19349663);
+      const idx = (key >>> 3) % COVER_SPRITES.length;
+      const flip = ((key >>> 1) & 1) === 1;
+      const [sx, sy, sw, sh] = COVER_SPRITES[idx];
+
+      // Width-fit (slight overhang); height follows the sprite's aspect, anchored
+      // to the tile's bottom so the base sits on the hitbox and tall rocks rise up.
+      const dw = w * 1.12;
+      const dh = dw * (sh / sw);
+      const dx = x + w / 2 - dw / 2;
+      const dy = y + h - dh;
+      if (flip) {
+        ctx.save();
+        ctx.translate(dx + dw, dy);
+        ctx.scale(-1, 1);
+        ctx.drawImage(sheet, sx, sy, sw, sh, 0, 0, dw, dh);
+        ctx.restore();
+      } else {
+        ctx.drawImage(sheet, sx, sy, sw, sh, dx, dy, dw, dh);
+      }
     }
     ctx.restore();
   }
