@@ -1465,42 +1465,6 @@ function buildWeaponSwitchPanel() {
   if (backdrop) backdrop.addEventListener('click', () => setWeaponPanelOpen(false));
 }
 
-/**
- * Mobile lobby tabs. The lobby stacks vertically and is painful to scroll on
- * phones, so on mobile we show one section at a time via a bottom tab bar.
- * Desktop is unaffected: `.lobby-tab-hidden` only does anything below `lg`
- * (see styles.css), so all sections stay visible side-by-side on desktop.
- *
- * IMPORTANT: this only toggles a presentation class on existing sections — no
- * account/login element is moved, renamed, or rewired, so the Firebase auth
- * flow (account-ui.js) is completely untouched.
- */
-function setupLobbyTabs() {
-  const tabs = document.querySelectorAll('.lobby-tab');
-  if (!tabs.length) return;
-
-  const setHidden = (id, on) => {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle('lobby-tab-hidden', on);
-  };
-
-  // Desktop shows all columns at once; on mobile the tab bar chooses the active
-  // lobby workflow. Weapon details live in the right column, while create/join
-  // share the middle column.
-  function setTab(tab) {
-    setHidden('lobbyAccount', tab !== 'mypage');                         // col 1
-    setHidden('lobbyLeft', tab !== 'weapon' && tab !== 'create' && tab !== 'join');
-    setHidden('lobbyRight', tab !== 'weapon');                           // weapon details / preview
-    setHidden('lobbyWeapon', tab !== 'weapon');                          // inside col 2
-    setHidden('lobbyCreate', tab !== 'create');
-    setHidden('lobbyJoin', tab !== 'join');
-    setHidden('lobbyGuide', tab !== 'create');
-    tabs.forEach(b => b.classList.toggle('lobby-tab-active', b.dataset.lobbyTab === tab));
-  }
-
-  tabs.forEach(b => b.addEventListener('click', () => setTab(b.dataset.lobbyTab)));
-  setTab('weapon'); // default landing tab on mobile
-}
 
 /**
  * Limbus-style hub navigation. The hub is the lobby landing (resource bar +
@@ -1621,7 +1585,6 @@ function setupLobbyHub() {
   const modules = document.getElementById('hubModules');
   if (!hub || !layout) return;
 
-  const clickTab = (tab) => document.querySelector(`.lobby-tab[data-lobby-tab="${tab}"]`)?.click();
   const setText = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.textContent = val; };
 
   const shell = document.getElementById('moduleShell');
@@ -1686,7 +1649,7 @@ function setupLobbyHub() {
     if (!items.length) items = [...root.querySelectorAll('[class*="bg-[#0b0c10]"]')];
     items.forEach((el, i) => {
       el.classList.remove('med-list-item'); void el.offsetWidth;
-      el.style.animationDelay = Math.min(i * 40, 520) + 'ms';
+      el.style.animationDelay = Math.min(i * 75, 600) + 'ms';
       el.classList.add('med-list-item');
     });
   }
@@ -1763,8 +1726,6 @@ function setupLobbyHub() {
     }
     layout.classList.add('hidden');
     back?.classList.add('hidden');
-    document.getElementById('lobbyTabBar')?.classList.add('hidden');
-    lobbyMenu.classList.remove('lobby-module-mode');
     // Slide back to the hub, REVERSING the direction the module entered from
     // (entered from left → hub returns from the right, and vice-versa). The shell
     // stays mounted and slides off; cleanup runs on transitionend (or now, if
@@ -2446,7 +2407,6 @@ if (isMobileDevice()) document.documentElement.classList.add('touch-ui');
 registerPwa();
 setupWeaponSelector();
 buildWeaponSwitchPanel();
-setupLobbyTabs();
 setupLobbyHub();
 setupLobbyPerfToggle();
 
