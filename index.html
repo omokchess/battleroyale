@@ -818,9 +818,15 @@
             <span class="text-[8px]">DASH</span>
           </button>
         </div>
+
+        <!-- JUMP (platformer): hold for a higher jump. Sits above the move
+             stick so the left thumb can run and jump. -->
+        <button id="jumpBtn" type="button" class="mobile-jump-btn pointer-events-auto select-none bg-[#2c2016] bg-opacity-80 border-2 border-[#5fbf4f] text-[#9fe79a] rounded-full font-mono font-bold uppercase active:scale-90 transition-transform shadow-[0_0_12px_rgba(95,191,79,0.4)] flex flex-col items-center justify-center touch-none">
+          <span class="text-lg leading-none">▲</span><span class="text-[8px]">JUMP</span>
+        </button>
       </div>
     </div>
-    
+
     <!-- LEADERBOARD MODAL -->
     <div id="leaderboardModal" data-close-modal="leaderboardModal" class="hidden absolute inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
       <div class="w-full max-w-md bg-[#2c2016] border-4 border-[#c9a227] p-5 max-h-[85vh] flex flex-col shadow-[0_0_20px_rgba(201,162,39,0.3)]">

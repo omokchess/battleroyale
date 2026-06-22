@@ -361,12 +361,13 @@ export class Input {
       const dy = this.mouse.y - centerY;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // If touched sufficiently far from center, trigger movement
+      // Platformer fallback (no joysticks): drag left/right to move, down to
+      // drop through. Jump stays on the dedicated button (never from up-drag).
       if (dist > 18) {
-        this.keys.w = dy < -12;
-        this.keys.s = dy > 12;
         this.keys.a = dx < -12;
         this.keys.d = dx > 12;
+        this.keys.s = dy > 20;
+        this.keys.w = false;
       } else {
         this.keys.w = false;
         this.keys.s = false;
@@ -451,6 +452,28 @@ export class Input {
       };
       dashBtn.addEventListener('touchstart', this._dashBtnHandler, { passive: false });
       dashBtn.addEventListener('click', this._dashBtnHandler);
+    }
+
+    // Platformer jump button: HELD sets the jump key (variable-height jump),
+    // released clears it. Uses pointer events so a hold registers correctly.
+    const jumpBtn = document.getElementById('jumpBtn');
+    if (jumpBtn) {
+      this._jumpDownHandler = (e) => {
+        this._markTouchLikeInput(e);
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        try { jumpBtn.setPointerCapture(e.pointerId); } catch (_) {}
+        this.keys.w = true;
+      };
+      this._jumpUpHandler = (e) => {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        this.keys.w = false;
+      };
+      jumpBtn.addEventListener('pointerdown', this._jumpDownHandler);
+      jumpBtn.addEventListener('pointerup', this._jumpUpHandler);
+      jumpBtn.addEventListener('pointercancel', this._jumpUpHandler);
+      jumpBtn.addEventListener('pointerleave', this._jumpUpHandler);
     }
 
     const skillBtn = document.getElementById('skillBtn');
@@ -704,11 +727,13 @@ export class Input {
         const ny = targetY / cap;
         leftDashVector = Math.hypot(nx, ny) > 0.25 ? { dx: nx, dy: ny } : null;
 
-        // Map movement zones with diagonal leeway values
-        this.keys.w = ny < -0.3;
-        this.keys.s = ny > 0.3;
+        // Platformer mapping: left stick drives left/right, pulling DOWN drops
+        // through one-way platforms. Jump is a dedicated button (not the stick),
+        // so pushing up never triggers a jump.
         this.keys.a = nx < -0.3;
         this.keys.d = nx > 0.3;
+        this.keys.s = ny > 0.45;
+        this.keys.w = false;
       };
 
       // Right joystick start
@@ -1001,6 +1026,16 @@ export class Input {
     if (dashBtn && this._dashBtnHandler) {
       dashBtn.removeEventListener('touchstart', this._dashBtnHandler);
       dashBtn.removeEventListener('click', this._dashBtnHandler);
+    }
+
+    const jumpBtn = document.getElementById('jumpBtn');
+    if (jumpBtn) {
+      if (this._jumpDownHandler) jumpBtn.removeEventListener('pointerdown', this._jumpDownHandler);
+      if (this._jumpUpHandler) {
+        jumpBtn.removeEventListener('pointerup', this._jumpUpHandler);
+        jumpBtn.removeEventListener('pointercancel', this._jumpUpHandler);
+        jumpBtn.removeEventListener('pointerleave', this._jumpUpHandler);
+      }
     }
 
     const skillBtn = document.getElementById('skillBtn');

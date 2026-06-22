@@ -169,6 +169,19 @@
 .mobile-action-right { right: 0; top: 50%; transform: translateY(-50%); }
 .mobile-action-left { left: 0; top: 50%; transform: translateY(-50%); }
 .mobile-action-bottom { left: 50%; bottom: 0; transform: translateX(-50%); }
+
+/* Platformer jump button — anchored above the left move stick. */
+.mobile-jump-btn {
+  position: absolute;
+  left: 2.4rem;
+  bottom: 9rem;
+  width: 4.2rem;
+  height: 4.2rem;
+  z-index: 4;
+}
+@media (min-width: 768px) {
+  .mobile-jump-btn { left: 3.8rem; bottom: 12.5rem; width: 5.4rem; height: 5.4rem; }
+}
 .weapon-switch.weapon-current::after { content: "착용"; background: #d4af37; }
 .weapon-switch.weapon-pending::after { content: "대기"; background: #fbbf24; }
 
