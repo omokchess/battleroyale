@@ -551,6 +551,19 @@ export class Game {
 
       proj.update(deltaTime);
 
+      // Solid level geometry (walls / ground / ledges) blocks projectiles;
+      // one-way platforms let them pass (shoot up through a platform).
+      if (this._levelSolidBlocks(proj.x, proj.y, proj.radius || 4)) {
+        proj.isDead = true;
+        if (proj.kind === 'swordwave') this._explodeSwordWave(proj, now);
+        else this.effects.push({
+          attackerId: proj.ownerId, x: proj.x, y: proj.y,
+          angle: Math.atan2(proj.vy, proj.vx),
+          weapon: proj.weapon || 'bow', type: 'projectile_burst',
+          progress: 0, timestamp: now, lifetime: 320
+        });
+        return;
+      }
       // Cover blocks projectiles just like the arena wall.
       if (this.cover.length && coverBlocksCircle(this.cover, proj.x, proj.y, proj.radius || 4)) {
         proj.isDead = true;
@@ -1380,9 +1393,32 @@ export class Game {
   _lungePlayer(player, distance) {
     const amount = Number.isFinite(distance) ? distance : 0;
     if (!amount) return;
-    player.x += Math.cos(player.angle) * amount;
-    player.y += Math.sin(player.angle) * amount;
-    Collision.clampToMap(player, this.mapWidth, this.mapHeight);
+    // Platformer: lunge along the HORIZONTAL aim component only, so auto-attacks
+    // nudge you toward the cursor side instead of launching up/down. Swept
+    // through the level so the lunge can't clip walls/platforms.
+    const dir = Math.cos(player.angle) >= 0 ? 1 : -1;
+    this._displace(player, dir * Math.abs(amount), 0);
+  }
+
+  /** True when a circle (x,y,r) overlaps any SOLID level rect (not one-ways).
+   *  Used to block projectiles / hitscan on walls, ground and ledges. */
+  _levelSolidBlocks(x, y, r = 4) {
+    const solids = this.level?.solids;
+    if (!solids) return false;
+    for (const s of solids) {
+      if (x + r > s.x && x - r < s.x + s.w && y + r > s.y && y - r < s.y + s.h) return true;
+    }
+    return false;
+  }
+
+  /** Sweep a player by (dx,dy) through the level so combat displacements
+   *  (lunge/knockback/yanks) stop at terrain instead of clipping through it. */
+  _displace(player, dx, dy) {
+    if (!this.level) { player.x += dx; player.y += dy; return; }
+    const svx = player.vx, svy = player.vy;
+    player.vx = dx; player.vy = dy;
+    Collision.moveAndCollide(player, this.level, 1, { dropThrough: false });
+    player.vx = svx; player.vy = svy;
   }
 
   _resolveComboAttack(player, weaponConfig, now) {

@@ -269,7 +269,8 @@ export class Renderer {
     const pos = camera.toScreen(p.x, p.y, cw, ch);
     const feet = camera.toScreen(p.x, p.y + hh, cw, ch);
     const bw = hw * 2 * z, bh = hh * 2 * z;
-    const face = (p.facing || 1) >= 0 ? 1 : -1;
+    // Facing follows the aim angle (always synced), so remote players face right.
+    const face = Math.cos(p.angle || 0) >= 0 ? 1 : -1;
 
     // Foot shadow.
     ctx.fillStyle = 'rgba(0,0,0,0.28)';
