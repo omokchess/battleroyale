@@ -273,6 +273,70 @@ export const Collision = {
   },
 
   /**
+   * Platformer AABB movement (Phase 1). Advance a body {x,y,vx,vy,halfW,halfH}
+   * through `level` over `dt`, resolving against solid rects (X then Y) and
+   * one-way platforms (block only when landing on their top from above). The
+   * body is centred at (x,y). Set `opts.dropThrough` to fall through one-ways.
+   * Returns contact flags { grounded, ceiling, wallLeft, wallRight }.
+   *
+   * Movement is sub-stepped so a fast body (dash) can't tunnel through thin
+   * geometry between frames.
+   */
+  moveAndCollide(body, level, dt, opts = {}) {
+    const out = { grounded: false, ceiling: false, wallLeft: false, wallRight: false };
+    if (!level) { body.x += body.vx * dt; body.y += body.vy * dt; return out; }
+    const solids = level.solids || [];
+    const oneWays = level.oneWays || [];
+    const hw = body.halfW, hh = body.halfH;
+
+    // Sub-step so no single step moves more than ~a quarter of the box extent.
+    const maxStep = Math.max(6, Math.min(hw, hh) * 0.5);
+    const dist = Math.hypot(body.vx, body.vy) * dt;
+    const steps = Math.max(1, Math.ceil(dist / maxStep));
+    const sdt = dt / steps;
+
+    const overlaps = (l, t, r, b, rc) =>
+      l < rc.x + rc.w && r > rc.x && t < rc.y + rc.h && b > rc.y;
+
+    for (let s = 0; s < steps; s++) {
+      // --- X axis ---
+      body.x += body.vx * sdt;
+      let l = body.x - hw, r = body.x + hw, t = body.y - hh, b = body.y + hh;
+      for (const rc of solids) {
+        if (!overlaps(l, t, r, b, rc)) continue;
+        if (body.vx > 0) { body.x = rc.x - hw; out.wallRight = true; }
+        else if (body.vx < 0) { body.x = rc.x + rc.w + hw; out.wallLeft = true; }
+        body.vx = 0;
+        l = body.x - hw; r = body.x + hw;
+      }
+
+      // --- Y axis ---
+      const prevBottom = body.y + hh;
+      body.y += body.vy * sdt;
+      l = body.x - hw; r = body.x + hw; t = body.y - hh; b = body.y + hh;
+      for (const rc of solids) {
+        if (!overlaps(l, t, r, b, rc)) continue;
+        if (body.vy > 0) { body.y = rc.y - hh; out.grounded = true; }
+        else if (body.vy < 0) { body.y = rc.y + rc.h + hh; out.ceiling = true; }
+        body.vy = 0;
+        t = body.y - hh; b = body.y + hh;
+      }
+      // One-way platforms: only catch a body falling onto the top edge whose
+      // feet were at/above the platform top at the start of this step.
+      if (body.vy > 0 && !opts.dropThrough) {
+        for (const rc of oneWays) {
+          if (r <= rc.x || l >= rc.x + rc.w) continue;       // horizontal overlap
+          if (prevBottom <= rc.y + 1 && (body.y + hh) >= rc.y) {
+            body.y = rc.y - hh; body.vy = 0; out.grounded = true;
+            b = body.y + hh;
+          }
+        }
+      }
+    }
+    return out;
+  },
+
+  /**
    * Distance from a point to the arena boundary along a unit direction.
    * Returns Infinity if the direction never leaves the box.
    */
