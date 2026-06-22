@@ -16,7 +16,7 @@ import { normalizeRoomConfig, arenaDimensions, HEAL_RATES } from './RoomConfig.j
 import { Sound } from './Sound.js';
 import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, coverClearOfPoint, coverBlocksCircle } from './Cover.js';
 import { generateWater, emptyWater } from './Water.js';
-import { buildLevel } from './Level.js';
+import { buildLevel, PHYS } from './Level.js';
 import { Zone } from './Zone.js';
 import { STATUS } from './Status.js';
 
@@ -810,6 +810,7 @@ export class Game {
       if (hitCount !== null) {
         this._applyAttackTempoResult(player, attackConfig, hitCount, now);
       }
+      this._tryPogo(player, hitCount || 0);   // platformer: downward air-attack bounce
       return;
     }
 
@@ -1409,6 +1410,32 @@ export class Game {
       if (x + r > s.x && x - r < s.x + s.w && y + r > s.y && y - r < s.y + s.h) return true;
     }
     return false;
+  }
+
+  /** True when a circle (x,y,r) overlaps any level rect (solids OR one-ways).
+   *  Used by pogo to detect a surface to bounce off below the attacker. */
+  _levelAnyOverlap(x, y, r = 6) {
+    const all = this.level ? [...(this.level.solids || []), ...(this.level.oneWays || [])] : [];
+    for (const s of all) {
+      if (x + r > s.x && x - r < s.x + s.w && y + r > s.y && y - r < s.y + s.h) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Pogo (platformer): a downward air-attack that connects with an enemy or a
+   * surface bounces the attacker straight back up. Called once per swing from
+   * the attack paths with the swing's hit count.
+   */
+  _tryPogo(player, hitCount) {
+    if (!player || player.grounded) return;
+    if (Math.sin(player.angle) < 0.5) return;              // not aiming downward
+    const reach = (player.halfH || 20) + 30;
+    const surfaceBelow = (hitCount > 0) || this._levelAnyOverlap(player.x, player.y + reach, 7);
+    if (!surfaceBelow) return;
+    player.vy = -PHYS.pogoSpeed;
+    player.jumping = false;
+    player.coyoteLeft = 0;
   }
 
   /** Sweep a player by (dx,dy) through the level so combat displacements

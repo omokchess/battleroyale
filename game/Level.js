@@ -34,6 +34,9 @@ export const PHYS = {
   dashMs: 150,
   dashCdMs: 700,
   dashIframeMs: 150,
+  // Pogo: a downward air-attack that connects with an enemy or surface bounces
+  // the attacker back up (Hollow-Knight style).
+  pogoSpeed: 780,
 };
 
 export const TILE = 32;          // authoring grid unit
