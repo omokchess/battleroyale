@@ -8,3 +8,6 @@ coverage/
 !.env.example
 .asset-tmp/
 .claude/
+
+# Firebase deploy cache
+.firebase/
