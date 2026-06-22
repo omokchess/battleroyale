@@ -48,22 +48,26 @@ export function generateWater(mapWidth, mapHeight, seed = 0) {
   const rng = makeRng(seed);
   const rand = (lo, hi) => lo + rng() * (hi - lo);
 
-  // Scatter a few organic lakes anywhere in the playable area. Each blob's
-  // radius wobbles with the angle so the shoreline reads organic, not circular.
-  // Count scales mildly with arena area; positions/sizes/phases all come from
-  // the seed, so the layout is deterministic yet varies every match.
-  const blobCount = 2 + Math.round(rand(0, 1) + (mapWidth * mapHeight) / (1400 * 1400));
-  const pad = span * 0.12;
+  // Scatter several small organic lakes, kept well apart so the water reads as
+  // a few distinct ponds rather than one blocky mass. Each blob's radius wobbles
+  // with the angle so the shoreline reads organic, not circular. Count scales
+  // mildly with arena area; positions/sizes/phases all come from the seed, so
+  // the layout is deterministic yet varies every match.
+  const blobCount = 3 + Math.round(rand(0, 1) + (mapWidth * mapHeight) / (1100 * 1100));
+  const pad = span * 0.10;
   const blobs = [];
-  for (let i = 0; i < blobCount; i++) {
-    blobs.push({
-      x: rand(EDGE_MARGIN + pad, mapWidth - EDGE_MARGIN - pad),
-      y: rand(EDGE_MARGIN + pad, mapHeight - EDGE_MARGIN - pad),
-      r: span * rand(0.085, 0.16),
-      p: rand(0, Math.PI * 2),
-      k3: rand(0.22, 0.36),
-      k5: rand(0.14, 0.24),
+  let guard = 0;
+  while (blobs.length < blobCount && guard++ < blobCount * 40) {
+    const r = span * rand(0.06, 0.10);                       // smaller ponds
+    const x = rand(EDGE_MARGIN + pad, mapWidth - EDGE_MARGIN - pad);
+    const y = rand(EDGE_MARGIN + pad, mapHeight - EDGE_MARGIN - pad);
+    // Keep ponds separated: centers at least ~2.4× the larger radius apart.
+    const tooClose = blobs.some(b => {
+      const gapMin = (b.r + r) * 1.25 + span * 0.05;
+      return (b.x - x) ** 2 + (b.y - y) ** 2 < gapMin * gapMin;
     });
+    if (tooClose) continue;
+    blobs.push({ x, y, r, p: rand(0, Math.PI * 2), k3: rand(0.22, 0.36), k5: rand(0.14, 0.24) });
   }
   const inWater = (px, py) => {
     for (const b of blobs) {

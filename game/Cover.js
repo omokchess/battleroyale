@@ -42,9 +42,11 @@ function tilesOverlap(a, b, pad = 26) {
 /**
  * Build the cover layout for a room. Tiles are scattered freely across the whole
  * arena (no left↔right mirroring), so the field looks naturally irregular like
- * the grass. Placement is deterministic from the seed. Returns [] when off.
+ * the grass. Placement is deterministic from the seed. `avoid` is a list of
+ * rects (e.g. water tiles) that obstacles must not overlap — applied on host and
+ * clients alike, so the layouts stay identical. Returns [] when off.
  */
-export function generateCover(config, mapWidth, mapHeight, seed = 0) {
+export function generateCover(config, mapWidth, mapHeight, seed = 0, avoid = []) {
   const density = COVER_DENSITY[config?.cover] || 0;
   if (!density) return [];
   // Scale the 700²-referenced density by actual arena area.
@@ -62,8 +64,9 @@ export function generateCover(config, mapWidth, mapHeight, seed = 0) {
     const x = rand(EDGE_MARGIN, mapWidth - EDGE_MARGIN - TILE);
     const y = rand(EDGE_MARGIN, mapHeight - EDGE_MARGIN - TILE);
     const t = { x, y, w: TILE, h: TILE };
-    // Keep the dead-center clear and avoid overlaps.
+    // Keep the dead-center clear, off water, and non-overlapping.
     if (Math.abs((x + TILE / 2) - cx) < CENTER_CLEAR && Math.abs((y + TILE / 2) - cy) < CENTER_CLEAR) continue;
+    if (avoid.length && avoid.some(o => tilesOverlap(o, t, 8))) continue;
     if (tiles.some(o => tilesOverlap(o, t))) continue;
     tiles.push(t);
   }

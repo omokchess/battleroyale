@@ -20,18 +20,30 @@ const CIRC_FRAMES = [[0, 0, 63, 55], [63, 0, 63, 55], [126, 0, 63, 55], [189, 0,
 const CIRC_CELL = 63;   // reference full-ring size; scale = targetSize / CIRC_CELL
 
 // Cover obstacle textures, cut from the nature tileset (tile/nature). Each entry
-// is [sx, sy, sw, sh] in sheet px — a roughly tile-sized boulder/bush. Each cover
-// tile deterministically picks one (+ optional flip) from its world position, so
-// the look is varied but identical on every client (no sync needed, like grass).
+// is [sx, sy, sw, sh] in sheet px — a FULL sprite island (tight opaque bbox, so
+// nothing is ever sliced). Each cover tile deterministically picks one (+ flip)
+// from its world position, so the look is varied but identical on every client.
 const COVER_SPRITES = [
-  [336, 162, 42, 56],  // brown boulder (tall)
-  [336, 226, 42, 62],  // gray boulder (tall)
-  [240, 224, 46, 50],  // gray rock cluster
-  [240, 178, 44, 38],  // tan sandstone boulder
-  [112, 226, 46, 32],  // green bush, orange berries
-  [112, 258, 46, 30],  // green bush, blue berries
-  [160, 258, 46, 30],  // autumn bush, berries
+  [193, 83, 61, 44],   // 0 brown boulder pile
+  [210, 132, 29, 27],  // 1 brown rock
+  [1, 134, 30, 23],    // 2 brown rock
+  [33, 134, 30, 23],   // 3 red-brown rock
+  [64, 145, 32, 30],   // 4 brown stump
+  [258, 132, 29, 27],  // 5 green bush
+  [1, 161, 47, 30],    // 6 green bush (wide)
+  [114, 227, 28, 25],  // 7 berry bush (orange)
+  [114, 259, 28, 25],  // 8 berry bush (blue)
+  [146, 259, 28, 25],  // 9 berry bush (autumn)
 ];
+// Which sprites suit each biome group, and an optional colour wash so the same
+// rocks read as dry sandstone (desert) or frosted stone (snow).
+const COVER_GROUP = { day: 'grassy', night: 'grassy', dawn: 'grassy', desert: 'desert', snow: 'snow' };
+const BIOME_COVER = {
+  grassy: [5, 6, 7, 8, 9, 0, 1],   // leafy bushes + a couple of boulders
+  desert: [0, 1, 2, 3, 4],         // brown/sandstone rocks + a dead stump
+  snow:   [0, 1, 2, 3],            // bare rocks (frosted via the tint below)
+};
+const COVER_TINT = { desert: 'rgba(225,182,120,0.30)', snow: 'rgba(206,228,246,0.55)' };
 
 // Biome floor palettes for the baked field: base colour, the two mottle fleck
 // colours, whether to scatter green grass tufts, and an optional translucent
@@ -238,7 +250,7 @@ export class Renderer {
     if (gameState.storm) this._drawZone(ctx, camera, cw, ch, gameState.storm, nowTime);
 
     // Cover obstacles + healing items sit on the floor, under players.
-    if (gameState.cover && gameState.cover.length) this._drawCover(ctx, camera, cw, ch, gameState.cover);
+    if (gameState.cover && gameState.cover.length) this._drawCover(ctx, camera, cw, ch, gameState.cover, gameState.biome);
     if (gameState.healingItems && gameState.healingItems.length) this._drawHealingItems(ctx, camera, cw, ch, gameState.healingItems, nowTime);
     if (gameState.mines && gameState.mines.length) this._drawMines(ctx, camera, cw, ch, gameState.mines, localPlayerId, nowTime);
     if (gameState.firePatches && gameState.firePatches.length) this._drawFirePatches(ctx, camera, cw, ch, gameState.firePatches, nowTime);
@@ -647,15 +659,41 @@ export class Renderer {
   }
 
   /**
-   * Cover tiles. Each draws a boulder/bush texture cut from the nature tileset,
-   * chosen deterministically from the tile's world position (so it's varied but
-   * identical on every client — same idea as the grass field). Width-fit to the
-   * tile so the visual footprint matches the 46px hitbox; taller rocks overhang
-   * upward. Falls back to a flat gray block until the tileset finishes loading.
+   * A biome-tinted copy of the nature sheet (cached). Desert/snow wash the rocks
+   * to dry sandstone / frosted stone; grassy biomes use the raw sheet.
    */
-  _drawCover(ctx, camera, cw, ch, cover) {
-    const z = camera.zoom || 1;
+  _getTintedNature(biome) {
     const sheet = this.atlas?.get('tile/nature');
+    if (!sheet) return null;
+    const tint = COVER_TINT[biome];
+    if (!tint) return sheet;
+    this._natureTinted = this._natureTinted || {};
+    if (this._natureTinted[biome]) return this._natureTinted[biome];
+    if (typeof document === 'undefined') return sheet;
+    const w = sheet.naturalWidth || sheet.width, h = sheet.naturalHeight || sheet.height;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    g.drawImage(sheet, 0, 0);
+    g.globalCompositeOperation = 'source-atop';   // recolour only opaque pixels
+    g.fillStyle = tint; g.fillRect(0, 0, w, h);
+    g.globalCompositeOperation = 'source-over';
+    this._natureTinted[biome] = c;
+    return c;
+  }
+
+  /**
+   * Cover tiles. Each draws a boulder/bush sprite cut from the nature tileset,
+   * chosen deterministically from the tile's world position (so it's varied but
+   * identical on every client — same idea as the grass field). The sprite SET
+   * and colour wash follow the biome (leafy bushes by day, dry rocks in the
+   * desert, frosted stone on snow). Width-fit to the tile so the footprint
+   * matches the 46px hitbox; taller rocks overhang upward. Falls back to a flat
+   * gray block until the tileset finishes loading.
+   */
+  _drawCover(ctx, camera, cw, ch, cover, biome = 'day') {
+    const z = camera.zoom || 1;
+    const sheet = this._getTintedNature(biome);
+    const set = BIOME_COVER[COVER_GROUP[biome] || 'grassy'] || BIOME_COVER.grassy;
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     for (const t of cover) {
@@ -676,7 +714,7 @@ export class Renderer {
 
       // Deterministic per-tile pick from world position (stable across clients).
       const key = (Math.round(t.x) * 73856093) ^ (Math.round(t.y) * 19349663);
-      const idx = (key >>> 3) % COVER_SPRITES.length;
+      const idx = set[(key >>> 3) % set.length];
       const flip = ((key >>> 1) & 1) === 1;
       const [sx, sy, sw, sh] = COVER_SPRITES[idx];
 

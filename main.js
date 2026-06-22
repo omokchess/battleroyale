@@ -2142,9 +2142,15 @@ function buildCreateInto(body) {
   const ONOFF = new Set(['storm', 'water', 'healing']);   // rendered as sliding switches
   const healingOn = () => selectedOf('healing')?.value === 'on';
 
+  // Biome → a representative floor colour, shown as a swatch dot on its pill so
+  // the host can tell at a glance what each terrain looks like.
+  const BIOME_SWATCH = { day: '#adbc3a', night: '#3a4a6a', dawn: '#d98a6a', desert: '#d9c38a', snow: '#e9eef3' };
+  const pillInner = (g, o) => g === 'biome'
+    ? `<span class="biome-dot" style="background:${BIOME_SWATCH[o.value] || '#888'}"></span>${o.label}`
+    : o.label;
   // Segment group: pills + a sliding indicator that glides prev→new selection.
   const segRow = (g) => `<div class="create-seg" data-group="${g}">${opts(g).map(o =>
-    `<button class="create-pill ${o.on ? 'on' : ''}" data-g="${g}" data-v="${o.value}">${o.label}</button>`).join('')}<span class="create-seg-ind"></span></div>`;
+    `<button class="create-pill ${o.on ? 'on' : ''}" data-g="${g}" data-v="${o.value}">${pillInner(g, o)}</button>`).join('')}<span class="create-seg-ind"></span></div>`;
   // Inline ON/OFF switch markup (knob slides, track recolors, label updates).
   const switchMarkup = (g) => {
     const on = selectedOf(g)?.value === 'on';
@@ -2156,7 +2162,7 @@ function buildCreateInto(body) {
       <div class="med-parch relative p-4">
         ${GROUPS.map(([g, label]) => ONOFF.has(g)
           ? `<div class="mb-3.5 flex items-center justify-between" data-switch-group="${g}">
-               <span class="med-muted text-[12px]">${label}</span>${switchMarkup(g)}
+               <span class="med-muted text-[12px]">${label}${g === 'water' ? ` <button type="button" class="cfg-help-btn" data-help="water" aria-label="물 설명">?</button>` : ''}</span>${switchMarkup(g)}
              </div>`
           : `<div class="mb-3.5">
                <div class="med-muted text-[12px] mb-1.5">${label}</div>
@@ -2244,7 +2250,33 @@ function buildCreateInto(body) {
     renderSummary();
   }
 
+  // Water explainer popup (the "?" beside the 물 toggle). A small dismissible
+  // overlay — click the backdrop, the ✕, or press Esc to close.
+  function showWaterHelp() {
+    document.getElementById('waterHelpPop')?.remove();
+    const pop = document.createElement('div');
+    pop.id = 'waterHelpPop';
+    pop.className = 'cfg-help-pop';
+    pop.innerHTML = `
+      <div class="cfg-help-card med-parch">
+        <div class="cfg-help-head">
+          <span>물 (특수 장애물)</span>
+          <button type="button" class="cfg-help-x" aria-label="닫기">&times;</button>
+        </div>
+        <p>호수가 맵 곳곳에 생깁니다. <b>플레이어는 물에 들어갈 수 없어</b> 길을 돌아가야 합니다.</p>
+        <p><b>총알·근접 공격은 물 위로 그대로 지나가므로</b>, 물을 사이에 두고 안전하게 견제할 수 있습니다.</p>
+        <p><b>눈 지형</b>에서는 물이 얼어붙어, 그 위를 자유롭게 걸어다닐 수 있습니다.</p>
+      </div>`;
+    const close = () => { pop.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+    pop.addEventListener('click', (ev) => { if (ev.target === pop || ev.target.closest('.cfg-help-x')) close(); });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(pop);
+  }
+
   body.addEventListener('click', (e) => {
+    const help = e.target.closest('.cfg-help-btn');
+    if (help) { if (help.dataset.help === 'water') showWaterHelp(); return; }
     const pill = e.target.closest('.create-pill');
     if (pill) { pickHidden(pill.dataset.g, pill.dataset.v); syncControls(false); return; }
     const sw = e.target.closest('.med-switch');

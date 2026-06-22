@@ -169,8 +169,7 @@ export class Game {
       // Host picks one per-match seed; the layout is derived deterministically
       // from it (grass-style). Only the seed ships to clients via ROOM_JOINED.
       this.coverSeed = (Math.random() * 0xffffffff) >>> 0;
-      this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight, this.coverSeed);
-      this._buildTerrain();
+      this._buildTerrain();   // builds water + cover (avoiding water) from the seed
 
       // Host adds themselves directly
       const spawnP = this._getRandomSpawnPoint();
@@ -1625,6 +1624,9 @@ export class Game {
     this.water = this.roomConfig?.water
       ? generateWater(this.mapWidth, this.mapHeight, waterSeed)
       : emptyWater();
+    // Cover is generated AFTER water so obstacles never spawn on a lake (the
+    // water tiles are passed as an avoid-list; same on host + clients).
+    this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight, this.coverSeed, this.water.tiles);
     // Cover always blocks movement; water blocks movement only when not frozen.
     this.moveTiles = this.frozen
       ? this.cover
@@ -4896,11 +4898,10 @@ export class Game {
           const dims = arenaDimensions(this.roomConfig);
           this.mapWidth = Number.isFinite(data.mapWidth) ? data.mapWidth : dims.mapWidth;
           this.mapHeight = Number.isFinite(data.mapHeight) ? data.mapHeight : dims.mapHeight;
-          // Regenerate the host's cover layout locally from the shared seed
+          // Regenerate the host's terrain locally from the shared seed
           // (grass-style deterministic generation — no per-tile data synced).
           this.coverSeed = Number.isFinite(data.coverSeed) ? data.coverSeed : 0;
-          this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight, this.coverSeed);
-          this._buildTerrain();   // biome + water (deterministic from config + size)
+          this._buildTerrain();   // biome + water + cover (deterministic from config + seed)
 
           // Reconstitute players list
           this.players = {};
