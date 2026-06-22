@@ -1619,8 +1619,11 @@ export class Game {
   _buildTerrain() {
     this.biome = this.roomConfig?.biome || 'day';
     this.frozen = this.biome === 'snow';      // frozen water = walkable
+    // Reuse the synced per-match cover seed (a derived value so water and cover
+    // don't correlate) — deterministic across clients, no extra sync.
+    const waterSeed = ((this.coverSeed ^ 0x9e3779b9) >>> 0);
     this.water = this.roomConfig?.water
-      ? generateWater(this.mapWidth, this.mapHeight)
+      ? generateWater(this.mapWidth, this.mapHeight, waterSeed)
       : emptyWater();
     // Cover always blocks movement; water blocks movement only when not frozen.
     this.moveTiles = this.frozen
