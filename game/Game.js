@@ -15,6 +15,7 @@ import { MsgType, Protocol } from '../multiplayer/Protocol.js';
 import { normalizeRoomConfig, arenaDimensions, HEAL_RATES } from './RoomConfig.js';
 import { Sound } from './Sound.js';
 import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, coverClearOfPoint, coverBlocksCircle } from './Cover.js';
+import { generateWater, emptyWater } from './Water.js';
 import { Zone } from './Zone.js';
 import { STATUS } from './Status.js';
 
@@ -53,6 +54,14 @@ export class Game {
     // layout locally from it (grass-style deterministic generation).
     this.cover = [];
     this.coverSeed = 0;
+    // Biome (visual theme) + water (special obstacle). Water blocks player
+    // MOVEMENT but lets projectiles/attacks pass over; on the snow biome it is
+    // frozen, so it blocks nothing. `moveTiles` is the combined movement blocker
+    // (cover + non-frozen water); `cover` alone still gates projectiles/LOS.
+    this.biome = 'day';
+    this.water = emptyWater();
+    this.frozen = false;
+    this.moveTiles = [];
     // Healing items (Task 9): host spawns on a timer, syncs via GAME_STATE.
     this.healingItems = [];
     this._healingSeq = 0;
@@ -161,6 +170,7 @@ export class Game {
       // from it (grass-style). Only the seed ships to clients via ROOM_JOINED.
       this.coverSeed = (Math.random() * 0xffffffff) >>> 0;
       this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight, this.coverSeed);
+      this._buildTerrain();
 
       // Host adds themselves directly
       const spawnP = this._getRandomSpawnPoint();
@@ -409,7 +419,7 @@ export class Game {
         localPlayer.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
         localPlayer.angle = this.input.aimAngle;
         Collision.clampToMap(localPlayer, this.mapWidth, this.mapHeight);
-        if (this.cover.length) resolveCover(this.cover, localPlayer, localPlayer.radius || 14);
+        if (this.moveTiles.length) resolveCover(this.moveTiles, localPlayer, localPlayer.radius || 14);
 
         this._sendLocalInput(now);
       }
@@ -444,15 +454,15 @@ export class Game {
         p.updatePosition(deltaTime, p.keys || {}, this.mapWidth, this.mapHeight);
       }
       Collision.clampToMap(p, this.mapWidth, this.mapHeight);
-      if (this.cover.length) resolveCover(this.cover, p, p.radius || 14);
+      if (this.moveTiles.length) resolveCover(this.moveTiles, p, p.radius || 14);
     });
 
     // 2. Resolve Player collisions to avoid clipping
     Collision.resolvePlayerCollisions(this.players);
-    if (this.cover.length) {
+    if (this.moveTiles.length) {
       Object.values(this.players).forEach(p => {
         if (p.isDead) return;
-        resolveCover(this.cover, p, p.radius || 14);
+        resolveCover(this.moveTiles, p, p.radius || 14);
       });
     }
 
@@ -633,7 +643,7 @@ export class Game {
               target.x = attacker.x + Math.cos(a) * (hk.pullToFront || 50);
               target.y = attacker.y + Math.sin(a) * (hk.pullToFront || 50);
               Collision.clampToMap(target, this.mapWidth, this.mapHeight);
-              if (this.cover.length) resolveCover(this.cover, target, target.radius || 14);
+              if (this.moveTiles.length) resolveCover(this.moveTiles, target, target.radius || 14);
               this._applySlow(target, hk.slowMs || 300);
               if (hk.pullStunMs) this._applyStun(target, hk.pullStunMs, Date.now());
               target.prevX = target.x; // discontinuous move — don't let melee sweep it
@@ -1600,12 +1610,29 @@ export class Game {
   _maxHealingItems() {
     return Math.max(2, Math.round((this.mapWidth * this.mapHeight) / (700 * 700) * 3));
   }
+  /**
+   * Resolve the biome + water layout from roomConfig and compute the combined
+   * movement-blocker list. Deterministic (water comes from map size, like the
+   * grass), so host and clients build the identical terrain with no extra sync.
+   * Call after `this.cover`, `this.roomConfig` and the map dims are set.
+   */
+  _buildTerrain() {
+    this.biome = this.roomConfig?.biome || 'day';
+    this.frozen = this.biome === 'snow';      // frozen water = walkable
+    this.water = this.roomConfig?.water
+      ? generateWater(this.mapWidth, this.mapHeight)
+      : emptyWater();
+    // Cover always blocks movement; water blocks movement only when not frozen.
+    this.moveTiles = this.frozen
+      ? this.cover
+      : this.cover.concat(this.water.tiles);
+  }
   _findEmptyPosition() {
     const margin = 90;
     for (let i = 0; i < 24; i++) {
       const x = margin + Math.random() * (this.mapWidth - margin * 2);
       const y = margin + Math.random() * (this.mapHeight - margin * 2);
-      if (this.cover.length && !coverClearOfPoint(this.cover, x, y, 28)) continue;
+      if (this.moveTiles.length && !coverClearOfPoint(this.moveTiles, x, y, 28)) continue;
       let tooClose = false;
       for (const p of Object.values(this.players)) {
         if (p.isDead) continue;
@@ -3070,7 +3097,7 @@ export class Game {
     }
     player.x = Math.max(margin, Math.min(this.mapWidth - margin, fromX + dx));
     player.y = Math.max(margin, Math.min(this.mapHeight - margin, fromY + dy));
-    if (this.cover?.length) resolveCover(this.cover, player, player.radius || 14);
+    if (this.moveTiles?.length) resolveCover(this.moveTiles, player, player.radius || 14);
     // Teleport is discontinuous — don't let the next melee test sweep the jump.
     player.prevX = player.x;
     player.prevY = player.y;
@@ -3734,7 +3761,7 @@ export class Game {
     player.x += dirX * travel;
     player.y += dirY * travel;
     Collision.clampToMap(player, this.mapWidth, this.mapHeight);
-    if (this.cover.length) resolveCover(this.cover, player, player.radius || 14);
+    if (this.moveTiles.length) resolveCover(this.moveTiles, player, player.radius || 14);
     player.prevX = player.x; // discontinuous — avoid melee sweep across the yank
     player.prevY = player.y;
     // Arrival: slow enemies near the landing spot.
@@ -4218,6 +4245,8 @@ export class Game {
       hitFlash,
       killFeed: this._killFeed,
       cover: this.cover,
+      biome: this.biome,
+      water: this.water,
       healingItems: this.healingItems,
       mines: this.mines,
       firePatches: this.firePatches,
@@ -4701,7 +4730,7 @@ export class Game {
         const dy = other.y - chosenY;
         if (dx * dx + dy * dy < 250 * 250) { bad = true; break; }
       }
-      if (!bad && this.cover?.length && !coverClearOfPoint(this.cover, chosenX, chosenY, radius + 10)) {
+      if (!bad && this.moveTiles?.length && !coverClearOfPoint(this.moveTiles, chosenX, chosenY, radius + 10)) {
         bad = true;
       }
 
@@ -4868,6 +4897,7 @@ export class Game {
           // (grass-style deterministic generation — no per-tile data synced).
           this.coverSeed = Number.isFinite(data.coverSeed) ? data.coverSeed : 0;
           this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight, this.coverSeed);
+          this._buildTerrain();   // biome + water (deterministic from config + size)
 
           // Reconstitute players list
           this.players = {};

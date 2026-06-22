@@ -1091,6 +1091,8 @@ function readRoomConfig() {
     cover: pick('cover', 'none'),
     healing: pick('healing', 'off') === 'on',
     healingRate: pick('healingRate', 'normal'),
+    biome: pick('biome', 'day'),
+    water: pick('water', 'off') === 'on',
   });
 }
 
@@ -2136,8 +2138,8 @@ function buildCreateInto(body) {
   const opts = (g) => [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].map(b => ({ label: b.textContent.trim(), value: b.dataset.value, on: b.classList.contains('selected') }));
   const selectedOf = (g) => opts(g).find(o => o.on) || opts(g)[0];
   const pickHidden = (g, value) => { [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].find(b => b.dataset.value === value)?.click(); };
-  const GROUPS = [['arenaSize', '경기장 크기'], ['storm', '자기장'], ['cover', '엄폐물'], ['healing', '회복 아이템']];
-  const ONOFF = new Set(['storm', 'healing']);   // rendered as sliding switches
+  const GROUPS = [['arenaSize', '경기장 크기'], ['biome', '지형'], ['storm', '자기장'], ['cover', '엄폐물'], ['water', '물 (특수 장애물)'], ['healing', '회복 아이템']];
+  const ONOFF = new Set(['storm', 'water', 'healing']);   // rendered as sliding switches
   const healingOn = () => selectedOf('healing')?.value === 'on';
 
   // Segment group: pills + a sliding indicator that glides prev→new selection.
@@ -2206,8 +2208,9 @@ function buildCreateInto(body) {
 
   const summaryEl = body.querySelector('#createSummary');
   function renderSummary() {
-    const rows = [['경기장', selectedOf('arenaSize')?.label], ['자기장', selectedOf('storm')?.label],
-      ['엄폐물', selectedOf('cover')?.label], ['회복', healingOn() ? `${selectedOf('healing')?.label}·${selectedOf('healingRate')?.label || '보통'}` : selectedOf('healing')?.label]];
+    const rows = [['경기장', selectedOf('arenaSize')?.label], ['지형', selectedOf('biome')?.label],
+      ['자기장', selectedOf('storm')?.label], ['엄폐물', selectedOf('cover')?.label], ['물', selectedOf('water')?.label],
+      ['회복', healingOn() ? `${selectedOf('healing')?.label}·${selectedOf('healingRate')?.label || '보통'}` : selectedOf('healing')?.label]];
     summaryEl.innerHTML = rows.map(([k, v]) => `<div class="flex justify-between text-[12px]"><span class="med-muted">${k}</span><span style="color:var(--med-ink)">${v || '-'}</span></div>`).join('');
   }
   // Move a segment's indicator over its selected pill. `instant` skips the
@@ -2267,6 +2270,7 @@ function buildCreateInto(body) {
 const ARENA_SIZE_KO = { tiny: '초소형', small: '소형', medium: '중형', large: '대형', huge: '초대형' };
 const COVER_KO = { none: '없음', few: '적음', some: '보통', many: '많음' };
 const RATE_KO = { fast: '빠름', normal: '보통', slow: '느림' };
+const BIOME_KO = { day: '낮', night: '밤', dawn: '새벽', desert: '사막', snow: '눈' };
 function buildArenaInto(body) {
   body.innerHTML = `
     <div class="arena-grid">
@@ -2316,8 +2320,9 @@ function buildArenaInto(body) {
     if (!r) { detailEl.innerHTML = `<div class="med-muted font-mono text-[11px] text-center py-12">방을 선택하세요.</div>`; return; }
     const cfg = Weapons[r.weapon] || Weapons.sword;
     const c = normalizeRoomConfig(r.config);
-    const rows = [['경기장', ARENA_SIZE_KO[c.arenaSize] || c.arenaSize], ['자기장', c.storm ? '켜짐' : '꺼짐'],
-      ['엄폐물', COVER_KO[c.cover] || c.cover], ['회복', c.healing ? `켜짐 · ${RATE_KO[c.healingRate] || ''}` : '꺼짐']];
+    const rows = [['경기장', ARENA_SIZE_KO[c.arenaSize] || c.arenaSize], ['지형', BIOME_KO[c.biome] || c.biome || '낮'],
+      ['자기장', c.storm ? '켜짐' : '꺼짐'], ['엄폐물', COVER_KO[c.cover] || c.cover], ['물', c.water ? '켜짐' : '꺼짐'],
+      ['회복', c.healing ? `켜짐 · ${RATE_KO[c.healingRate] || ''}` : '꺼짐']];
     detailEl.innerHTML = `
       <div class="flex justify-between items-start mb-1">
         <span class="font-mono" style="color:var(--med-ink);font-size:22px;letter-spacing:2px">${escapeHtml(r.code)}</span>

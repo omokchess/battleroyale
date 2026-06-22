@@ -33,6 +33,23 @@ const COVER_SPRITES = [
   [160, 258, 46, 30],  // autumn bush, berries
 ];
 
+// Biome floor palettes for the baked field: base colour, the two mottle fleck
+// colours, whether to scatter green grass tufts, and an optional translucent
+// full-field wash for atmosphere. 'day' reproduces the original green field.
+const BIOME_FLOOR = {
+  day:    { base: '#adbc3a', mDark: 'rgba(150,170,46,0.35)',  mLight: 'rgba(196,210,92,0.30)',  tufts: true,  wash: null },
+  night:  { base: '#3c4a52', mDark: 'rgba(18,28,46,0.42)',    mLight: 'rgba(96,116,134,0.22)',  tufts: true,  wash: 'rgba(26,38,84,0.32)' },
+  dawn:   { base: '#9fae54', mDark: 'rgba(150,110,80,0.28)',  mLight: 'rgba(232,202,150,0.30)', tufts: true,  wash: 'rgba(255,156,110,0.18)' },
+  desert: { base: '#d9c38a', mDark: 'rgba(188,158,100,0.42)', mLight: 'rgba(242,226,182,0.36)', tufts: false, wash: 'rgba(230,200,140,0.10)' },
+  snow:   { base: '#e9eef3', mDark: 'rgba(176,198,220,0.42)', mLight: 'rgba(255,255,255,0.55)', tufts: false, wash: 'rgba(200,222,245,0.12)' },
+};
+
+// Water body + frozen-ice colours (the snow biome freezes water into ice).
+const WATER_COLORS = {
+  water: { body: '#2f6d96', band: 'rgba(120,180,210,0.35)', edge: 'rgba(207,233,245,0.85)' },
+  ice:   { body: '#bcd6e4', band: 'rgba(255,255,255,0.40)', edge: 'rgba(255,255,255,0.75)' },
+};
+
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
   axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0, noAimFlip: true },
@@ -205,8 +222,11 @@ export class Renderer {
     ctx.save();
     ctx.translate(shake.x || 0, shake.y || 0);
 
-    // Grid rendering (only draw grids that are within viewport margins)
-    this._drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight);
+    // Grid rendering (biome-themed floor; only the visible region is blitted)
+    this._drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight, gameState.biome);
+
+    // Water bodies sit on the floor, under everything else.
+    if (gameState.water) this._drawWater(ctx, camera, cw, ch, gameState.water, gameState.biome);
 
     // Floor particles rendering (Dust trails, projectile flows)
     this._drawParticles(ctx, camera, cw, ch, 'floor', gameState.players);
@@ -1129,29 +1149,31 @@ export class Renderer {
    * field — no sync needed) and then blitted with the camera transform. Baking
    * once keeps per-frame cost to a single scaled drawImage.
    */
-  _drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight) {
+  _drawGrid(ctx, camera, cw, ch, mapWidth, mapHeight, biome = 'day') {
     ctx.save();
     const tl = camera.toScreen(0, 0, cw, ch);
     const br = camera.toScreen(mapWidth, mapHeight, cw, ch);
     const dw = br.x - tl.x, dh = br.y - tl.y;
-    const grass = this._getGrassField(mapWidth, mapHeight);
+    const grass = this._getGrassField(mapWidth, mapHeight, biome);
     if (grass) {
       const prev = ctx.imageSmoothingEnabled;
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(grass, 0, 0, grass.width, grass.height, tl.x, tl.y, dw, dh);
       ctx.imageSmoothingEnabled = prev;
     } else {
-      ctx.fillStyle = '#74a334';
+      ctx.fillStyle = (BIOME_FLOOR[biome] || BIOME_FLOOR.day).base;
       ctx.fillRect(tl.x, tl.y, dw, dh);
     }
     ctx.restore();
   }
 
-  _getGrassField(mapWidth, mapHeight) {
+  _getGrassField(mapWidth, mapHeight, biome = 'day') {
     if (typeof document === 'undefined') return null;
-    const tufts = this.atlas?.get('tile/tufts');
-    // Re-bake once the tuft sheet finishes loading (key encodes its readiness).
-    const key = `${mapWidth}x${mapHeight}_${tufts ? '1' : '0'}`;
+    const pal = BIOME_FLOOR[biome] || BIOME_FLOOR.day;
+    const tufts = pal.tufts ? this.atlas?.get('tile/tufts') : null;
+    // Re-bake when size, biome, or tuft-sheet readiness changes (key encodes all).
+    const needTufts = pal.tufts;
+    const key = `${mapWidth}x${mapHeight}_${biome}_${tufts ? '1' : '0'}`;
     if (this._grassKey === key && this._grassField) return this._grassField;
 
     const tw = mapWidth, th = mapHeight;
@@ -1160,8 +1182,8 @@ export class Renderer {
     const g = cv.getContext('2d');
     g.imageSmoothingEnabled = false;
 
-    // 1) Flat base field — colour sampled from the hand-drawn TilesetField.
-    g.fillStyle = '#adbc3a';
+    // 1) Flat base field, biome-coloured.
+    g.fillStyle = pal.base;
     g.fillRect(0, 0, tw, th);
 
     // Deterministic hash → fract in [0,1). No RNG state, so every client bakes
@@ -1177,20 +1199,22 @@ export class Renderer {
     for (let by = 0, ry = 0; by < th; by += MB, ry++) {
       for (let bx = 0, rx = 0; bx < tw; bx += MB, rx++) {
         const n = hash(rx * 3 + 1, ry * 3 + 2);
-        if (n > 0.82)      g.fillStyle = 'rgba(150,170,46,0.35)';   // darker fleck
-        else if (n < 0.12) g.fillStyle = 'rgba(196,210,92,0.30)';  // lighter fleck
+        if (n > 0.82)      g.fillStyle = pal.mDark;    // darker fleck
+        else if (n < 0.12) g.fillStyle = pal.mLight;   // lighter fleck
         else continue;
         g.fillRect(bx, by, MB, MB);
       }
     }
 
-    // 3) Scatter grass tufts on a 32×32 block grid, anchored to each block's
-    //    BOTTOM-LEFT, with a minimum spacing of 2 blocks so they never crowd.
-    //    Placement is deterministic: a block gets a tuft only if its hash score
-    //    is the strict local maximum within a ±EXCL-block window. Two winners
-    //    can't sit inside each other's window, which guarantees the spacing
-    //    without any stateful RNG — every client bakes the identical field.
-    if (tufts) {
+    // 3) Scatter grass tufts on a 32×32 block grid (grassy biomes only),
+    //    deterministically so every client bakes the identical field.
+    if (needTufts) {
+      if (!tufts) {
+        // Tuft sheet not ready yet — bake base+mottle only, retry next frame.
+        this._grassKey = null;
+        this._grassField = cv;
+        return cv;
+      }
       const SRC = 16;
       const COUNT = Math.max(1, Math.floor((tufts.naturalWidth || 176) / SRC));
       const BLOCK = 32;
@@ -1206,16 +1230,57 @@ export class Renderer {
           g.drawImage(tufts, idx * SRC, 0, SRC, SRC, ax, ay, size, size);
         }
       }
-    } else {
-      // Tuft sheet not ready yet — bake base only, retry next frame.
-      this._grassKey = null;
-      this._grassField = cv;
-      return cv;
     }
+
+    // 4) Optional atmospheric wash (night blue / dawn warm / etc).
+    if (pal.wash) { g.fillStyle = pal.wash; g.fillRect(0, 0, tw, th); }
 
     this._grassField = cv;
     this._grassKey = key;
     return cv;
+  }
+
+  /**
+   * Special obstacle: water. Bodies block player movement but let projectiles
+   * fly over (the sim only adds water to the movement blockers, never to the
+   * projectile/LOS checks). On the snow biome it renders as frozen ice (and the
+   * sim leaves it out of the blockers, so players walk across). Drawn on the
+   * floor under players. Foam/ice edges are painted on cells bordering land.
+   */
+  _drawWater(ctx, camera, cw, ch, water, biome) {
+    if (!water || !water.tiles || !water.tiles.length) return;
+    const z = camera.zoom || 1;
+    const col = biome === 'snow' ? WATER_COLORS.ice : WATER_COLORS.water;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    // Body: filled strips with a lighter surface band along the top.
+    for (const t of water.tiles) {
+      const a = camera.toScreen(t.x, t.y, cw, ch);
+      const w = t.w * z, h = t.h * z;
+      if (a.x + w < -20 || a.x > cw + 20 || a.y + h < -20 || a.y > ch + 20) continue;
+      const x = Math.round(a.x), y = Math.round(a.y), W = Math.ceil(w), H = Math.ceil(h);
+      ctx.fillStyle = col.body;
+      ctx.fillRect(x, y, W, H);
+      ctx.fillStyle = col.band;
+      ctx.fillRect(x, y, W, Math.max(2, Math.round(H * 0.16)));
+    }
+    // Shoreline foam / ice rim: edges of cells whose neighbour is land.
+    const cell = water.cell, cells = water.cells;
+    const lw = Math.max(1, Math.round(2 * z));
+    ctx.fillStyle = col.edge;
+    for (const k of cells) {
+      const ci = k.indexOf(',');
+      const c = +k.slice(0, ci), r = +k.slice(ci + 1);
+      const a = camera.toScreen(c * cell, r * cell, cw, ch);
+      const s = cell * z;
+      if (a.x + s < -20 || a.x > cw + 20 || a.y + s < -20 || a.y > ch + 20) continue;
+      const x = Math.round(a.x), y = Math.round(a.y), S = Math.ceil(s);
+      if (!cells.has(`${c},${r - 1}`)) ctx.fillRect(x, y, S, lw);            // top
+      if (!cells.has(`${c},${r + 1}`)) ctx.fillRect(x, y + S - lw, S, lw);   // bottom
+      if (!cells.has(`${c - 1},${r}`)) ctx.fillRect(x, y, lw, S);            // left
+      if (!cells.has(`${c + 1},${r}`)) ctx.fillRect(x + S - lw, y, lw, S);   // right
+    }
+    ctx.restore();
   }
 
   /**
