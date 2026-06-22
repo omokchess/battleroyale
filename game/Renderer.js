@@ -21,27 +21,25 @@ const CIRC_CELL = 63;   // reference full-ring size; scale = targetSize / CIRC_C
 
 // Cover obstacle textures, cut from the nature tileset (tile/nature). Each entry
 // is [sx, sy, sw, sh] in sheet px — a FULL sprite island (tight opaque bbox, so
-// nothing is ever sliced). Each cover tile deterministically picks one (+ flip)
-// from its world position, so the look is varied but identical on every client.
+// nothing is ever sliced). These are all SOLID boulders/rocks/stumps (no leafy
+// bushes), so a cover tile reads instantly as something you can't walk through.
+// Each tile deterministically picks one (+ flip) from its world position, so the
+// look is varied but identical on every client.
 const COVER_SPRITES = [
-  [193, 83, 61, 44],   // 0 brown boulder pile
-  [210, 132, 29, 27],  // 1 brown rock
-  [1, 134, 30, 23],    // 2 brown rock
-  [33, 134, 30, 23],   // 3 red-brown rock
-  [64, 145, 32, 30],   // 4 brown stump
-  [258, 132, 29, 27],  // 5 green bush
-  [1, 161, 47, 30],    // 6 green bush (wide)
-  [114, 227, 28, 25],  // 7 berry bush (orange)
-  [114, 259, 28, 25],  // 8 berry bush (blue)
-  [146, 259, 28, 25],  // 9 berry bush (autumn)
+  [193, 83, 61, 44],   // 0 boulder pile (big)
+  [210, 132, 29, 27],  // 1 round boulder
+  [1, 134, 30, 23],    // 2 rock
+  [33, 134, 30, 23],   // 3 rock (reddish)
+  [64, 145, 32, 30],   // 4 tree stump
+  [240, 192, 80, 32],  // 5 rock cluster (wide)
 ];
-// Which sprites suit each biome group, and an optional colour wash so the same
-// rocks read as dry sandstone (desert) or frosted stone (snow).
-const COVER_GROUP = { day: 'grassy', night: 'grassy', dawn: 'grassy', desert: 'desert', snow: 'snow' };
+// Which sprites suit each biome, and an optional colour wash so the same rocks
+// read as dry sandstone (desert) or frosted stone (snow).
+const COVER_GROUP = { day: 'green', night: 'green', dawn: 'green', desert: 'desert', snow: 'snow' };
 const BIOME_COVER = {
-  grassy: [5, 6, 7, 8, 9, 0, 1],   // leafy bushes + a couple of boulders
-  desert: [0, 1, 2, 3, 4],         // brown/sandstone rocks + a dead stump
-  snow:   [0, 1, 2, 3],            // bare rocks (frosted via the tint below)
+  green:  [0, 1, 2, 4],   // mossy boulders + a stump (forest/grass)
+  desert: [0, 1, 3, 5],   // sandstone boulders + a rock cluster
+  snow:   [0, 1, 2, 3],   // bare rocks (frosted via the tint below)
 };
 const COVER_TINT = { desert: 'rgba(225,182,120,0.30)', snow: 'rgba(206,228,246,0.55)' };
 
@@ -717,6 +715,13 @@ export class Renderer {
       const idx = set[(key >>> 3) % set.length];
       const flip = ((key >>> 1) & 1) === 1;
       const [sx, sy, sw, sh] = COVER_SPRITES[idx];
+
+      // Ground contact shadow — an ellipse at the tile base so the rock reads as
+      // a solid object resting on the floor (the big "this blocks you" cue).
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h - h * 0.10, w * 0.48, h * 0.20, 0, 0, Math.PI * 2);
+      ctx.fill();
 
       // Width-fit (slight overhang); height follows the sprite's aspect, anchored
       // to the tile's bottom so the base sits on the hitbox and tall rocks rise up.
