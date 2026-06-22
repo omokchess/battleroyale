@@ -60,6 +60,35 @@ const WATER_COLORS = {
   ice:   { body: '#bcd6e4', band: 'rgba(255,255,255,0.40)', edge: 'rgba(255,255,255,0.75)' },
 };
 
+// Side-scroller sky gradients (top → bottom) per biome.
+const PLATFORMER_SKY = {
+  day:    ['#9fd8ef', '#dff3e6'],
+  night:  ['#161d33', '#2b3a55'],
+  dawn:   ['#f4a06a', '#ffe6c8'],
+  desert: ['#f1cf8c', '#f8edd0'],
+  snow:   ['#cfe3f2', '#eef6fb'],
+};
+// Parallax hill layers (far→near): colour, scroll factor, bump amplitude/period.
+const PLATFORMER_HILLS = {
+  day:    [{ color: '#bfe0c2', factor: 0.15, amp: 90, period: 520, baseY: 0.72 }, { color: '#9ecb9f', factor: 0.34, amp: 60, period: 340, baseY: 0.84 }],
+  night:  [{ color: '#27324d', factor: 0.15, amp: 90, period: 520, baseY: 0.72 }, { color: '#1c2740', factor: 0.34, amp: 60, period: 340, baseY: 0.84 }],
+  dawn:   [{ color: '#e7a487', factor: 0.15, amp: 90, period: 520, baseY: 0.72 }, { color: '#cf8b75', factor: 0.34, amp: 60, period: 340, baseY: 0.84 }],
+  desert: [{ color: '#e6c98f', factor: 0.15, amp: 70, period: 560, baseY: 0.74 }, { color: '#d6b878', factor: 0.34, amp: 46, period: 360, baseY: 0.86 }],
+  snow:   [{ color: '#dbe9f4', factor: 0.15, amp: 80, period: 540, baseY: 0.73 }, { color: '#c5d8e8', factor: 0.34, amp: 52, period: 360, baseY: 0.85 }],
+};
+
+// Rounded-rectangle path helper (platformer body draw).
+function roundRect(ctx, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 const WEAPON_SPRITE_META = {
   sword: { src: '/assets/weapons/sword.png', scale: 0.55, anchorX: 0.24, anchorY: 0.5, angleOffset: 0 },
   axe: { src: '/assets/weapons/axe.png', scale: 0.64, anchorX: 0.22, anchorY: 0.52, angleOffset: 0, noAimFlip: true },
@@ -143,6 +172,174 @@ export class Renderer {
     this._charTintCache = {};   // tinted body frames keyed by skin+color
     this._charPrev = {};        // last positions, to detect movement for the walk cycle
     this._charAnim = {};        // per-player walk frame state
+  }
+
+  /**
+   * Side-scroller render path (Phase 1). Sky + parallax background, the level
+   * geometry (solids / one-way platforms), and players drawn in side view
+   * (facing follows aim, foot shadow, nickname + HP). Full-res, direct to the
+   * main canvas — independent of the legacy top-down render() pipeline.
+   */
+  renderPlatformer(state, localPlayerId, camera, level, visualSettings = {}) {
+    const ctx = this.ctx, cw = this.canvas.width, ch = this.canvas.height;
+    const now = Date.now();
+    const biome = state.biome || 'day';
+    this._perf = !!visualSettings.performanceMode;
+    this._glow = this._perf ? 0 : 1;
+
+    // Sky gradient.
+    const sky = PLATFORMER_SKY[biome] || PLATFORMER_SKY.day;
+    const g = ctx.createLinearGradient(0, 0, 0, ch);
+    g.addColorStop(0, sky[0]); g.addColorStop(1, sky[1]);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, cw, ch);
+
+    // Parallax hills (slower than the camera for depth).
+    this._drawParallax(ctx, camera, cw, ch, biome);
+
+    const shake = camera.getShakeOffset ? camera.getShakeOffset(now) : { x: 0, y: 0 };
+    ctx.save();
+    ctx.translate(shake.x || 0, shake.y || 0);
+
+    if (level) this._drawLevel(ctx, camera, cw, ch, level, biome);
+
+    const players = state.players || {};
+    for (const id in players) {
+      const p = players[id];
+      if (!p || p.isDead) continue;
+      this._drawPlatformerPlayer(ctx, camera, cw, ch, p, id === localPlayerId, now);
+    }
+    ctx.restore();
+
+    // Desktop aim reticle at the cursor.
+    if (state.cursorPos) this._drawReticle(ctx, state.cursorPos);
+  }
+
+  _drawParallax(ctx, camera, cw, ch, biome) {
+    const layers = PLATFORMER_HILLS[biome] || PLATFORMER_HILLS.day;
+    const z = camera.zoom || 1;
+    for (let li = 0; li < layers.length; li++) {
+      const { color, factor, amp, period, baseY } = layers[li];
+      ctx.fillStyle = color;
+      // Horizon tied loosely to camera Y so it feels connected; hills scroll in X.
+      const horizon = ch * baseY - camera.y * factor * z * 0.25;
+      const off = -(camera.x * factor * z) % period;
+      ctx.beginPath();
+      ctx.moveTo(-period, ch);
+      for (let x = -period + off; x < cw + period; x += period) {
+        ctx.quadraticCurveTo(x + period / 2, horizon - amp, x + period, horizon);
+      }
+      ctx.lineTo(cw + period, ch);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  _drawLevel(ctx, camera, cw, ch, level, biome) {
+    const cap = (BIOME_FLOOR[biome] || BIOME_FLOOR.day).base;
+    const rectScreen = (r) => {
+      const a = camera.toScreen(r.x, r.y, cw, ch);
+      const b = camera.toScreen(r.x + r.w, r.y + r.h, cw, ch);
+      return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+    };
+    const onScreen = (s) => !(s.x + s.w < -4 || s.x > cw + 4 || s.y + s.h < -4 || s.y > ch + 4);
+
+    // Solids: stone body + a grassy/biome cap along the top edge.
+    for (const r of level.solids) {
+      const s = rectScreen(r); if (!onScreen(s)) continue;
+      const x = Math.round(s.x), y = Math.round(s.y), w = Math.ceil(s.w), h = Math.ceil(s.h);
+      ctx.fillStyle = '#3b3a44'; ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(x, y + Math.min(10, h * 0.4), w, h);
+      const capH = Math.max(3, Math.round(8 * (camera.zoom || 1)));
+      ctx.fillStyle = cap; ctx.fillRect(x, y, w, capH);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, y, w, Math.max(1, capH * 0.4));
+    }
+    // One-way platforms: thin wooden planks with a bright top lip.
+    for (const r of level.oneWays) {
+      const s = rectScreen(r); if (!onScreen(s)) continue;
+      const x = Math.round(s.x), y = Math.round(s.y), w = Math.ceil(s.w), h = Math.max(4, Math.ceil(s.h));
+      ctx.fillStyle = '#7a5230'; ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = '#9c6b3f'; ctx.fillRect(x, y, w, Math.max(2, h * 0.45));
+      ctx.fillStyle = 'rgba(255,235,200,0.35)'; ctx.fillRect(x, y, w, 2);
+    }
+  }
+
+  _drawPlatformerPlayer(ctx, camera, cw, ch, p, isLocal, now) {
+    const z = camera.zoom || 1;
+    const hw = (p.halfW || 13), hh = (p.halfH || 20);
+    const pos = camera.toScreen(p.x, p.y, cw, ch);
+    const feet = camera.toScreen(p.x, p.y + hh, cw, ch);
+    const bw = hw * 2 * z, bh = hh * 2 * z;
+    const face = (p.facing || 1) >= 0 ? 1 : -1;
+
+    // Foot shadow.
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(pos.x, feet.y, bw * 0.55, bh * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dash i-frame blink.
+    const blink = (p.iframeTimeLeft > 0) ? (0.45 + 0.4 * Math.abs(Math.sin(now / 40))) : 1;
+    ctx.globalAlpha = blink;
+
+    const bodyColor = p.color || '#cdd3da';
+    const accent = p.accentColor || '#ffffff';
+    const left = pos.x - bw / 2, top = pos.y - bh / 2;
+
+    // Body (rounded torso).
+    roundRect(ctx, left, top + bh * 0.28, bw, bh * 0.72, Math.min(6, bw * 0.3));
+    ctx.fillStyle = bodyColor; ctx.fill();
+    ctx.strokeStyle = '#0d0a06'; ctx.lineWidth = Math.max(1, z); ctx.stroke();
+
+    // Head.
+    ctx.beginPath();
+    ctx.arc(pos.x, top + bh * 0.2, bh * 0.2, 0, Math.PI * 2);
+    ctx.fillStyle = bodyColor; ctx.fill(); ctx.stroke();
+    // Facing eye.
+    ctx.fillStyle = '#0d0a06';
+    ctx.beginPath();
+    ctx.arc(pos.x + face * bh * 0.09, top + bh * 0.19, Math.max(1.2, bh * 0.04), 0, Math.PI * 2);
+    ctx.fill();
+
+    // Aim arm: a short bar from the chest toward the aim angle.
+    const ax = pos.x, ay = top + bh * 0.45;
+    const armLen = bw * 0.9;
+    ctx.strokeStyle = accent; ctx.lineWidth = Math.max(2, 3 * z); ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax + Math.cos(p.angle) * armLen, ay + Math.sin(p.angle) * armLen);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+
+    // Nameplate + HP bar above the head.
+    const nameY = top - 10 * z;
+    ctx.font = `${Math.max(10, Math.round(11 * z))}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isLocal ? '#ffe9a8' : '#ffffff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
+    ctx.strokeText(p.nickname || '', pos.x, nameY);
+    ctx.fillText(p.nickname || '', pos.x, nameY);
+    const hpW = bw * 1.2, hpH = Math.max(3, 4 * z), hpX = pos.x - hpW / 2, hpY = nameY + 4 * z;
+    const frac = Math.max(0, Math.min(1, (p.hp || 0) / (p.maxHp || 100)));
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(hpX - 1, hpY - 1, hpW + 2, hpH + 2);
+    ctx.fillStyle = frac > 0.5 ? '#5fbf4f' : frac > 0.25 ? '#d9a441' : '#c0392b';
+    ctx.fillRect(hpX, hpY, hpW * frac, hpH);
+    ctx.textAlign = 'left';
+  }
+
+  _drawReticle(ctx, cursor) {
+    const x = cursor.x, y = cursor.y, s = 9;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - s, y); ctx.lineTo(x - 3, y);
+    ctx.moveTo(x + 3, y); ctx.lineTo(x + s, y);
+    ctx.moveTo(x, y - s); ctx.lineTo(x, y - 3);
+    ctx.moveTo(x, y + 3); ctx.lineTo(x, y + s);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill();
+    ctx.restore();
   }
 
   _initWeaponSprites() {

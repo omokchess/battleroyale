@@ -108,6 +108,36 @@ export class Camera {
     this.y += (focusY - this.y) * this.lerpSpeed;
   }
 
+  /**
+   * Platformer 2D follow (side-scroller pivot). A roughly fixed zoom shows a
+   * consistent world window; the camera centres on the target with a small
+   * vertical deadzone (so little hops don't bob the view) and clamps to the
+   * level bounds. `vx/facing` give a gentle horizontal look-ahead.
+   */
+  updatePlatformer(targetX, targetY, vw, vh, level, lookX = 0) {
+    this.screenOffsetY = 0;
+    this.tracking = true;
+    const SHOW_W = 1180, SHOW_H = 760;             // desired world window (px)
+    const baseZoom = Math.min(vw / SHOW_W, vh / SHOW_H);
+    this.zoom = Math.max(0.1, Math.min(3, baseZoom * this.userZoom));
+
+    const halfW = vw / (2 * this.zoom);
+    const halfH = vh / (2 * this.zoom);
+    const lw = level?.width || vw, lh = level?.height || vh;
+
+    // Horizontal: follow with look-ahead toward facing/motion.
+    const fx = clampRange(targetX + lookX, halfW, lw - halfW, lw / 2);
+    // Vertical: a deadzone band keeps the view steady through small jumps.
+    const dead = Math.min(halfH * 0.35, 110);
+    let desiredY = this.y;
+    if (targetY < this.y - dead) desiredY = targetY + dead;
+    else if (targetY > this.y + dead) desiredY = targetY - dead;
+    const fy = clampRange(desiredY, halfH, lh - halfH, lh / 2);
+
+    this.x += (fx - this.x) * this.lerpSpeed;
+    this.y += (fy - this.y) * this.lerpSpeed;
+  }
+
   startShake(magnitude = 8, durationMs = 220, now = performance.now()) {
     this.shakeStart = now;
     this.shakeEnd = Math.max(this.shakeEnd, now + durationMs);

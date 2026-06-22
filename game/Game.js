@@ -16,6 +16,7 @@ import { normalizeRoomConfig, arenaDimensions, HEAL_RATES } from './RoomConfig.j
 import { Sound } from './Sound.js';
 import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, coverClearOfPoint, coverBlocksCircle } from './Cover.js';
 import { generateWater, emptyWater } from './Water.js';
+import { buildLevel } from './Level.js';
 import { Zone } from './Zone.js';
 import { STATUS } from './Status.js';
 
@@ -72,11 +73,11 @@ export class Game {
     // Fire patches (flamethrower F): timed ground burn, synced via GAME_STATE.
     this.firePatches = [];
     this._patchSeq = 0;
-    // Arena Boundaries — derived from the room's arena-size preset (tiny=700
-    // keeps the legacy default). Clients re-derive this from ROOM_JOINED.
-    const dims = arenaDimensions(this.roomConfig);
-    this.mapWidth = dims.mapWidth;
-    this.mapHeight = dims.mapHeight;
+    // Side-scroller level (platformer pivot). buildLevel derives a deterministic
+    // layered level from the arena-size preset; mapWidth/mapHeight follow the
+    // level's pixel size. Clients rebuild the identical level from ROOM_JOINED.
+    this.level = null;
+    this._buildLevel();
 
     // Storm zone (Task 5): cycle-based safe circle. Host simulates, syncs state.
     // NOTE: must come AFTER mapWidth/mapHeight are set — the Zone needs the real
@@ -338,7 +339,7 @@ export class Game {
       const hp = this.players[this.localPlayerId];
       if (hp) {
         this.input.setLocalWeapon(hp.weapon);
-        this.camera.update(hp.x, hp.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
+        this.camera.updatePlatformer(hp.x, hp.y, this.canvas.width, this.canvas.height, this.level, (hp.facing || 1) * 90);
         if (!hp.isDead) {
           this.input.updateAimAngle(hp, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
           hp.angle = this.input.aimAngle;
@@ -381,8 +382,8 @@ export class Game {
       const localPlayer = this.players[this.localPlayerId];
       if (localPlayer && !localPlayer.isDead) {
         this.input.setLocalWeapon(localPlayer.weapon);
-        // Update camera position to follow local player
-        this.camera.update(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
+        // Update camera position to follow local player (2D platformer follow)
+        this.camera.updatePlatformer(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.level, (localPlayer.facing || 1) * 90);
 
         // Calibrate accurate aiming angle taking camera boundaries into account
         this.input.updateAimAngle(localPlayer, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
@@ -414,11 +415,9 @@ export class Game {
           this.networkManager.sendToHost(Protocol.clientAction('targetCast', 0, 0, targetCast));
         }
 
-        // Optimistic local update for zero input latency feel
-        localPlayer.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
+        // Optimistic local platformer update for zero input latency feel.
         localPlayer.angle = this.input.aimAngle;
-        Collision.clampToMap(localPlayer, this.mapWidth, this.mapHeight);
-        if (this.moveTiles.length) resolveCover(this.moveTiles, localPlayer, localPlayer.radius || 14);
+        localPlayer.updatePosition(deltaTime, this.input.keys, this.level);
 
         this._sendLocalInput(now);
       }
@@ -445,25 +444,18 @@ export class Game {
       p.prevY = p.y;
 
       if (id === this.localPlayerId) {
-        // Local host input updates
-        p.updatePosition(deltaTime, this.input.keys, this.mapWidth, this.mapHeight);
+        // Local host: set aim first so facing follows the cursor this frame.
         p.angle = this.input.aimAngle;
+        p.updatePosition(deltaTime, this.input.keys, this.level);
       } else {
-        // Remote guest input updates
-        p.updatePosition(deltaTime, p.keys || {}, this.mapWidth, this.mapHeight);
+        // Remote guest input updates (platformer physics vs the level).
+        p.updatePosition(deltaTime, p.keys || {}, this.level);
       }
-      Collision.clampToMap(p, this.mapWidth, this.mapHeight);
-      if (this.moveTiles.length) resolveCover(this.moveTiles, p, p.radius || 14);
     });
 
-    // 2. Resolve Player collisions to avoid clipping
+    // 2. Resolve Player overlaps horizontally (platformer: keep bodies apart
+    //    without disturbing the vertical landing solved by the level collision).
     Collision.resolvePlayerCollisions(this.players);
-    if (this.moveTiles.length) {
-      Object.values(this.players).forEach(p => {
-        if (p.isDead) return;
-        resolveCover(this.moveTiles, p, p.radius || 14);
-      });
-    }
 
     // Storm zone tick + healing spawns/pickups (host authoritative).
     this._updateZone(now, deltaTime);
@@ -1615,6 +1607,14 @@ export class Game {
    * grass), so host and clients build the identical terrain with no extra sync.
    * Call after `this.cover`, `this.roomConfig` and the map dims are set.
    */
+  /** Build the side-scroller level from the room's arena-size preset and adopt
+   *  its pixel size as the map bounds. Deterministic → host + clients match. */
+  _buildLevel() {
+    const side = arenaDimensions(this.roomConfig).mapWidth;
+    this.level = buildLevel(side);
+    this.mapWidth = this.level.width;
+    this.mapHeight = this.level.height;
+  }
   _buildTerrain() {
     this.biome = this.roomConfig?.biome || 'day';
     this.frozen = this.biome === 'snow';      // frozen water = walkable
@@ -4257,16 +4257,16 @@ export class Game {
       firePatches: this.firePatches,
       storm,
       zoneOutside,
+      level: this.level,
       // In mobile joystick mode, the cursor is only flashed for actual target casts.
       cursorPos: this.input ? this.input.getCursorPos() : null
     };
 
-    this.renderer.render(
+    this.renderer.renderPlatformer(
       state,
       this.localPlayerId,
       this.camera,
-      this.mapWidth,
-      this.mapHeight,
+      this.level,
       this.visualSettings
     );
   }
@@ -4709,43 +4709,22 @@ export class Game {
    * Spawner positions math
    */
   _getRandomSpawnPoint() {
-    const radius = 14;
-    const margin = 100;
-    
-    // Prevent spawning on borders
-    const xMin = margin;
-    const xMax = this.mapWidth - margin;
-    const yMin = margin;
-    const yMax = this.mapHeight - margin;
-
-    // Try finding far coordinate
-    let chosenX = Math.random() * (xMax - xMin) + xMin;
-    let chosenY = Math.random() * (yMax - yMin) + yMin;
-
-    // If other players exist, try up to 12 times to get a point at least 250px
-    // away from everyone AND clear of cover tiles.
-    for (let attempts = 0; attempts < 12; attempts++) {
-      let bad = false;
-
+    // Platformer: spawn on a ground spawn point, body lifted so the feet rest on
+    // the slab. Pick the spawn farthest from existing players for a fair start.
+    const spawns = this.level?.spawns || [{ x: this.mapWidth / 2, y: this.mapHeight / 2 }];
+    const halfH = 20;
+    let best = spawns[0], bestDist = -1;
+    for (const s of spawns) {
+      let nearest = Infinity;
       for (const id in this.players) {
-        const other = this.players[id];
-        if (other.isDead) continue;
-
-        const dx = other.x - chosenX;
-        const dy = other.y - chosenY;
-        if (dx * dx + dy * dy < 250 * 250) { bad = true; break; }
+        const o = this.players[id];
+        if (o.isDead) continue;
+        const dx = o.x - s.x, dy = o.y - (s.y - halfH);
+        nearest = Math.min(nearest, dx * dx + dy * dy);
       }
-      if (!bad && this.moveTiles?.length && !coverClearOfPoint(this.moveTiles, chosenX, chosenY, radius + 10)) {
-        bad = true;
-      }
-
-      if (!bad) break;
-
-      chosenX = Math.random() * (xMax - xMin) + xMin;
-      chosenY = Math.random() * (yMax - yMin) + yMin;
+      if (nearest > bestDist) { bestDist = nearest; best = s; }
     }
-
-    return { x: chosenX, y: chosenY };
+    return { x: best.x, y: best.y - halfH - 1 };
   }
 
   /**
@@ -4895,9 +4874,8 @@ export class Game {
           // Adopt the host's room settings, then trust the explicit map dims it
           // sent (falling back to the size derived from the config).
           this.roomConfig = normalizeRoomConfig(data.roomConfig);
-          const dims = arenaDimensions(this.roomConfig);
-          this.mapWidth = Number.isFinite(data.mapWidth) ? data.mapWidth : dims.mapWidth;
-          this.mapHeight = Number.isFinite(data.mapHeight) ? data.mapHeight : dims.mapHeight;
+          // Rebuild the identical side-scroller level from the synced config.
+          this._buildLevel();
           // Regenerate the host's terrain locally from the shared seed
           // (grass-style deterministic generation — no per-tile data synced).
           this.coverSeed = Number.isFinite(data.coverSeed) ? data.coverSeed : 0;

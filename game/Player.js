@@ -5,6 +5,8 @@
 
 import { Weapons, getEffectiveWeapon, DashConfig } from './Weapons.js';
 import { STATUS } from './Status.js';
+import { PHYS } from './Level.js';
+import { Collision } from './Collision.js';
 
 export class Player {
   constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
@@ -49,6 +51,19 @@ export class Player {
     this.dashDirX = 0;
     this.dashDirY = 0;
     this.stunTimeLeft = 0;
+
+    // --- Platformer physics state (side-scroller pivot) ---
+    this.vx = 0;                 // horizontal velocity (px/s)
+    this.vy = 0;                 // vertical velocity (px/s, + = down)
+    this.grounded = false;       // standing on solid/one-way this frame
+    this.facing = 1;             // +1 right, -1 left (follows the aim/cursor)
+    this.coyoteLeft = 0;         // grace window to still jump after leaving ground
+    this.jumpBufferLeft = 0;     // buffered jump press (fires on landing)
+    this.jumpHeldPrev = false;   // previous frame's jump-held (edge detection)
+    this.jumping = false;        // in a rising jump (variable-height cut applies)
+    this.dropThroughLeft = 0;    // brief window where one-way platforms are ignored
+    this.halfW = 13;             // AABB half-width
+    this.halfH = 20;             // AABB half-height
 
     // --- F skill state ---
     this.skillCdLeft = 0;     // seconds remaining on the skill cooldown
@@ -170,55 +185,111 @@ export class Player {
   /**
    * Handles local or server physics tick
    */
-  updatePosition(deltaTime, keys, mapWidth, mapHeight) {
-    if (this.isDead) return;
-    if (this.stunTimeLeft > 0) {
-      this._tickTimers(deltaTime);
-      return;
-    }
-    if (this.daggerQte) {
-      this._tickTimers(deltaTime);
-      return;
-    }
-    // Axe rage slows the wielder: 70% speed reduction (30% movement) while spinning.
-    // Dash is still blocked.
-    const axeRageActive = this.buffType === 'axe_rage' && this.buffTimeLeft > 0;
+  /**
+   * Platformer physics step (side-scroller pivot). Reads horizontal input +
+   * jump (held) + drop-through, applies run accel/air control + gravity +
+   * variable-height jump (coyote time, jump buffer), then sweeps the AABB
+   * through the level. Dash is a fixed-direction burst (aim/move direction).
+   *
+   * Input mapping (re-uses the synced movement keys so no protocol change):
+   *   a / ArrowLeft = left, d / ArrowRight = right,
+   *   w / ArrowUp / (Space→w) = jump (held for variable height),
+   *   s / ArrowDown = drop through one-way platforms (with jump).
+   */
+  updatePosition(deltaTime, keys, level) {
+    if (this.isDead) { this._tickTimers(deltaTime); return; }
 
-    // A dash overrides normal locomotion with a fixed-direction burst. Consume
-    // (up to) the remaining dash window *before* advancing the timers so even a
-    // single large tick still produces the full dash distance.
+    const dt = deltaTime;
+    const grav = PHYS.gravity;
+    const stunned = this.stunTimeLeft > 0 || !!this.daggerQte;
+
+    // --- Dash burst: constant-velocity, gravity-free, fixed direction ---
     if (this.dashTimeLeft > 0) {
-      const step = Math.min(deltaTime, this.dashTimeLeft);
-      this.x += this.dashDirX * DashConfig.speed * step;
-      this.y += this.dashDirY * DashConfig.speed * step;
-      this._tickTimers(deltaTime);
+      this.vx = this.dashDirX * PHYS.dashSpeed;
+      this.vy = this.dashDirY * PHYS.dashSpeed;
+      const hit = Collision.moveAndCollide(this, level, dt);
+      this.grounded = hit.grounded;
+      if (hit.grounded && this.vy > 0) this.vy = 0;
+      this._tickTimers(dt);
+      if (this.dropThroughLeft > 0) this.dropThroughLeft -= dt;
       return;
     }
 
-    this._tickTimers(deltaTime);
+    this._tickTimers(dt);
+    if (this.dropThroughLeft > 0) this.dropThroughLeft -= dt;
 
-    let dx = 0;
-    let dy = 0;
+    const left = !stunned && (keys.a || keys.ArrowLeft);
+    const right = !stunned && (keys.d || keys.ArrowRight);
+    const jumpHeld = !stunned && (keys.w || keys.ArrowUp);
+    const downHeld = keys.s || keys.ArrowDown;
 
-    // Movement vectors from input maps
-    if (keys.w || keys.ArrowUp) dy -= 1;
-    if (keys.s || keys.ArrowDown) dy += 1;
-    if (keys.a || keys.ArrowLeft) dx -= 1;
-    if (keys.d || keys.ArrowRight) dx += 1;
+    // Horizontal target speed (status slows still apply).
+    const slowMul = this.slowTimeLeft > 0 ? STATUS.slow.moveFactor : 1;
+    const weaponConfig = Weapons[this.weapon] || Weapons.sword;
+    let baseMul = weaponConfig.moveSpeed ?? 1;
+    if (this.weapon === 'flamethrower' && this.flameSpraying) baseMul = weaponConfig.sprayMoveSpeed ?? baseMul;
+    const target = (right ? 1 : 0) - (left ? 1 : 0);
+    const targetVx = target * PHYS.runSpeed * baseMul * slowMul;
 
-    // Normalize diagonal velocity vectors
-    if (dx !== 0 || dy !== 0) {
-      const length = Math.sqrt(dx * dx + dy * dy);
-      const weaponConfig = Weapons[this.weapon] || Weapons.sword;
-      const slowMul = this.slowTimeLeft > 0 ? STATUS.slow.moveFactor : 1; // −30% slow
-      const rageSlowMul = axeRageActive ? 0.3 : 1; // axe spin: 70% reduction
-      // Flamethrower is dragged down while actively spraying.
-      let baseMul = weaponConfig.moveSpeed ?? 1;
-      if (this.weapon === 'flamethrower' && this.flameSpraying) baseMul = weaponConfig.sprayMoveSpeed ?? baseMul;
-      const moveSpeed = this.speed * baseMul * slowMul * rageSlowMul;
-      this.x += (dx / length) * moveSpeed * deltaTime;
-      this.y += (dy / length) * moveSpeed * deltaTime;
+    const accel = this.grounded ? PHYS.groundAccel : PHYS.airAccel;
+    const decel = this.grounded ? PHYS.groundDecel : PHYS.airDecel;
+    if (target !== 0) {
+      this.vx += Math.sign(targetVx - this.vx) * accel * dt;
+      // don't overshoot the target speed
+      if ((targetVx - this.vx) * target < 0) this.vx = targetVx;
+    } else {
+      const d = decel * dt;
+      this.vx = Math.abs(this.vx) <= d ? 0 : this.vx - Math.sign(this.vx) * d;
     }
+
+    // --- Jump: coyote time + jump buffer + variable height ---
+    const jumpPressed = jumpHeld && !this.jumpHeldPrev;
+    if (jumpPressed) this.jumpBufferLeft = PHYS.jumpBufferMs / 1000;
+    if (this.coyoteLeft > 0) this.coyoteLeft -= dt;
+    if (this.jumpBufferLeft > 0) this.jumpBufferLeft -= dt;
+
+    const canJump = (this.grounded || this.coyoteLeft > 0) && !stunned;
+    if (this.jumpBufferLeft > 0 && canJump) {
+      if (downHeld) {
+        // drop through the one-way platform we're standing on instead of jumping
+        this.dropThroughLeft = 0.12;
+        this.grounded = false;
+      } else {
+        this.vy = -PHYS.jumpSpeed;
+        this.jumping = true;
+        this.grounded = false;
+        this.coyoteLeft = 0;
+        this.jumpBufferLeft = 0;
+      }
+    }
+    // Variable height: releasing jump while rising cuts the upward velocity.
+    if (this.jumping && !jumpHeld && this.vy < 0) {
+      this.vy *= PHYS.jumpCutMul;
+      this.jumping = false;
+    }
+    if (this.vy >= 0) this.jumping = false;
+    this.jumpHeldPrev = jumpHeld;
+
+    // --- Gravity + terminal velocity ---
+    this.vy = Math.min(this.vy + grav * dt, PHYS.maxFall);
+
+    // --- Integrate + collide ---
+    const dropThrough = downHeld || this.dropThroughLeft > 0;
+    const hit = Collision.moveAndCollide(this, level, dt, { dropThrough });
+
+    const wasGrounded = this.grounded;
+    this.grounded = hit.grounded;
+    if (this.grounded) {
+      this.coyoteLeft = PHYS.coyoteMs / 1000;
+      this.jumping = false;
+    } else if (wasGrounded && this.vy >= 0) {
+      // just walked off a ledge → start the coyote window
+      this.coyoteLeft = PHYS.coyoteMs / 1000;
+    }
+
+    // Facing follows the aim (cursor) direction for combat readability.
+    const fc = Math.cos(this.angle);
+    if (fc > 0.01) this.facing = 1; else if (fc < -0.01) this.facing = -1;
   }
 
   /**
@@ -238,9 +309,10 @@ export class Player {
 
     this.dashDirX = dirX / len;
     this.dashDirY = dirY / len;
-    this.dashTimeLeft = DashConfig.durationMs / 1000;
-    this.iframeTimeLeft = DashConfig.iframeMs / 1000;
-    this.dashCdLeft = DashConfig.cooldownMs / 1000;
+    this.dashTimeLeft = PHYS.dashMs / 1000;
+    this.iframeTimeLeft = PHYS.dashIframeMs / 1000;
+    this.dashCdLeft = PHYS.dashCdMs / 1000;
+    this.jumping = false;
     return true;
   }
 
