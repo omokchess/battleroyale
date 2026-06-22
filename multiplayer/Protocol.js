@@ -33,10 +33,11 @@ export const Protocol = {
   },
 
   // Handshake registration acceptance frame. roomConfig carries the arena-size /
-  // storm / cover / healing settings, and cover the generated obstacle tiles, so
-  // late-joiners get the exact same arena/rules.
-  roomJoined(id, initialPlayers, mapWidth, mapHeight, roomConfig = null, cover = []) {
-    return { type: MsgType.ROOM_JOINED, id, initialPlayers, mapWidth, mapHeight, roomConfig, cover };
+  // storm / cover / healing settings, and coverSeed the per-match seed clients
+  // use to regenerate the identical obstacle layout locally, so late-joiners get
+  // the exact same arena/rules.
+  roomJoined(id, initialPlayers, mapWidth, mapHeight, roomConfig = null, coverSeed = 0) {
+    return { type: MsgType.ROOM_JOINED, id, initialPlayers, mapWidth, mapHeight, roomConfig, coverSeed };
   },
 
   // Notify clients of a newcomer

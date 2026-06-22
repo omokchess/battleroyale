@@ -48,9 +48,11 @@ export class Game {
     this._hitFlashStrength = 0; // 0..1 vignette intensity
     this._killFeed = [];        // recent kill notices (synced via Protocol)
 
-    // Cover tiles (Task 9): static obstacles. Host generates + syncs via
-    // ROOM_JOINED; clients adopt the received list.
+    // Cover tiles (Task 9): static obstacles. Host picks one per-match seed and
+    // ships only that number via ROOM_JOINED; clients regenerate the identical
+    // layout locally from it (grass-style deterministic generation).
     this.cover = [];
+    this.coverSeed = 0;
     // Healing items (Task 9): host spawns on a timer, syncs via GAME_STATE.
     this.healingItems = [];
     this._healingSeq = 0;
@@ -155,8 +157,10 @@ export class Game {
     const localWeapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
 
     if (this.networkManager.isHost) {
-      // Host builds the cover layout once; it ships to clients via ROOM_JOINED.
-      this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight);
+      // Host picks one per-match seed; the layout is derived deterministically
+      // from it (grass-style). Only the seed ships to clients via ROOM_JOINED.
+      this.coverSeed = (Math.random() * 0xffffffff) >>> 0;
+      this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight, this.coverSeed);
 
       // Host adds themselves directly
       const spawnP = this._getRandomSpawnPoint();
@@ -4807,7 +4811,7 @@ export class Game {
         this.mapWidth,
         this.mapHeight,
         this.roomConfig,
-        this.cover
+        this.coverSeed
       ));
 
       // 5. Broadcast to everyone else that a new player entered
@@ -4860,8 +4864,10 @@ export class Game {
           const dims = arenaDimensions(this.roomConfig);
           this.mapWidth = Number.isFinite(data.mapWidth) ? data.mapWidth : dims.mapWidth;
           this.mapHeight = Number.isFinite(data.mapHeight) ? data.mapHeight : dims.mapHeight;
-          // Adopt the host's cover layout (static obstacles).
-          this.cover = Array.isArray(data.cover) ? data.cover : [];
+          // Regenerate the host's cover layout locally from the shared seed
+          // (grass-style deterministic generation — no per-tile data synced).
+          this.coverSeed = Number.isFinite(data.coverSeed) ? data.coverSeed : 0;
+          this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight, this.coverSeed);
 
           // Reconstitute players list
           this.players = {};

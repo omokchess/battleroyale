@@ -7,9 +7,11 @@
  * the straight-line instakill weapons (sniper/matchlock) and the bow without
  * removing the instakill itself.
  *
- * The host generates them once at match start (symmetric left↔right for fair
- * 1v1s) and ships the exact tile list to every client via ROOM_JOINED, so this
- * file only needs Math.random on the host — geometry queries are deterministic.
+ * Layout is fully deterministic from the arena dimensions + a single per-match
+ * seed — exactly like the grass field, which bakes itself from a positional
+ * hash with no RNG state. The host picks one seed at match start and ships only
+ * that number via ROOM_JOINED; every client then regenerates the identical
+ * tile list locally, so no per-tile data is synced. Symmetric left↔right.
  *
  * A tile is { x, y, w, h } with (x, y) the top-left corner, in world units.
  */
@@ -20,7 +22,17 @@ const TILE = 46;          // square edge in world px (pixel-themed block)
 const EDGE_MARGIN = 80;   // keep tiles off the arena border
 const CENTER_CLEAR = 70;  // keep the exact arena center open (spawn-ish)
 
-const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+// Deterministic seeded RNG, built from the same Math.imul integer-hash style as
+// the grass field bake. Seeded once per match, it lets the host and every client
+// derive the identical scatter from one shared seed — no network sync per tile.
+function makeRng(seed) {
+  let s = (seed | 0) || 0x9e3779b9;
+  return () => {
+    s = Math.imul(s ^ (s >>> 15), 2246822519);
+    s = Math.imul(s ^ (s >>> 13), 3266489917);
+    return ((s ^ (s >>> 16)) >>> 0) / 4294967296;
+  };
+}
 
 function tilesOverlap(a, b, pad = 26) {
   return !(a.x + a.w + pad <= b.x || b.x + b.w + pad <= a.x ||
@@ -31,7 +43,7 @@ function tilesOverlap(a, b, pad = 26) {
  * Build the cover layout for a room. Mirrors each tile across the vertical
  * center line so both halves are identical. Returns [] when cover is off.
  */
-export function generateCover(config, mapWidth, mapHeight) {
+export function generateCover(config, mapWidth, mapHeight, seed = 0) {
   const density = COVER_DENSITY[config?.cover] || 0;
   if (!density) return [];
   // Scale the 700²-referenced density by actual arena area.
@@ -40,6 +52,9 @@ export function generateCover(config, mapWidth, mapHeight) {
   const tiles = [];
   const cx = mapWidth / 2;
   const cy = mapHeight / 2;
+  // Seeded RNG so the scatter is identical on host + every client (grass-style).
+  const rng = makeRng(seed);
+  const rand = (lo, hi) => lo + rng() * (hi - lo);
 
   let guard = 0;
   while (tiles.length < pairs * 2 && guard++ < pairs * 60) {
