@@ -40,15 +40,15 @@ function tilesOverlap(a, b, pad = 26) {
 }
 
 /**
- * Build the cover layout for a room. Mirrors each tile across the vertical
- * center line so both halves are identical. Returns [] when cover is off.
+ * Build the cover layout for a room. Tiles are scattered freely across the whole
+ * arena (no left↔right mirroring), so the field looks naturally irregular like
+ * the grass. Placement is deterministic from the seed. Returns [] when off.
  */
 export function generateCover(config, mapWidth, mapHeight, seed = 0) {
   const density = COVER_DENSITY[config?.cover] || 0;
   if (!density) return [];
   // Scale the 700²-referenced density by actual arena area.
   const target = Math.round(density * (mapWidth * mapHeight) / (700 * 700));
-  const pairs = Math.floor(target / 2);
   const tiles = [];
   const cx = mapWidth / 2;
   const cy = mapHeight / 2;
@@ -57,17 +57,15 @@ export function generateCover(config, mapWidth, mapHeight, seed = 0) {
   const rand = (lo, hi) => lo + rng() * (hi - lo);
 
   let guard = 0;
-  while (tiles.length < pairs * 2 && guard++ < pairs * 60) {
-    // Place in the left band, then mirror to the right.
-    const x = rand(EDGE_MARGIN, cx - TILE - 24);
+  while (tiles.length < target && guard++ < target * 60) {
+    // Scatter anywhere inside the playable area — no mirror, no banding.
+    const x = rand(EDGE_MARGIN, mapWidth - EDGE_MARGIN - TILE);
     const y = rand(EDGE_MARGIN, mapHeight - EDGE_MARGIN - TILE);
     const t = { x, y, w: TILE, h: TILE };
     // Keep the dead-center clear and avoid overlaps.
     if (Math.abs((x + TILE / 2) - cx) < CENTER_CLEAR && Math.abs((y + TILE / 2) - cy) < CENTER_CLEAR) continue;
     if (tiles.some(o => tilesOverlap(o, t))) continue;
-    const mirror = { x: mapWidth - x - TILE, y, w: TILE, h: TILE };
-    if (tiles.some(o => tilesOverlap(o, mirror))) continue;
-    tiles.push(t, mirror);
+    tiles.push(t);
   }
   return tiles;
 }
