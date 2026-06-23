@@ -1457,6 +1457,19 @@ export class Game {
     player.coyoteLeft = 0;
   }
 
+  /** Y of the nearest surface (solid OR one-way top) at or below `fromY` at
+   *  column x — used to drop placed entities (mines / fire patches) onto the
+   *  ground or platform instead of floating in mid-air. */
+  _surfaceBelow(x, fromY) {
+    let best = Infinity;
+    const rects = this.level ? [...(this.level.solids || []), ...(this.level.oneWays || [])] : [];
+    for (const s of rects) {
+      if (x < s.x || x > s.x + s.w) continue;
+      if (s.y >= fromY - 2 && s.y < best) best = s.y;
+    }
+    return Number.isFinite(best) ? best : (this.mapHeight || fromY);
+  }
+
   /** Eject a body out of any solid level rect it overlaps (least-penetration
    *  axis, ties resolve upward). Used after absolute teleports / pulls so a
    *  player can't end up stuck inside a wall or platform. */
@@ -3682,7 +3695,8 @@ export class Game {
     const mine = {
       id: ++this._mineSeq,
       ownerId: player.id,
-      x: player.x, y: player.y,
+      // Drop onto the surface below the placer (platformer: ground-placed).
+      x: player.x, y: this._surfaceBelow(player.x, player.y) - 5,
       armAt: now + (sk.armMs || 1000)
     };
     this.mines.push(mine);
@@ -3714,7 +3728,7 @@ export class Game {
       if (d < bestD) { bestD = d; stick = t; }
     }
     const fx = stick ? stick.x : player.x + Math.cos(player.angle) * 60;
-    const fy = stick ? stick.y : player.y + Math.sin(player.angle) * 60;
+    const fy = stick ? stick.y : this._surfaceBelow(fx, player.y) - 5;
     this.mines.push({
       id: ++this._mineSeq, ownerId: player.id, tracer: true,
       stickTo: stick ? stick.id : null,
@@ -3827,6 +3841,7 @@ export class Game {
     let y = player.y + Math.sin(player.angle) * (sk.patchRange || 76);
     x = Math.max(10, Math.min(this.mapWidth - 10, x));
     y = Math.max(10, Math.min(this.mapHeight - 10, y));
+    y = this._surfaceBelow(x, y) - 4;   // burn pools on the ground/platform below
     this.firePatches.push({
       id: ++this._patchSeq, ownerId: player.id, x, y,
       expireAt: now + (sk.patchMs || 2000), nextTickAt: now
