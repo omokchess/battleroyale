@@ -647,7 +647,7 @@ export class Game {
               target.x = attacker.x + Math.cos(a) * (hk.pullToFront || 50);
               target.y = attacker.y + Math.sin(a) * (hk.pullToFront || 50);
               Collision.clampToMap(target, this.mapWidth, this.mapHeight);
-              if (this.moveTiles.length) resolveCover(this.moveTiles, target, target.radius || 14);
+              this._resolveOutOfTerrain(target);   // harpoon yank: don't land in a wall
               this._applySlow(target, hk.slowMs || 300);
               if (hk.pullStunMs) this._applyStun(target, hk.pullStunMs, Date.now());
               target.prevX = target.x; // discontinuous move — don't let melee sweep it
@@ -985,7 +985,7 @@ export class Game {
     if (!target || target.isInvincible?.()) return null;
     if (!Collision.checkMeleeHit(attacker, target, weapon)) return null;
     // A cover tile between attacker and target blocks the strike.
-    if (this.cover?.length && coverBlocksSegment(this.cover, attacker.x, attacker.y, target.x, target.y)) {
+    if (this._terrainBlocksSegment(attacker.x, attacker.y, target.x, target.y)) {
       return null;
     }
 
@@ -1098,6 +1098,7 @@ export class Game {
     }
 
     Collision.clampToMap(target, this.mapWidth, this.mapHeight);
+    this._resolveOutOfTerrain(target);
   }
 
   _applyAttackTempoResult(player, attackConfig, hitCount, now) {
@@ -1348,7 +1349,7 @@ export class Game {
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
     const maxDist = Number.isFinite(cfg.range) ? Math.min(cfg.range, wallDist) : wallDist;
-    const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+    const coverDist = this._terrainRayDist(player.x, player.y, dirX, dirY);
     let hitDist = Math.min(Number.isFinite(maxDist) ? maxDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     let hitTarget = null;
 
@@ -1401,6 +1402,24 @@ export class Game {
     this._displace(player, dir * Math.abs(amount), 0);
   }
 
+  /** Nearest forward distance to terrain (cover + solid level geometry) along a
+   *  unit ray — used so hitscan shots stop at walls/ground/ledges. One-way
+   *  platforms are intentionally NOT included (shots pass through them). */
+  _terrainRayDist(ox, oy, dx, dy) {
+    let d = Infinity;
+    if (this.cover?.length) d = Math.min(d, coverRayDistance(this.cover, ox, oy, dx, dy));
+    if (this.level?.solids?.length) d = Math.min(d, coverRayDistance(this.level.solids, ox, oy, dx, dy));
+    return d;
+  }
+
+  /** True when a segment is blocked by terrain (cover or solid level geometry).
+   *  Used for melee line-of-sight so you can't hit through a wall. */
+  _terrainBlocksSegment(x0, y0, x1, y1) {
+    if (this.cover?.length && coverBlocksSegment(this.cover, x0, y0, x1, y1)) return true;
+    if (this.level?.solids?.length && coverBlocksSegment(this.level.solids, x0, y0, x1, y1)) return true;
+    return false;
+  }
+
   /** True when a circle (x,y,r) overlaps any SOLID level rect (not one-ways).
    *  Used to block projectiles / hitscan on walls, ground and ledges. */
   _levelSolidBlocks(x, y, r = 4) {
@@ -1436,6 +1455,32 @@ export class Game {
     player.vy = -PHYS.pogoSpeed;
     player.jumping = false;
     player.coyoteLeft = 0;
+  }
+
+  /** Eject a body out of any solid level rect it overlaps (least-penetration
+   *  axis, ties resolve upward). Used after absolute teleports / pulls so a
+   *  player can't end up stuck inside a wall or platform. */
+  _resolveOutOfTerrain(body) {
+    const solids = this.level?.solids;
+    if (!solids || !body) return;
+    const hw = body.halfW || 13, hh = body.halfH || 20;
+    for (let pass = 0; pass < 3; pass++) {
+      let moved = false;
+      for (const s of solids) {
+        const l = body.x - hw, r = body.x + hw, t = body.y - hh, b = body.y + hh;
+        if (l < s.x + s.w && r > s.x && t < s.y + s.h && b > s.y) {
+          const penL = r - s.x, penR = s.x + s.w - l, penT = b - s.y, penB = s.y + s.h - t;
+          const m = Math.min(penL, penR, penT, penB);
+          if (m === penT) body.y -= penT;
+          else if (m === penB) body.y += penB;
+          else if (m === penL) body.x -= penL;
+          else body.x += penR;
+          if (body.vy && ((m === penT && body.vy > 0) || (m === penB && body.vy < 0))) body.vy = 0;
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
   }
 
   /** Sweep a player by (dx,dy) through the level so combat displacements
@@ -2352,6 +2397,7 @@ export class Game {
     player.x = target.x + Math.cos(angle) * distance;
     player.y = target.y + Math.sin(angle) * distance;
     Collision.clampToMap(player, this.mapWidth, this.mapHeight);
+    this._resolveOutOfTerrain(player);
   }
 
   _castHammerSkill(player, now) {
@@ -2615,7 +2661,7 @@ export class Game {
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
-    const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+    const coverDist = this._terrainRayDist(player.x, player.y, dirX, dirY);
     let hitDist = Math.min(Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     let hitTarget = null;
     Object.keys(this.players).forEach(tid => {
@@ -3110,7 +3156,7 @@ export class Game {
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(originX, originY, dirX, dirY, this.mapWidth, this.mapHeight);
     // Cover stops the beam (and shields anyone behind it).
-    const coverDist = this.cover?.length ? coverRayDistance(this.cover, originX, originY, dirX, dirY) : Infinity;
+    const coverDist = this._terrainRayDist(originX, originY, dirX, dirY);
     let hitDist = Math.min(Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     let hitTarget = null;
     Object.keys(this.players).forEach(tid => {
@@ -3165,7 +3211,8 @@ export class Game {
     }
     player.x = Math.max(margin, Math.min(this.mapWidth - margin, fromX + dx));
     player.y = Math.max(margin, Math.min(this.mapHeight - margin, fromY + dy));
-    if (this.moveTiles?.length) resolveCover(this.moveTiles, player, player.radius || 14);
+    this._resolveOutOfTerrain(player);   // teleport: don't land inside terrain
+    player.vy = 0;                        // cancel fall momentum on blink
     // Teleport is discontinuous — don't let the next melee test sweep the jump.
     player.prevX = player.x;
     player.prevY = player.y;
@@ -3220,7 +3267,7 @@ export class Game {
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
-    const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+    const coverDist = this._terrainRayDist(player.x, player.y, dirX, dirY);
 
     let hitDist = Math.min(Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     let hitTarget = null;
@@ -3370,7 +3417,7 @@ export class Game {
 
     // Hitscan from player's CURRENT position in the locked direction.
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
-    const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+    const coverDist = this._terrainRayDist(player.x, player.y, dirX, dirY);
     const travelDist = Math.min(Number.isFinite(wallDist) ? wallDist : Math.max(this.mapWidth, this.mapHeight), coverDist);
     const endX = Math.max(5, Math.min(this.mapWidth - 5, player.x + dirX * travelDist));
     const endY = Math.max(5, Math.min(this.mapHeight - 5, player.y + dirY * travelDist));
@@ -3755,7 +3802,7 @@ export class Game {
           while (ad > Math.PI) ad -= Math.PI * 2;
           while (ad < -Math.PI) ad += Math.PI * 2;
           if (Math.abs(ad) > halfAng) return;
-          if (this.cover.length && coverBlocksSegment(this.cover, player.x, player.y, t.x, t.y)) return;
+          if (this._terrainBlocksSegment(player.x, player.y, t.x, t.y)) return;
           const last = player._flameHits[t.id] || 0;
           if (now - last < (cfg.tickMs || 200)) return;
           player._flameHits[t.id] = now;
@@ -3817,7 +3864,7 @@ export class Game {
     const dirY = Math.sin(player.angle);
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
     let dist = Math.min(sk.pullRange || 360, Number.isFinite(wallDist) ? wallDist : (sk.pullRange || 360));
-    if (this.cover.length) dist = Math.min(dist, coverRayDistance(this.cover, player.x, player.y, dirX, dirY));
+    dist = Math.min(dist, this._terrainRayDist(player.x, player.y, dirX, dirY));
     Object.keys(this.players).forEach(tid => {
       const t = this.players[tid];
       if (t.id === player.id || t.isDead) return;
@@ -3829,7 +3876,7 @@ export class Game {
     player.x += dirX * travel;
     player.y += dirY * travel;
     Collision.clampToMap(player, this.mapWidth, this.mapHeight);
-    if (this.moveTiles.length) resolveCover(this.moveTiles, player, player.radius || 14);
+    this._resolveOutOfTerrain(player);
     player.prevX = player.x; // discontinuous — avoid melee sweep across the yank
     player.prevY = player.y;
     // Arrival: slow enemies near the landing spot.
@@ -4170,7 +4217,7 @@ export class Game {
       if (!player || player.isDead || player.weapon !== 'pistols') continue;
       const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
       const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
-      const coverDist = this.cover?.length ? coverRayDistance(this.cover, player.x, player.y, dirX, dirY) : Infinity;
+      const coverDist = this._terrainRayDist(player.x, player.y, dirX, dirY);
       const maxDist = Math.min(s.range, Number.isFinite(wallDist) ? wallDist : s.range, coverDist);
       for (const t of Object.values(this.players)) {
         if (t.id === player.id || t.isDead || t.isInvincible()) continue;
