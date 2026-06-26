@@ -492,14 +492,22 @@
               <input type="text" id="hostRoomInput" maxlength="10" placeholder="3글자 이상 (영문·숫자)"
                 class="w-full bg-[#14100b] border-2 border-gray-600 focus:border-[#c9a227] text-white px-3 py-2 font-mono text-xs focus:outline-none uppercase mb-4" />
 
-              <div class="mb-3" data-config-group="arenaSize">
-                <div class="font-mono text-[10px] text-gray-300 uppercase mb-1">경기장 크기</div>
-                <div class="grid grid-cols-5 gap-1">
-                  <button type="button" class="cfg-opt selected" data-value="tiny">초소형</button>
-                  <button type="button" class="cfg-opt" data-value="small">소형</button>
-                  <button type="button" class="cfg-opt" data-value="medium">중형</button>
-                  <button type="button" class="cfg-opt" data-value="large">대형</button>
-                  <button type="button" class="cfg-opt" data-value="huge">초대형</button>
+              <div class="mb-3" data-config-group="platforms">
+                <div class="font-mono text-[10px] text-gray-300 uppercase mb-1">플랫폼</div>
+                <div class="grid grid-cols-4 gap-1">
+                  <button type="button" class="cfg-opt" data-value="none">없음</button>
+                  <button type="button" class="cfg-opt" data-value="few">적음</button>
+                  <button type="button" class="cfg-opt selected" data-value="some">보통</button>
+                  <button type="button" class="cfg-opt" data-value="many">많음</button>
+                </div>
+              </div>
+
+              <div class="mb-3" data-config-group="platformShape">
+                <div class="font-mono text-[10px] text-gray-300 uppercase mb-1">플랫폼 모양</div>
+                <div class="grid grid-cols-3 gap-1">
+                  <button type="button" class="cfg-opt selected" data-value="balanced">균형형</button>
+                  <button type="button" class="cfg-opt" data-value="stairs">계단형</button>
+                  <button type="button" class="cfg-opt" data-value="towers">타워형</button>
                 </div>
               </div>
 
@@ -736,7 +744,7 @@
         </div>
       </div>
 
-      <!-- ABILITY COOLDOWNS (F skill / Space dash) -->
+      <!-- ABILITY COOLDOWNS (F skill / Shift dash) -->
       <div id="abilityHud" class="absolute bottom-4 left-4 z-20 bg-[#2c2016] bg-opacity-80 p-3 border-2 border-[#c9a227] font-mono pointer-events-none select-none w-44 drop-shadow-md">
         <div class="flex justify-between items-center text-[10px] text-gray-300 mb-1">
           <span><strong class="text-[#c9a227]">F</strong> 스킬</span>

@@ -106,9 +106,9 @@ const WEAPON_SPRITE_META = {
   sniper: { src: '/assets/weapons/sniper.png', scale: 0.72, anchorX: 0.18, anchorY: 0.5, angleOffset: 0 }
 };
 const PROJECTILE_SPRITE_META = {
-  arrow: { src: '/assets/weapons/arrow.png', scale: 1.65, anchorX: 0.5, anchorY: 0.5, angleOffset: Math.PI / 4 }
+  arrow: { src: '/assets/ninja/weapon/arrow.png', scale: 1.65, anchorX: 0.5, anchorY: 0.5, angleOffset: Math.PI / 4 }
 };
-const WEAPON_ASSET_VERSION = '20260609a';
+const WEAPON_ASSET_VERSION = '20260625a';
 const WS_TINTS = { ember: '#ff3d3d', frost: '#5fd3ff', void: '#b14bff' };
 
 // The low-res "pixel filter" (Task 4) is disabled by user request — the world
@@ -201,17 +201,131 @@ export class Renderer {
     ctx.translate(shake.x || 0, shake.y || 0);
 
     if (level) this._drawLevel(ctx, camera, cw, ch, level, biome);
+    if (state.storm) this._drawPlatformerZone(ctx, camera, cw, ch, state.storm, now);
+    if (state.healingItems && state.healingItems.length) this._drawHealingItems(ctx, camera, cw, ch, state.healingItems, now);
+    if (state.mines && state.mines.length) this._drawMines(ctx, camera, cw, ch, state.mines, localPlayerId, now);
+    if (state.firePatches && state.firePatches.length) this._drawFirePatches(ctx, camera, cw, ch, state.firePatches, now);
+    if (state.effects && state.effects.length) {
+      this._drawEffects(ctx, camera, cw, ch, state.effects, state.players || {}, localPlayerId, visualSettings);
+      this._drawPlatformerEffects(ctx, camera, cw, ch, state.effects, now);
+    }
+    if (state.projectiles && state.projectiles.length) this._drawProjectiles(ctx, camera, cw, ch, state.projectiles, state.players || {});
 
     const players = state.players || {};
+    const activeAttacks = this._getActiveAttacks(state.effects || []);
     for (const id in players) {
       const p = players[id];
       if (!p || p.isDead) continue;
-      this._drawPlatformerPlayer(ctx, camera, cw, ch, p, id === localPlayerId, now);
+      this._drawPlatformerPlayer(ctx, camera, cw, ch, p, id === localPlayerId, now, activeAttacks[id] || activeAttacks[p.id] || null);
+    }
+    if (state.damagePopups && state.damagePopups.length) {
+      this._drawDamagePopups(ctx, camera, cw, ch, state.damagePopups, now);
     }
     ctx.restore();
 
+    if (camera.tracking && state.players && level) {
+      this._drawMinimap(ctx, cw, ch, state.players, localPlayerId, level.width, level.height, state);
+      this._drawOffscreenEnemyArrows(ctx, camera, cw, ch, state.players, localPlayerId);
+    }
+    if (state.hitFlash) this._drawHitVignette(ctx, cw, ch, state.hitFlash);
+    if (state.zoneOutside) {
+      const pulse = 0.55 + 0.45 * Math.sin(now / 120);
+      this._drawZoneWarning(ctx, cw, ch, pulse);
+    }
+
     // Desktop aim reticle at the cursor.
     if (state.cursorPos) this._drawReticle(ctx, state.cursorPos);
+  }
+
+  _drawPlatformerZone(ctx, camera, cw, ch, storm, now) {
+    if (storm.kind !== 'platformer_rise') {
+      this._drawZone(ctx, camera, cw, ch, storm, now);
+      return;
+    }
+
+    const mapW = storm.mapWidth || 0;
+    const mapH = storm.mapHeight || 0;
+    const leftX = Number.isFinite(storm.leftX) ? storm.leftX : 0;
+    const rightX = Number.isFinite(storm.rightX) ? storm.rightX : mapW;
+    const floorY = Number.isFinite(storm.floorY) ? storm.floorY : mapH + 96;
+    const bottom = Math.max(mapH + 220, floorY + 220);
+    const z = camera.zoom || 1;
+
+    const fillRectWorld = (x, y, w, h, color) => {
+      if (w <= 0 || h <= 0) return;
+      const a = camera.toScreen(x, y, cw, ch);
+      const b = camera.toScreen(x + w, y + h, cw, ch);
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.floor(a.x), Math.floor(a.y), Math.ceil(b.x - a.x), Math.ceil(b.y - a.y));
+    };
+
+    ctx.save();
+    const pulse = 0.55 + 0.45 * Math.sin(now / 180);
+    fillRectWorld(leftX, floorY, rightX - leftX, bottom - floorY, `rgba(220,48,26,${0.45 + pulse * 0.18})`);
+    fillRectWorld(-160, -80, leftX + 160, bottom + 160, 'rgba(132,30,24,0.50)');
+    fillRectWorld(rightX, -80, mapW - rightX + 160, bottom + 160, 'rgba(132,30,24,0.50)');
+
+    const drawLineY = (y, color, dashed = false) => {
+      const a = camera.toScreen(leftX, y, cw, ch);
+      const b = camera.toScreen(rightX, y, cw, ch);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(2, 3 * z);
+      if (dashed) ctx.setLineDash([8 * z, 6 * z]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      if (dashed) ctx.setLineDash([]);
+    };
+    drawLineY(floorY, 'rgba(255,214,92,0.95)', false);
+    if (storm.phase === 'warning' || storm.phase === 'shrinking') {
+      if (Number.isFinite(storm.nextFloorY) && Math.abs(storm.nextFloorY - floorY) > 2) {
+        drawLineY(storm.nextFloorY, 'rgba(255,245,157,0.85)', true);
+      }
+    }
+
+    const top = camera.toScreen(leftX, 0, cw, ch);
+    const bottomLeft = camera.toScreen(leftX, mapH, cw, ch);
+    const topRight = camera.toScreen(rightX, 0, cw, ch);
+    const bottomRight = camera.toScreen(rightX, mapH, cw, ch);
+    ctx.strokeStyle = 'rgba(255,138,76,0.85)';
+    ctx.lineWidth = Math.max(2, 2 * z);
+    ctx.beginPath();
+    ctx.moveTo(top.x, top.y); ctx.lineTo(bottomLeft.x, bottomLeft.y);
+    ctx.moveTo(topRight.x, topRight.y); ctx.lineTo(bottomRight.x, bottomRight.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawPlatformerEffects(ctx, camera, cw, ch, effects, now) {
+    const z = camera.zoom || 1;
+    ctx.save();
+    for (const e of effects) {
+      if (!e || !e.type) continue;
+      const life = Math.max(0, Math.min(1, (now - e.timestamp) / Math.max(1, e.lifetime || 1)));
+      if (life >= 1) continue;
+      const scr = camera.toScreen(e.x, e.y, cw, ch);
+      if (e.type === 'landing_dust') {
+        const alpha = 1 - life;
+        const spread = (12 + life * 34) * (e.strength || 1) * z;
+        ctx.globalAlpha = alpha * 0.55;
+        ctx.fillStyle = '#d7c38c';
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.ellipse(scr.x + i * spread * 0.34, scr.y - life * 5 * z, spread * 0.34, 5 * z * alpha, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (e.type === 'danger_pop') {
+        const alpha = 1 - life;
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = '#ffcf5a';
+        ctx.lineWidth = Math.max(2, 3 * z * alpha);
+        ctx.beginPath();
+        ctx.arc(scr.x, scr.y, (10 + life * 34) * z, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   _drawParallax(ctx, camera, cw, ch, biome) {
@@ -235,23 +349,89 @@ export class Renderer {
   }
 
   _drawLevel(ctx, camera, cw, ch, level, biome) {
-    const cap = (BIOME_FLOOR[biome] || BIOME_FLOOR.day).base;
+    const floor = BIOME_FLOOR[biome] || BIOME_FLOOR.day;
+    const cap = floor.base;
     const rectScreen = (r) => {
       const a = camera.toScreen(r.x, r.y, cw, ch);
       const b = camera.toScreen(r.x + r.w, r.y + r.h, cw, ch);
       return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
     };
     const onScreen = (s) => !(s.x + s.w < -4 || s.x > cw + 4 || s.y + s.h < -4 || s.y > ch + 4);
+    const hash = (a, b) => {
+      let h = (Math.floor(a) * 374761393 + Math.floor(b) * 668265263) | 0;
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+    const drawProceduralTexture = (r, s, kind = 'stone') => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(Math.round(s.x), Math.round(s.y), Math.ceil(s.w), Math.ceil(s.h));
+      ctx.clip();
+
+      const z = camera.zoom || 1;
+      const cell = Math.max(6, Math.round((kind === 'top' ? 12 : 18) * z));
+      for (let y = Math.floor(s.y / cell) * cell; y < s.y + s.h; y += cell) {
+        for (let x = Math.floor(s.x / cell) * cell; x < s.x + s.w; x += cell) {
+          const wx = r.x + (x - s.x) / z;
+          const wy = r.y + (y - s.y) / z;
+          const n = hash(wx / cell, wy / cell);
+          if (kind === 'top') {
+            if (n > 0.74) ctx.fillStyle = floor.mLight;
+            else if (n < 0.20) ctx.fillStyle = floor.mDark;
+            else continue;
+            ctx.fillRect(x, y, cell, Math.max(2, Math.round(cell * 0.35)));
+          } else {
+            ctx.fillStyle = n > 0.58 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.11)';
+            ctx.fillRect(x, y, cell, cell);
+          }
+        }
+      }
+
+      const detailCount = Math.max(4, Math.min(40, Math.round((r.w * r.h) / (kind === 'top' ? 11000 : 18000))));
+      for (let i = 0; i < detailCount; i++) {
+        const n1 = hash(r.x / 17 + i * 19, r.y / 23 + i * 7);
+        const n2 = hash(r.x / 29 + i * 11, r.y / 31 + i * 13);
+        const x = s.x + n1 * s.w;
+        const y = s.y + n2 * s.h;
+        if (kind === 'top') {
+          const len = (6 + hash(i, r.x) * 11) * z;
+          const h = (2 + hash(i, r.y) * 5) * z;
+          ctx.strokeStyle = floor.tufts ? 'rgba(64,108,38,0.45)' : floor.mDark;
+          ctx.lineWidth = Math.max(1, z);
+          ctx.beginPath();
+          ctx.moveTo(x, s.y + Math.min(s.h - 1, Math.max(1, y - s.y)));
+          ctx.lineTo(x + len * 0.35, y - h);
+          ctx.lineTo(x + len, y);
+          ctx.stroke();
+        } else {
+          const len = (10 + hash(i, r.w) * 24) * z;
+          ctx.strokeStyle = hash(i, r.h) > 0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.18)';
+          ctx.lineWidth = Math.max(1, z * 0.75);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + len, y + (hash(i, r.y) - 0.5) * 9 * z);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    };
+    const drawTopDetails = (r, s, capH) => {
+      ctx.fillStyle = cap;
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), Math.ceil(s.w), capH);
+      drawProceduralTexture(r, { x: s.x, y: s.y, w: s.w, h: capH }, 'top');
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), Math.ceil(s.w), Math.max(1, capH * 0.4));
+    };
 
     // Solids: stone body + a grassy/biome cap along the top edge.
     for (const r of level.solids) {
       const s = rectScreen(r); if (!onScreen(s)) continue;
       const x = Math.round(s.x), y = Math.round(s.y), w = Math.ceil(s.w), h = Math.ceil(s.h);
       ctx.fillStyle = '#3b3a44'; ctx.fillRect(x, y, w, h);
+      drawProceduralTexture(r, s, 'stone');
       ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(x, y + Math.min(10, h * 0.4), w, h);
       const capH = Math.max(3, Math.round(8 * (camera.zoom || 1)));
-      ctx.fillStyle = cap; ctx.fillRect(x, y, w, capH);
-      ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, y, w, Math.max(1, capH * 0.4));
+      drawTopDetails(r, s, capH);
     }
     // One-way platforms: thin wooden planks with a bright top lip.
     for (const r of level.oneWays) {
@@ -259,11 +439,12 @@ export class Renderer {
       const x = Math.round(s.x), y = Math.round(s.y), w = Math.ceil(s.w), h = Math.max(4, Math.ceil(s.h));
       ctx.fillStyle = '#7a5230'; ctx.fillRect(x, y, w, h);
       ctx.fillStyle = '#9c6b3f'; ctx.fillRect(x, y, w, Math.max(2, h * 0.45));
+      drawProceduralTexture(r, s, 'wood');
       ctx.fillStyle = 'rgba(255,235,200,0.35)'; ctx.fillRect(x, y, w, 2);
     }
   }
 
-  _drawPlatformerPlayer(ctx, camera, cw, ch, p, isLocal, now) {
+  _drawPlatformerPlayer(ctx, camera, cw, ch, p, isLocal, now, activeAttack = null) {
     const z = camera.zoom || 1;
     const hw = (p.halfW || 13), hh = (p.halfH || 20);
     const pos = camera.toScreen(p.x, p.y, cw, ch);
@@ -278,48 +459,91 @@ export class Renderer {
     ctx.ellipse(pos.x, feet.y, bw * 0.55, bh * 0.12, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    const motion = this._getAttackMotion(p, activeAttack);
+    const bodyScr = {
+      x: pos.x + motion.bodyX,
+      y: pos.y + motion.bodyY
+    };
+    const radius = 14 * z;
+    const weaponTune = WEAPON_SPRITE_TUNE[p.weapon] || WEAPON_TUNE_DEFAULT;
+    const drawWeaponFrame = () => {
+      ctx.save();
+      ctx.translate(bodyScr.x, bodyScr.y);
+      ctx.scale(z, z);
+      ctx.translate(-bodyScr.x, -bodyScr.y);
+      this._drawPlayerWeapon(ctx, bodyScr, p, motion);
+      ctx.restore();
+    };
+
+    if (p.dashTrailColor && p.iframeTimeLeft > 0) {
+      const t = Math.min(1, p.iframeTimeLeft / 0.2);
+      ctx.save();
+      ctx.shadowColor = p.dashTrailColor;
+      ctx.shadowBlur = this._glow ? 14 : 0;
+      for (let i = 1; i <= 3; i++) {
+        ctx.globalAlpha = 0.22 * t / i;
+        ctx.fillStyle = p.dashTrailColor;
+        ctx.beginPath();
+        ctx.ellipse(
+          bodyScr.x - Math.cos(p.angle || 0) * i * 8 * z,
+          bodyScr.y - Math.sin(p.angle || 0) * i * 3 * z,
+          radius * (1 + i * 0.16),
+          radius * 0.72,
+          0,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
     // Dash i-frame blink.
     const blink = (p.iframeTimeLeft > 0) ? (0.45 + 0.4 * Math.abs(Math.sin(now / 40))) : 1;
     ctx.globalAlpha = blink;
 
     const bodyColor = p.color || '#cdd3da';
     const accent = p.accentColor || '#ffffff';
-    const left = pos.x - bw / 2, top = pos.y - bh / 2;
+    this._drawCostumeEffect(ctx, bodyScr, p, radius, now);
+    if (!weaponTune.drawOverBody) drawWeaponFrame();
 
-    // Body (rounded torso).
-    roundRect(ctx, left, top + bh * 0.28, bw, bh * 0.72, Math.min(6, bw * 0.3));
-    ctx.fillStyle = bodyColor; ctx.fill();
-    ctx.strokeStyle = '#0d0a06'; ctx.lineWidth = Math.max(1, z); ctx.stroke();
-
-    // Head.
-    ctx.beginPath();
-    ctx.arc(pos.x, top + bh * 0.2, bh * 0.2, 0, Math.PI * 2);
-    ctx.fillStyle = bodyColor; ctx.fill(); ctx.stroke();
-    // Facing eye.
-    ctx.fillStyle = '#0d0a06';
-    ctx.beginPath();
-    ctx.arc(pos.x + face * bh * 0.09, top + bh * 0.19, Math.max(1.2, bh * 0.04), 0, Math.PI * 2);
-    ctx.fill();
-
-    // Aim arm: a short bar from the chest toward the aim angle.
-    const ax = pos.x, ay = top + bh * 0.45;
-    const armLen = bw * 0.9;
-    ctx.strokeStyle = accent; ctx.lineWidth = Math.max(2, 3 * z); ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(ax + Math.cos(p.angle) * armLen, ay + Math.sin(p.angle) * armLen);
-    ctx.stroke();
+    const drewSprite = this._drawCharacterSprite(ctx, bodyScr, p, radius, isLocal, { faceByAim: true });
+    if (!drewSprite) {
+      const left = bodyScr.x - bw / 2, top = bodyScr.y - bh / 2;
+      roundRect(ctx, left, top + bh * 0.28, bw, bh * 0.72, Math.min(6, bw * 0.3));
+      ctx.fillStyle = bodyColor; ctx.fill();
+      ctx.strokeStyle = '#0d0a06'; ctx.lineWidth = Math.max(1, z); ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(bodyScr.x, top + bh * 0.2, bh * 0.2, 0, Math.PI * 2);
+      ctx.fillStyle = bodyColor; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#0d0a06';
+      ctx.beginPath();
+      ctx.arc(bodyScr.x + face * bh * 0.09, top + bh * 0.19, Math.max(1.2, bh * 0.04), 0, Math.PI * 2);
+      ctx.fill();
+      const ax = bodyScr.x, ay = top + bh * 0.45;
+      const armLen = bw * 0.9;
+      ctx.strokeStyle = accent; ctx.lineWidth = Math.max(2, 3 * z); ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax + Math.cos(p.angle) * armLen, ay + Math.sin(p.angle) * armLen);
+      ctx.stroke();
+    }
+    if (p.burnTimeLeft > 0) this._drawBurnFlames(ctx, bodyScr, radius, z);
+    if (p.pendingIcicles > 0) this._drawLoadedIcicles(ctx, bodyScr, p.pendingIcicles, radius, z);
+    if (weaponTune.drawOverBody) drawWeaponFrame();
+    this._drawCostumeDecoration(ctx, bodyScr, p, radius, now);
 
     ctx.globalAlpha = 1;
 
     // Nameplate + HP bar above the head.
-    const nameY = top - 10 * z;
+    const nameY = bodyScr.y - radius * 2.15;
     ctx.font = `${Math.max(10, Math.round(11 * z))}px monospace`;
     ctx.textAlign = 'center';
     ctx.fillStyle = isLocal ? '#ffe9a8' : '#ffffff';
     ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
-    ctx.strokeText(p.nickname || '', pos.x, nameY);
-    ctx.fillText(p.nickname || '', pos.x, nameY);
+    ctx.strokeText(p.nickname || '', bodyScr.x, nameY);
+    ctx.fillText(p.nickname || '', bodyScr.x, nameY);
+    this._drawStatusIcons(ctx, bodyScr, p, radius);
     const hpW = bw * 1.2, hpH = Math.max(3, 4 * z), hpX = pos.x - hpW / 2, hpY = nameY + 4 * z;
     const frac = Math.max(0, Math.min(1, (p.hp || 0) / (p.maxHp || 100)));
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(hpX - 1, hpY - 1, hpW + 2, hpH + 2);
@@ -581,7 +805,30 @@ export class Renderer {
     }
 
     const storm = gameState.storm;
-    if (storm && Number.isFinite(storm.x) && Number.isFinite(storm.y) && Number.isFinite(storm.radius)) {
+    if (storm?.kind === 'platformer_rise') {
+      const floorY = Number.isFinite(storm.floorY) ? storm.floorY : mapHeight;
+      const leftX = Number.isFinite(storm.leftX) ? storm.leftX : 0;
+      const rightX = Number.isFinite(storm.rightX) ? storm.rightX : mapWidth;
+      const a = w2m(leftX, 0);
+      const b = w2m(rightX, floorY);
+      ctx.fillStyle = 'rgba(34,197,94,0.08)';
+      ctx.fillRect(Math.round(a.x), Math.round(a.y), Math.round(b.x - a.x), Math.round(b.y - a.y));
+      const lavaTop = w2m(leftX, floorY);
+      const lavaBottom = w2m(rightX, mapHeight);
+      ctx.fillStyle = 'rgba(239,68,68,0.45)';
+      ctx.fillRect(Math.round(lavaTop.x), Math.round(lavaTop.y), Math.round(lavaBottom.x - lavaTop.x), Math.round(lavaBottom.y - lavaTop.y));
+      ctx.strokeStyle = 'rgba(250,204,21,0.95)';
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.beginPath(); ctx.moveTo(lavaTop.x, lavaTop.y); ctx.lineTo(lavaBottom.x, lavaTop.y); ctx.stroke();
+      if (Number.isFinite(storm.nextFloorY) && (storm.phase === 'warning' || storm.phase === 'shrinking')) {
+        const n = w2m(leftX, storm.nextFloorY);
+        const nr = w2m(rightX, storm.nextFloorY);
+        ctx.setLineDash([3 * dpr, 3 * dpr]);
+        ctx.strokeStyle = 'rgba(253,224,71,0.75)';
+        ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(nr.x, nr.y); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    } else if (storm && Number.isFinite(storm.x) && Number.isFinite(storm.y) && Number.isFinite(storm.radius)) {
       const c = w2m(storm.x, storm.y);
       const rr = (storm.radius / mapWidth) * mw;
       ctx.strokeStyle = 'rgba(168, 85, 247, 0.85)';
@@ -1865,7 +2112,7 @@ export class Renderer {
    * caller falls back to the legacy square. Hitbox is unchanged — this is
    * purely cosmetic and centered on the player's logical position.
    */
-  _drawCharacterSprite(ctx, scr, player, radius, isLocal) {
+  _drawCharacterSprite(ctx, scr, player, radius, isLocal, options = {}) {
     if (!this.atlas) return false;
 
     // All characters now share the side-view run sheet (RunBoy.png): 6 frames in
@@ -1890,7 +2137,11 @@ export class Renderer {
     this._charPrev[player.id] = { x: player.x, y: player.y };
     let anim = this._charAnim[player.id];
     if (!anim) anim = this._charAnim[player.id] = { frame: 0, at: now, faceRight: true };
-    if (Math.abs(dxMove) > 0.05) anim.faceRight = dxMove > 0;
+    if (options.faceByAim) {
+      anim.faceRight = Math.cos(player.angle || 0) >= 0;
+    } else if (Math.abs(dxMove) > 0.05) {
+      anim.faceRight = dxMove > 0;
+    }
 
     let drawFrame, flip;
     if (moving) {

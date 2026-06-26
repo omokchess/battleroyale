@@ -15,29 +15,31 @@ test('normalizeRoomConfig fills defaults for empty / missing input', () => {
 });
 
 test('normalizeRoomConfig rejects unknown enum values (anti-cheat on network input)', () => {
-  const c = normalizeRoomConfig({ arenaSize: 'gigantic', cover: 'hax', healingRate: 'instant', storm: 'yes' });
-  assert.equal(c.arenaSize, 'tiny');     // unknown → default
+  const c = normalizeRoomConfig({ arenaSize: 'gigantic', cover: 'hax', platforms: 'hax', platformShape: 'maze', healingRate: 'instant', storm: 'yes' });
+  assert.equal(c.arenaSize, 'medium');     // unknown → default
   assert.equal(c.cover, 'none');
+  assert.equal(c.platforms, 'some');
+  assert.equal(c.platformShape, 'balanced');
   assert.equal(c.healingRate, 'normal');
   assert.equal(c.storm, true);           // any truthy coerces to boolean
 });
 
 test('normalizeRoomConfig keeps valid values', () => {
-  const c = normalizeRoomConfig({ arenaSize: 'large', storm: true, cover: 'many', healing: true, healingRate: 'fast' });
-  assert.deepEqual(c, { arenaSize: 'large', storm: true, cover: 'many', healing: true, healingRate: 'fast' });
+  const c = normalizeRoomConfig({ arenaSize: 'medium', storm: true, cover: 'many', platforms: 'few', platformShape: 'stairs', healing: true, healingRate: 'fast' });
+  assert.deepEqual(c, { ...DEFAULT_ROOM_CONFIG, storm: true, cover: 'many', platforms: 'few', platformShape: 'stairs', healing: true, healingRate: 'fast' });
 });
 
-test('arenaDimensions maps presets to a square map; default stays 700', () => {
-  assert.deepEqual(arenaDimensions(undefined), { mapWidth: 700, mapHeight: 700 });
-  assert.deepEqual(arenaDimensions({ arenaSize: 'huge' }), { mapWidth: ARENA_SIZES.huge, mapHeight: ARENA_SIZES.huge });
+test('arenaDimensions uses the single medium square map', () => {
+  assert.deepEqual(arenaDimensions(undefined), { mapWidth: ARENA_SIZES.medium, mapHeight: ARENA_SIZES.medium });
+  assert.deepEqual(arenaDimensions({ arenaSize: 'huge' }), { mapWidth: ARENA_SIZES.medium, mapHeight: ARENA_SIZES.medium });
 });
 
-test('roomConfigBadges shows arena size always, extras only when enabled', () => {
-  assert.deepEqual(roomConfigBadges({}), ['초소형']);
+test('roomConfigBadges shows visible gameplay toggles only', () => {
+  assert.deepEqual(roomConfigBadges({}), ['플랫폼 보통']);
   assert.deepEqual(
-    roomConfigBadges({ arenaSize: 'large', storm: true, cover: 'many', healing: true }),
-    ['대형', '자기장', '엄폐물 많음', '회복']
+    roomConfigBadges({ arenaSize: 'medium', storm: true, cover: 'many', platforms: 'many', healing: true }),
+    ['자기장', '엄폐물 많음', '플랫폼 많음', '회복']
   );
   // cover 'none' must not produce a badge
-  assert.deepEqual(roomConfigBadges({ arenaSize: 'small', cover: 'none' }), ['소형']);
+  assert.deepEqual(roomConfigBadges({ arenaSize: 'small', cover: 'none', platforms: 'none' }), []);
 });

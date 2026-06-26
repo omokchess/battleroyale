@@ -12,6 +12,10 @@ and, for the meta UI, the **Theme Wood** UI set under
 - Scope in this project:
   - Game world (Task 4): character body sheets, weapon sprites, slash/elemental
     FX sheets, tilesets, status-effect icons.
+  - Platformer pivot (Phase 4): side-view character frames, hand-held weapon
+    sprites, elemental/slash FX, tile palettes, parallax-compatible background
+    colours, landing dust / hit feedback particles derived from the same CC0
+    palette.
   - Meta UI (lobby / hub re-skin): the Theme Wood palette and frame language are
     the single visual reference for the medieval menu board. Where a component
     has no pack sprite (resource bar, notice strip, hub module cards), it is
@@ -23,3 +27,7 @@ and, for the meta UI, the **Theme Wood** UI set under
 - `ninja/character/CharBoy.png` — player run + standing frames, hand-cut by the
   project owner and stitched into a single sheet.
 - `ninja/fx/SpriteSheetCircular.png` — 360° slash, hand-cut frames re-stitched.
+- `ninja/weapon/crossbow.png` — copied from local project asset
+  `C:\models\Crossbow.png` for the 쇠뇌 weapon sprite.
+- `ninja/weapon/arrow.png` — copied from local project asset
+  `C:\models\Arrow.png` for bow/crossbow projectile rendering.

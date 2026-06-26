@@ -270,25 +270,26 @@ export class Input {
     this._keyDownHandler = (e) => {
       // Toggle movement keys
       const key = e.key.toLowerCase();
-      if (key === 'w' || e.key === 'ArrowUp') this.keys.w = true;
+      if (key === 'w' || e.key === 'ArrowUp' || e.code === 'Space') this.keys.w = true;
       if (key === 's' || e.key === 'ArrowDown') this.keys.s = true;
       if (key === 'a' || e.key === 'ArrowLeft') this.keys.a = true;
       if (key === 'd' || e.key === 'ArrowRight') this.keys.d = true;
 
-      // Space = dash, F = weapon skill (edge-triggered, ignore auto-repeat)
-      if (key === ' ' && !e.repeat) this._requestDash();
+      // Space = jump, Shift = dash, F = weapon skill (edge-triggered, ignore auto-repeat)
+      if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) this._requestDash();
       if (key === 'f' && !e.repeat) this._requestSkillDown();
       if (key === 'r' && !e.repeat) this.teleportRequested = true;
 
       // Prevent scrolling behaviors on gaming buttons
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(e.key.toLowerCase())) {
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(e.key.toLowerCase()) ||
+          e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
         e.preventDefault();
       }
     };
 
     this._keyUpHandler = (e) => {
       const key = e.key.toLowerCase();
-      if (key === 'w' || e.key === 'ArrowUp') this.keys.w = false;
+      if (key === 'w' || e.key === 'ArrowUp' || e.code === 'Space') this.keys.w = false;
       if (key === 's' || e.key === 'ArrowDown') this.keys.s = false;
       if (key === 'a' || e.key === 'ArrowLeft') this.keys.a = false;
       if (key === 'd' || e.key === 'ArrowRight') this.keys.d = false;

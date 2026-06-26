@@ -76,7 +76,7 @@ export class SpriteAtlas {
  */
 // Bump when vendored sprite FILES change (same path, new pixels) so browsers /
 // the service worker fetch fresh instead of serving a cached image.
-export const ASSET_VERSION = '20260620b';
+export const ASSET_VERSION = '20260625a';
 
 export const SPRITE_MANIFEST = {
   // --- character body sheets (64×112 = 16×16, 4 cols × 7 rows) ---
@@ -113,7 +113,8 @@ export const SPRITE_MANIFEST = {
   'wpn/sniper': 'weapon/sniper.png',
   'wpn/chakram': 'weapon/chakram.png',
   'wpn/pistols': 'weapon/pistols.png',
-  'wpn/crossbow': 'weapon/pistols.png',
+  'wpn/crossbow': 'weapon/crossbow.png',
+  'wpn/arrow': 'weapon/arrow.png',
   'wpn/harpoon': 'weapon/harpoon.png',
   'wpn/guardian': 'weapon/guardian.png',
   'wpn/minebag': 'weapon/minebag.png',

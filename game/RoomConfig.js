@@ -15,17 +15,14 @@
  *  - 이후 설정 항목 추가는 이 파일의 표 + DEFAULT_ROOM_CONFIG 한 곳만 늘리면 된다.
  */
 
-// 경기장 크기 프리셋 → 한 변 픽셀. 맵은 정사각형.
+// 경기장 크기 프리셋 → 한 변 픽셀. Platformer pivot now standardizes on
+// one balanced medium arena; old presets remain only in git history.
 export const ARENA_SIZES = {
-  tiny:   700,   // 초소형 (현행)
-  small:  1000,  // 소형
-  medium: 1400,  // 중형
-  large:  1800,  // 대형
-  huge:   2200   // 초대형
+  medium: 1000
 };
 
 export const ARENA_LABELS = {
-  tiny: '초소형', small: '소형', medium: '중형', large: '대형', huge: '초대형'
+  medium: '중형'
 };
 
 // 엄폐물 밀도 프리셋. 실제 타일 개수는 작업 9에서 경기장 크기와 함께 계산.
@@ -39,6 +36,23 @@ export const COVER_DENSITY = {
 
 export const COVER_LABELS = {
   none: '없음', few: '적음', some: '보통', many: '많음'
+};
+
+export const PLATFORM_DENSITY = {
+  none: 0,
+  few:  2,
+  some: 4,
+  many: 6
+};
+
+export const PLATFORM_LABELS = {
+  none: '없음', few: '적음', some: '보통', many: '많음'
+};
+
+export const PLATFORM_SHAPES = {
+  balanced: '균형형',
+  stairs: '계단형',
+  towers: '타워형'
 };
 
 // 회복 아이템 스폰 주기(ms). 작업 9에서 사용.
@@ -60,9 +74,11 @@ export const BIOME_LABELS = {
 
 // 기본값 = 현행 동작.
 export const DEFAULT_ROOM_CONFIG = Object.freeze({
-  arenaSize: 'tiny',
+  arenaSize: 'medium',
   storm: false,
   cover: 'none',
+  platforms: 'some',
+  platformShape: 'balanced',
   healing: false,
   healingRate: 'normal',
   biome: 'day',
@@ -82,6 +98,8 @@ export function normalizeRoomConfig(raw) {
     arenaSize:   oneOf(c.arenaSize, ARENA_SIZES, DEFAULT_ROOM_CONFIG.arenaSize),
     storm:       Boolean(c.storm),
     cover:       oneOf(c.cover, COVER_DENSITY, DEFAULT_ROOM_CONFIG.cover),
+    platforms:   oneOf(c.platforms, PLATFORM_DENSITY, DEFAULT_ROOM_CONFIG.platforms),
+    platformShape: oneOf(c.platformShape, PLATFORM_SHAPES, DEFAULT_ROOM_CONFIG.platformShape),
     healing:     Boolean(c.healing),
     healingRate: oneOf(c.healingRate, HEAL_RATES, DEFAULT_ROOM_CONFIG.healingRate),
     biome:       oneOf(c.biome, BIOME_LABELS, DEFAULT_ROOM_CONFIG.biome),
@@ -98,15 +116,15 @@ export function arenaDimensions(config) {
 
 /**
  * 로비 방 목록에 띄울 짧은 배지 라벨 배열.
- * 기본값(현행)일 때도 최소한 경기장 크기 한 개는 보여 준다.
- * 예: ['대형', '자기장', '엄폐물 많음', '회복']
+ * 예: ['자기장', '엄폐물 많음', '플랫폼 많음', '회복']
  */
 export function roomConfigBadges(config) {
   const cfg = normalizeRoomConfig(config);
-  const badges = [ARENA_LABELS[cfg.arenaSize]];
+  const badges = [];
   if (cfg.biome !== 'day') badges.push(BIOME_LABELS[cfg.biome]);
   if (cfg.storm) badges.push('자기장');
   if (cfg.cover !== 'none') badges.push(`엄폐물 ${COVER_LABELS[cfg.cover]}`);
+  if (cfg.platforms !== 'none') badges.push(`플랫폼 ${PLATFORM_LABELS[cfg.platforms]}`);
   if (cfg.water) badges.push('물');
   if (cfg.healing) badges.push('회복');
   return badges;

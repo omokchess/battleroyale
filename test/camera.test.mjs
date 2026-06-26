@@ -2,79 +2,106 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Camera } from '../game/Camera.js';
 
-// In Node there is no `window`, so isMobilePortrait is false and there are no
-// reserves — usableHeight === viewportHeight. These tests use a 1280x720 view.
-const VW = 1280, VH = 720, PAD = 60, REF = 700;
-const settle = (cam, tx, ty, mapW, mapH, n = 400) => {
-  for (let i = 0; i < n; i++) cam.update(tx, ty, VW, VH, mapW, mapH);
+const VW = 1280;
+const VH = 720;
+const LEVEL = { width: 1960, height: 1400 };
+const CHARACTER_WORLD_H = 14 * 4.15;
+const EXPECTED_ZOOM = VH / 7.5 / CHARACTER_WORLD_H;
+
+const stepPlatformer = (cam, tx, ty, startNow, n = 1, stepMs = 16, vx = 0, vy = 0) => {
+  let now = startNow;
+  for (let i = 0; i < n; i++) {
+    now += stepMs;
+    cam.updatePlatformer(tx, ty, VW, VH, LEVEL, vx, vy, now);
+  }
+  return now;
 };
 
-test('tiny arena stays in legacy full-map view (centered, target ignored)', () => {
-  const cam = new Camera();
-  settle(cam, 10, 10, 700, 700); // target off-center on purpose
-  assert.equal(cam.tracking, false);
-  // fit zoom = min(VW, VH)/(700+pad) here (height-bound) — equals the track zoom.
-  assert.ok(Math.abs(cam.zoom - VH / (700 + PAD)) < 1e-9);
-  // Focus is the map center regardless of where the player is.
-  assert.ok(Math.abs(cam.x - 350) < 1.0);
-  assert.ok(Math.abs(cam.y - 350) < 1.0);
-});
+const settlePlatformer = (cam, tx, ty, n = 1000) => {
+  stepPlatformer(cam, tx, ty, 0, n);
+};
 
-test('large arena switches to player tracking', () => {
+test('platformer camera uses fixed character-scale zoom', () => {
   const cam = new Camera();
-  settle(cam, 900, 900, 1800, 1800);
+  settlePlatformer(cam, 980, 900);
   assert.equal(cam.tracking, true);
-  // Tracking zoom = fit zoom of a REF (700) arena on this screen.
-  assert.ok(Math.abs(cam.zoom - VH / (REF + PAD)) < 1e-9);
-  // Player is centered (well inside the map) → camera follows it.
-  assert.ok(Math.abs(cam.x - 900) < 1.0);
-  assert.ok(Math.abs(cam.y - 900) < 1.0);
+  assert.ok(Math.abs(cam.zoom - EXPECTED_ZOOM) < 1e-9);
 });
 
-test('tracking camera clamps so the viewport never leaves the map', () => {
+test('platformer camera clamps to level bounds', () => {
   const cam = new Camera();
-  settle(cam, 0, 0, 1800, 1800); // player jammed into the top-left corner
-  const z = VH / (REF + PAD);
-  const halfW = VW / (2 * z);
-  const halfH = VH / (2 * z); // screenOffsetY is 0 in node
-  // Camera center can't go below the half-extent, or the view would show
-  // outside the map.
+  settlePlatformer(cam, 0, 0);
+  const halfW = VW / (2 * EXPECTED_ZOOM);
+  const halfH = VH / (2 * EXPECTED_ZOOM);
   assert.ok(Math.abs(cam.x - halfW) < 1.0);
   assert.ok(Math.abs(cam.y - halfH) < 1.0);
-  // And the visible left/top edge sits exactly on the map boundary (>= 0).
   assert.ok(cam.x - halfW >= -1e-6);
   assert.ok(cam.y - halfH >= -1e-6);
 });
 
-test('any arena larger than the tiny reference tracks (so the minimap shows)', () => {
-  // The full-map view is reserved for the tiny reference arena; anything bigger
-  // is viewed through a tiny-sized window with a minimap, even on a big screen.
+test('manual wheel zoom API is removed', () => {
   const cam = new Camera();
-  for (let i = 0; i < 400; i++) cam.update(700, 700, 1600, 1600, 1400, 1400);
-  assert.equal(cam.tracking, true);
+  assert.equal(typeof cam.adjustZoom, 'undefined');
+  assert.equal(typeof cam.resetZoom, 'undefined');
+  assert.equal(cam.userZoom, undefined);
 });
 
-test('wheel zoom multiplies the base zoom and clamps to its range', () => {
-  const cam = new Camera();
-  // Zoom in past the max — userZoom saturates at maxUserZoom.
-  for (let i = 0; i < 100; i++) cam.adjustZoom(1);
-  assert.ok(Math.abs(cam.userZoom - cam.maxUserZoom) < 1e-9);
-  settle(cam, 900, 900, 1800, 1800);
-  const baseZoom = VH / (REF + PAD); // tracking base on this view
-  assert.ok(Math.abs(cam.zoom - baseZoom * cam.maxUserZoom) < 1e-6);
-
-  // Zoom out past the min.
-  for (let i = 0; i < 200; i++) cam.adjustZoom(-1);
-  assert.ok(Math.abs(cam.userZoom - cam.minUserZoom) < 1e-9);
-
-  cam.resetZoom();
-  assert.equal(cam.userZoom, 1.0);
+test('platformer camera no longer takes aim lookahead arguments', () => {
+  const base = new Camera();
+  assert.equal(Camera.prototype.updatePlatformer.length, 5);
+  settlePlatformer(base, 980, 700);
+  assert.ok(Number.isFinite(base.x));
+  assert.ok(Number.isFinite(base.y));
 });
 
-test('wheel zoom does not flip the full-view-vs-tracking decision', () => {
-  // Even zoomed all the way in, the tiny arena stays in full-map view (no minimap).
+test('platformer camera holds inside 180px/135px screen deadzone, then idle recenters after 1.8s', () => {
   const cam = new Camera();
-  for (let i = 0; i < 100; i++) cam.adjustZoom(1);
-  settle(cam, 350, 350, 700, 700);
-  assert.equal(cam.tracking, false);
+  let now = stepPlatformer(cam, 980, 700, 0, 1000);
+  const settledX = cam.x;
+
+  const insideWorldOffset = 150 / EXPECTED_ZOOM;
+  now = stepPlatformer(cam, 980 + insideWorldOffset, 700, now, 100);
+  assert.ok(Math.abs(cam.x - settledX) < 1e-9);
+
+  now = stepPlatformer(cam, 980 + insideWorldOffset, 700, now, 120);
+  assert.ok(cam.x > settledX);
+});
+
+test('platformer camera waits 180ms before following outside the screen deadzone', () => {
+  const cam = new Camera();
+  let now = stepPlatformer(cam, 980, 700, 0, 1000);
+  const settledX = cam.x;
+
+  const outsideWorldOffset = 220 / EXPECTED_ZOOM;
+  now = stepPlatformer(cam, 980 + outsideWorldOffset, 700, now, 11);
+  assert.ok(Math.abs(cam.x - settledX) < 1e-9);
+
+  now = stepPlatformer(cam, 980 + outsideWorldOffset, 700, now, 5);
+  assert.ok(cam.x > settledX);
+
+  now = stepPlatformer(cam, 980 + outsideWorldOffset, 700, now, 420);
+  assert.ok(Math.abs(cam.x - (980 + outsideWorldOffset)) * EXPECTED_ZOOM <= 4);
+});
+
+test('platformer camera uses player velocity for movement lookahead', () => {
+  const still = new Camera();
+  const moving = new Camera();
+  let nowA = stepPlatformer(still, 980, 700, 0, 1000);
+  let nowB = stepPlatformer(moving, 980, 700, 0, 1000);
+
+  const outsideWorldOffset = 220 / EXPECTED_ZOOM;
+  nowA = stepPlatformer(still, 980 + outsideWorldOffset, 700, nowA, 180, 16, 0, 0);
+  nowB = stepPlatformer(moving, 980 + outsideWorldOffset, 700, nowB, 180, 16, 800, 0);
+
+  assert.ok(moving.x > still.x);
+});
+
+test('platformer velocity lookahead reverses smoothly', () => {
+  const cam = new Camera();
+  let now = stepPlatformer(cam, 980, 700, 0, 1000);
+  const outsideWorldOffset = 220 / EXPECTED_ZOOM;
+  now = stepPlatformer(cam, 980 + outsideWorldOffset, 700, now, 180, 16, 800, 0);
+  const beforeReverseX = cam.x;
+  now = stepPlatformer(cam, 980 + outsideWorldOffset, 700, now, 1, 16, -800, 0);
+  assert.ok(Math.abs(cam.x - beforeReverseX) * EXPECTED_ZOOM < 12);
 });

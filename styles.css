@@ -1516,21 +1516,64 @@ html.touch-ui #weaponPanelBackdrop.open { display: block !important; } /* re-ena
 .cfg-help-card p:last-child { margin-bottom: 0; }
 .cfg-help-card b { color: var(--med-blood); }
 
-/* ===== Arena-size indicator (room create, Task B) =====
-   A scaled square shows how big the chosen map is vs. the largest preset; the
-   corner dot is a constant "character" marker. The square scales via transform
-   (smooth, no reflow) on selection change. */
-.size-info { display: flex; gap: 12px; align-items: center; margin-top: 8px; padding: 8px 10px; background: var(--med-parch-hi); border: 1px solid var(--med-wood); }
-.size-fig { position: relative; width: 64px; height: 64px; flex: none; background: #d8c08c; box-shadow: inset 0 0 0 1px var(--med-wood); }
-.size-map { position: absolute; inset: 0; transform-origin: top left; transform: scale(.32); background: var(--med-blood); opacity: .3; box-shadow: inset 0 0 0 1px var(--med-gold-dk); transition: transform var(--dur-bar) var(--ease-out); }
-.size-dot { position: absolute; top: 3px; left: 3px; width: 5px; height: 5px; background: var(--med-ink); border: 1px solid var(--med-gold); }
-.size-meta { font-family: var(--font-mono); min-width: 0; }
-/* NOTE: do NOT name this `.size-px` — Tailwind ships a `size-px` utility
-   (width:1px;height:1px) that collapses it and overlaps the text below. */
-.size-dim { font-size: 13px; color: var(--med-ink); font-weight: 700; }
-.size-sub { font-size: 10px; color: var(--med-ink-mute); line-height: 1.5; }
-.motion-reduced .size-map { transition: none !important; }
-@media (prefers-reduced-motion: reduce) { .size-map { transition: none !important; } }
+/* Platform layout preview shown in the room creator. */
+.platform-preview {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--med-parch-hi);
+  border: 1px solid var(--med-wood);
+}
+.platform-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--med-ink);
+  font-weight: 700;
+}
+.platform-preview-stage {
+  position: relative;
+  height: 256px;
+  margin-top: 7px;
+  overflow: hidden;
+  background:
+    linear-gradient(to top, rgba(60, 84, 54, .28), rgba(124, 178, 110, .16)),
+    repeating-linear-gradient(90deg, rgba(122, 94, 30, .14) 0 1px, transparent 1px 24px);
+  border: 1px solid rgba(122, 94, 30, .65);
+}
+.platform-preview-ground {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 7px;
+  height: 5px;
+  background: #7f5a31;
+  box-shadow: 0 -2px 0 #b8943a, 0 1px 0 rgba(20, 16, 11, .75);
+}
+.platform-preview-step {
+  position: absolute;
+  height: 4px;
+  background: #c9a227;
+  box-shadow: 0 2px 0 #704a29, 0 0 0 1px rgba(20, 16, 11, .45);
+}
+.platform-preview-empty {
+  position: absolute;
+  left: 50%;
+  top: 43%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--med-ink-mute);
+}
+.platform-preview-note {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--med-ink-mute);
+}
 
 /* Detail sub-region crossfade on weapon switch (no flicker). */
 .armory-fade { animation: med-fadein var(--dur-base) var(--ease-out); }

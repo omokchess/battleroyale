@@ -3,12 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Reference arena edge (the "tiny" preset). The tracking zoom is the zoom that
-// fits a REF-sized arena on screen, so larger maps are viewed through a
-// tiny-arena-sized window around the player. Keeping this equal to the tiny
-// preset makes the tiny arena render identically to the legacy full-map view.
-const REF_ARENA = 700;
 const VIEW_PADDING = 60;
+const PLATFORMER_CHARACTER_WORLD_H = 14 * 4.15;
+const PLATFORMER_CHARACTER_SCREEN_FRACTION = 1 / 7.5;
+const PLATFORMER_DEADZONE_X_SCREEN = 180;
+const PLATFORMER_DEADZONE_Y_SCREEN = 135;
+const PLATFORMER_RECENTER_EPS_SCREEN = 3;
+const PLATFORMER_IDLE_RECENTER_MS = 1800;
+const PLATFORMER_EXIT_RECENTER_MS = 180;
+const PLATFORMER_MAX_FRAME_MS = 100;
+const PLATFORMER_LOOKAHEAD_X = 120;
+const PLATFORMER_LOOKAHEAD_Y = 60;
+const PLATFORMER_LOOKAHEAD_RESPONSE_MS = 260;
 
 export class Camera {
   constructor() {
@@ -26,37 +32,25 @@ export class Camera {
     // Minimap / off-screen indicators only render in this mode.
     this.tracking = false;
 
-    // User zoom multiplier (mouse wheel). Multiplies the auto-computed base zoom
-    // WITHOUT affecting the full-view-vs-tracking decision, so wheeling in never
-    // makes the minimap appear/disappear.
-    this.userZoom = 1.0;
-    this.minUserZoom = 0.55;
-    this.maxUserZoom = 2.6;
-
     // Lerping inertia (0.1 means 10% movement per frame leading to very smooth chase)
     this.lerpSpeed = 0.12;
-  }
-
-  /**
-   * Step the wheel zoom. `dir > 0` zooms in, `dir < 0` zooms out. Multiplicative
-   * steps feel even across the range. Clamped to [minUserZoom, maxUserZoom].
-   */
-  adjustZoom(dir, step = 0.12) {
-    const factor = dir > 0 ? (1 + step) : 1 / (1 + step);
-    this.userZoom = Math.max(this.minUserZoom, Math.min(this.maxUserZoom, this.userZoom * factor));
-  }
-
-  resetZoom() {
-    this.userZoom = 1.0;
+    this.platformerRecenterX = false;
+    this.platformerRecenterY = false;
+    this.platformerDeadzoneMs = 0;
+    this.platformerOutsideDeadzoneMs = 0;
+    this.platformerLastNow = null;
+    this.platformerLastTargetX = null;
+    this.platformerLastTargetY = null;
+    this.platformerLookX = 0;
+    this.platformerLookY = 0;
   }
 
   /**
    * Move the camera toward its focus with smooth inertia.
    *
    * Auto mode:
-   *  - If the whole map fits at >= the tracking zoom, keep the legacy centered
-   *    full-map view (focus = map center). The tiny arena lands here exactly,
-   *    so it renders identically to before.
+   *  - If the whole map fits at >= the tracking zoom, keep a centered full-map
+   *    view (focus = map center).
    *  - Otherwise track the local player (targetX/targetY), clamped so the
    *    viewport never reveals past the map edges.
    *
@@ -80,16 +74,11 @@ export class Camera {
       viewportWidth / (mapWidth + VIEW_PADDING),
       usableHeight / (mapHeight + VIEW_PADDING)
     ));
-    // Zoom that fits a reference (tiny) arena — the tracking window size.
-    const trackZoom = clampZoom(
-      Math.min(viewportWidth, usableHeight) / (REF_ARENA + VIEW_PADDING)
-    );
+    const trackZoom = clampZoom(usableHeight * PLATFORMER_CHARACTER_SCREEN_FRACTION / PLATFORMER_CHARACTER_WORLD_H);
 
     this.tracking = fitZoom < trackZoom - 1e-3;
     const baseZoom = this.tracking ? trackZoom : fitZoom;
-    // Apply the wheel zoom on top of the auto base, clamped wider than the
-    // auto-fit range so the multiplier isn't crushed.
-    this.zoom = Math.max(0.06, Math.min(4, baseZoom * this.userZoom));
+    this.zoom = Math.max(0.06, Math.min(4, baseZoom));
 
     let focusX = mapWidth / 2;
     let focusY = mapHeight / 2;
@@ -109,33 +98,68 @@ export class Camera {
   }
 
   /**
-   * Platformer 2D follow (side-scroller pivot). A roughly fixed zoom shows a
-   * consistent world window; the camera centres on the target with a small
-   * vertical deadzone (so little hops don't bob the view) and clamps to the
-   * level bounds. `vx/facing` give a gentle horizontal look-ahead.
+   * Platformer 2D follow (side-scroller pivot). Zoom is fixed from viewport
+   * height so the character occupies roughly 1/7.5 of the screen vertically.
    */
-  updatePlatformer(targetX, targetY, vw, vh, level, lookX = 0) {
+  updatePlatformer(targetX, targetY, vw, vh, level, velocityX = 0, velocityY = 0, now = performance.now()) {
     this.screenOffsetY = 0;
     this.tracking = true;
-    const SHOW_W = 1180, SHOW_H = 760;             // desired world window (px)
-    const baseZoom = Math.min(vw / SHOW_W, vh / SHOW_H);
-    this.zoom = Math.max(0.1, Math.min(3, baseZoom * this.userZoom));
+    const deltaMs = this.platformerLastNow === null
+      ? 0
+      : Math.max(0, Math.min(PLATFORMER_MAX_FRAME_MS, now - this.platformerLastNow));
+    this.platformerLastNow = now;
+    const baseZoom = vh * PLATFORMER_CHARACTER_SCREEN_FRACTION / PLATFORMER_CHARACTER_WORLD_H;
+    this.zoom = Math.max(0.65, Math.min(2.6, baseZoom));
 
     const halfW = vw / (2 * this.zoom);
     const halfH = vh / (2 * this.zoom);
     const lw = level?.width || vw, lh = level?.height || vh;
 
-    // Horizontal: follow with look-ahead toward facing/motion.
-    const fx = clampRange(targetX + lookX, halfW, lw - halfW, lw / 2);
-    // Vertical: a deadzone band keeps the view steady through small jumps.
-    const dead = Math.min(halfH * 0.35, 110);
-    let desiredY = this.y;
-    if (targetY < this.y - dead) desiredY = targetY + dead;
-    else if (targetY > this.y + dead) desiredY = targetY - dead;
+    this.x = clampRange(this.x, halfW, lw - halfW, lw / 2);
+    this.y = clampRange(this.y, halfH, lh - halfH, lh / 2);
+
+    const targetMoved = this.platformerLastTargetX !== null &&
+      Math.hypot(targetX - this.platformerLastTargetX, targetY - this.platformerLastTargetY) > 0.5;
+    if (targetMoved) this.platformerDeadzoneMs = 0;
+    this.platformerLastTargetX = targetX;
+    this.platformerLastTargetY = targetY;
+
+    const targetLookX = clamp((Number.isFinite(velocityX) ? velocityX : 0) * 0.16, -PLATFORMER_LOOKAHEAD_X, PLATFORMER_LOOKAHEAD_X);
+    const targetLookY = clamp((Number.isFinite(velocityY) ? velocityY : 0) * 0.08, -PLATFORMER_LOOKAHEAD_Y, PLATFORMER_LOOKAHEAD_Y);
+    const lookAlpha = 1 - Math.exp(-deltaMs / PLATFORMER_LOOKAHEAD_RESPONSE_MS);
+    this.platformerLookX += (targetLookX - this.platformerLookX) * lookAlpha;
+    this.platformerLookY += (targetLookY - this.platformerLookY) * lookAlpha;
+    const screenDx = (targetX - this.x) * this.zoom;
+    const screenDy = (targetY - this.y) * this.zoom;
+    const insideDeadzone = Math.abs(screenDx) <= PLATFORMER_DEADZONE_X_SCREEN && Math.abs(screenDy) <= PLATFORMER_DEADZONE_Y_SCREEN;
+    if (insideDeadzone) {
+      this.platformerDeadzoneMs += deltaMs;
+      this.platformerOutsideDeadzoneMs = 0;
+    } else {
+      this.platformerDeadzoneMs = 0;
+      this.platformerOutsideDeadzoneMs += deltaMs;
+      if (this.platformerOutsideDeadzoneMs >= PLATFORMER_EXIT_RECENTER_MS) {
+        if (Math.abs(screenDx) > PLATFORMER_DEADZONE_X_SCREEN) this.platformerRecenterX = true;
+        if (Math.abs(screenDy) > PLATFORMER_DEADZONE_Y_SCREEN) this.platformerRecenterY = true;
+      }
+    }
+    const idleRecentering = insideDeadzone && this.platformerDeadzoneMs >= PLATFORMER_IDLE_RECENTER_MS;
+    if (idleRecentering) {
+      this.platformerRecenterX = true;
+      this.platformerRecenterY = true;
+    }
+
+    const desiredX = this.platformerRecenterX ? targetX + this.platformerLookX : this.x;
+    const desiredY = this.platformerRecenterY ? targetY + this.platformerLookY : this.y;
+    const fx = clampRange(desiredX, halfW, lw - halfW, lw / 2);
     const fy = clampRange(desiredY, halfH, lh - halfH, lh / 2);
 
-    this.x += (fx - this.x) * this.lerpSpeed;
-    this.y += (fy - this.y) * this.lerpSpeed;
+    const speedScale = idleRecentering ? 0.35 : 1;
+    this.x = easeFollow(this.x, fx, speedScale);
+    this.y = easeFollow(this.y, fy, speedScale);
+
+    if (Math.abs((targetX - this.x) * this.zoom) <= PLATFORMER_RECENTER_EPS_SCREEN) this.platformerRecenterX = false;
+    if (Math.abs((targetY - this.y) * this.zoom) <= PLATFORMER_RECENTER_EPS_SCREEN) this.platformerRecenterY = false;
   }
 
   startShake(magnitude = 8, durationMs = 220, now = performance.now()) {
@@ -187,4 +211,18 @@ export class Camera {
 function clampRange(v, lo, hi, mid) {
   if (lo > hi) return mid;
   return Math.max(lo, Math.min(hi, v));
+}
+
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function easeFollow(current, target, speedScale = 1) {
+  const delta = target - current;
+  const dist = Math.abs(delta);
+  if (dist < 0.001) return target;
+  const t = Math.min(1, dist / 320);
+  const eased = 1 - Math.pow(1 - t, 3);
+  const alpha = (0.015 + eased * 0.165) * speedScale;
+  return current + delta * alpha;
 }

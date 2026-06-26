@@ -14,7 +14,7 @@ import { Protocol } from './multiplayer/Protocol.js';
 import { RoomRegistry } from './multiplayer/RoomRegistry.js';
 import * as accountUI from './ui/account-ui.js';
 import { isMobileDevice, isPhoneDevice } from './game/Device.js';
-import { normalizeRoomConfig, roomConfigBadges, ARENA_SIZES } from './game/RoomConfig.js';
+import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
 import { Sound } from './game/Sound.js';
 
 // Dom Elements
@@ -1086,9 +1086,11 @@ function readRoomConfig() {
     return el ? el.dataset.value : fallback;
   };
   return normalizeRoomConfig({
-    arenaSize: pick('arenaSize', 'tiny'),
+    arenaSize: pick('arenaSize', 'medium'),
     storm: pick('storm', 'off') === 'on',
     cover: pick('cover', 'none'),
+    platforms: pick('platforms', 'some'),
+    platformShape: pick('platformShape', 'balanced'),
     healing: pick('healing', 'off') === 'on',
     healingRate: pick('healingRate', 'normal'),
     biome: pick('biome', 'day'),
@@ -1989,7 +1991,7 @@ function buildOptionsInto(body) {
     if (sw) { sw.classList.toggle('on', on); sw.setAttribute('aria-checked', String(on)); }
     if (lbl) { lbl.textContent = on ? '켜짐' : '꺼짐'; lbl.style.color = on ? 'var(--med-blood)' : 'var(--med-ink-mute)'; }
   };
-  const keyRows = [['이동', 'WASD'], ['조준', '마우스'], ['평타', '자동/좌클릭'], ['스킬', 'F'], ['보조', 'R'], ['대시', 'Space']];
+  const keyRows = [['이동', 'A/D'], ['점프', 'Space'], ['조준', '마우스'], ['평타', '자동/좌클릭'], ['스킬', 'F'], ['보조', 'R'], ['대시', 'Shift']];
 
   body.innerHTML = `
     <div class="opts-grid">
@@ -2138,9 +2140,12 @@ function buildCreateInto(body) {
   const opts = (g) => [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].map(b => ({ label: b.textContent.trim(), value: b.dataset.value, on: b.classList.contains('selected') }));
   const selectedOf = (g) => opts(g).find(o => o.on) || opts(g)[0];
   const pickHidden = (g, value) => { [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].find(b => b.dataset.value === value)?.click(); };
-  const GROUPS = [['arenaSize', '경기장 크기'], ['biome', '지형'], ['storm', '자기장'], ['cover', '엄폐물'], ['water', '물 (특수 장애물)'], ['healing', '회복 아이템']];
+  const GROUPS = [['platforms', '플랫폼'], ['platformShape', '플랫폼 모양'], ['biome', '지형'], ['storm', '자기장'], ['cover', '엄폐물'], ['water', '물 (특수 장애물)'], ['healing', '회복 아이템']];
   const ONOFF = new Set(['storm', 'water', 'healing']);   // rendered as sliding switches
   const healingOn = () => selectedOf('healing')?.value === 'on';
+  const PLATFORM_COUNT = { none: 0, few: 2, some: 4, many: 6 };
+  const PLATFORM_DESC = { none: '발판 없음', few: '발판 2개', some: '발판 4개', many: '발판 6개' };
+  const PLATFORM_SHAPE_DESC = { balanced: '좌우 대칭 계층', stairs: '오르내리는 계단형', towers: '양쪽 타워형' };
 
   // Biome → a representative floor colour, shown as a swatch dot on its pill so
   // the host can tell at a glance what each terrain looks like.
@@ -2167,15 +2172,7 @@ function buildCreateInto(body) {
           : `<div class="mb-3.5">
                <div class="med-muted text-[12px] mb-1.5">${label}</div>
                ${segRow(g)}
-               ${g === 'arenaSize' ? `
-                 <div id="createSizeInfo" class="size-info">
-                   <div class="size-fig"><div class="size-map" id="sizeMap"></div><div class="size-dot"></div></div>
-                   <div class="size-meta">
-                     <div class="size-dim" id="sizePx"></div>
-                     <div class="size-sub" id="sizeMul"></div>
-                     <div class="size-sub" id="sizeCam"></div>
-                   </div>
-                 </div>` : ''}
+               ${g === 'platformShape' ? '<div id="platformPreview" class="platform-preview"></div>' : ''}
              </div>`).join('')}
         <div id="createHealRate" class="${healingOn() ? '' : 'hidden'}">
           <div class="med-muted text-[12px] mb-1.5">회복 스폰 주기</div>
@@ -2194,28 +2191,53 @@ function buildCreateInto(body) {
       </div>
     </div>`;
 
-  // Arena-size indicator: map px + character multiple + camera behaviour, with a
-  // square that scales to the chosen size (vs. the largest preset). Camera split
-  // mirrors Camera.js: only the reference 700 (tiny) fits the whole map on screen.
-  function updateSizeInfo(instant) {
-    const v = selectedOf('arenaSize')?.value || 'tiny';
-    const side = ARENA_SIZES[v] || 700;
-    const maxSide = ARENA_SIZES.huge || 2200;
-    const map = body.querySelector('#sizeMap');
-    if (map) {
-      if (instant) map.style.transition = 'none';
-      map.style.transform = `scale(${(side / maxSide).toFixed(3)})`;
-      if (instant) { void map.offsetWidth; map.style.transition = ''; }
-    }
-    const px = body.querySelector('#sizePx'); if (px) px.textContent = `${side}×${side}px`;
-    const mul = body.querySelector('#sizeMul'); if (mul) mul.textContent = `캐릭터 약 ${Math.round(side / 28)}배 크기`;
-    const cam = body.querySelector('#sizeCam'); if (cam) cam.textContent = side <= 700 ? '맵 전체가 한 화면에' : '플레이어 추적 · 미니맵';
+  function platformPreviewSlots(shape, count) {
+    if (count <= 0) return [];
+    const balanced = [
+      [22, 68, 23], [55, 68, 23],
+      [32, 47, 22], [51, 47, 22],
+      [39, 27, 22], [39, 14, 22]
+    ];
+    const stairs = [
+      [13, 72, 22], [27, 58, 22], [43, 44, 22],
+      [59, 30, 22], [72, 18, 20], [50, 12, 20]
+    ];
+    const towers = [
+      [17, 68, 22], [61, 68, 22],
+      [17, 46, 22], [61, 46, 22],
+      [17, 24, 22], [61, 24, 22]
+    ];
+    const source = ({ stairs, towers, balanced })[shape] || balanced;
+    return source.slice(0, count).map(([left, top, width]) => ({ left, top, width }));
+  }
+
+  function renderPlatformPreview() {
+    const el = body.querySelector('#platformPreview');
+    if (!el) return;
+    const density = selectedOf('platforms')?.value || 'some';
+    const shape = selectedOf('platformShape')?.value || 'balanced';
+    const count = PLATFORM_COUNT[density] ?? 4;
+    const platforms = platformPreviewSlots(shape, count)
+      .map(p => `<span class="platform-preview-step" style="left:${p.left}%;top:${p.top}%;width:${p.width}%"></span>`)
+      .join('');
+    el.innerHTML = `
+      <div class="platform-preview-head">
+        <span>${PLATFORM_DESC[density] || density}</span>
+        <span>${PLATFORM_SHAPE_DESC[shape] || shape}</span>
+      </div>
+      <div class="platform-preview-stage" aria-hidden="true">
+        <span class="platform-preview-ground"></span>
+        ${platforms || '<span class="platform-preview-empty">발판 없음</span>'}
+      </div>
+      <div class="platform-preview-note">실제 방 생성 시 같은 밀도와 형태 기준으로 배치됩니다.</div>`;
   }
 
   const summaryEl = body.querySelector('#createSummary');
   function renderSummary() {
-    const rows = [['경기장', selectedOf('arenaSize')?.label], ['지형', selectedOf('biome')?.label],
-      ['자기장', selectedOf('storm')?.label], ['엄폐물', selectedOf('cover')?.label], ['물', selectedOf('water')?.label],
+    const rows = [['플랫폼', selectedOf('platforms')?.label], ['플랫폼 모양', selectedOf('platformShape')?.label],
+      ['지형', selectedOf('biome')?.label],
+      ['자기장', selectedOf('storm')?.label], ['엄폐물', selectedOf('cover')?.label],
+      ['물', selectedOf('water')?.label],
       ['회복', healingOn() ? `${selectedOf('healing')?.label}·${selectedOf('healingRate')?.label || '보통'}` : selectedOf('healing')?.label]];
     summaryEl.innerHTML = rows.map(([k, v]) => `<div class="flex justify-between text-[12px]"><span class="med-muted">${k}</span><span style="color:var(--med-ink)">${v || '-'}</span></div>`).join('');
   }
@@ -2246,7 +2268,7 @@ function buildCreateInto(body) {
       if (lbl) { lbl.textContent = on ? '켜짐' : '꺼짐'; lbl.style.color = on ? 'var(--med-blood)' : 'var(--med-ink-mute)'; }
     });
     body.querySelector('#createHealRate')?.classList.toggle('hidden', !healingOn());
-    updateSizeInfo(instant);
+    renderPlatformPreview();
     renderSummary();
   }
 
@@ -2290,7 +2312,7 @@ function buildCreateInto(body) {
   });
   // First placement needs layout — defer one frame, place without animating.
   requestAnimationFrame(() => body.querySelectorAll('.create-seg').forEach(s => placeIndicator(s, true)));
-  updateSizeInfo(true);   // initial size indicator (instant, no scale-in)
+  renderPlatformPreview();
   const mirrorCode = () => { const h = document.getElementById('hostRoomInput'); if (h) h.value = body.querySelector('#createCode').value.trim(); };
   body.querySelector('#createCode')?.addEventListener('input', mirrorCode);
   body.querySelector('#createHost')?.addEventListener('click', () => { mirrorCode(); document.getElementById('hostBtn')?.click(); });
@@ -2299,8 +2321,9 @@ function buildCreateInto(body) {
 }
 
 /* ===== [02] ARENA module — live room list + detail + join ===== */
-const ARENA_SIZE_KO = { tiny: '초소형', small: '소형', medium: '중형', large: '대형', huge: '초대형' };
 const COVER_KO = { none: '없음', few: '적음', some: '보통', many: '많음' };
+const PLATFORM_KO = { none: '없음', few: '적음', some: '보통', many: '많음' };
+const PLATFORM_SHAPE_KO = { balanced: '균형형', stairs: '계단형', towers: '타워형' };
 const RATE_KO = { fast: '빠름', normal: '보통', slow: '느림' };
 const BIOME_KO = { day: '낮', night: '밤', dawn: '새벽', desert: '사막', snow: '눈' };
 function buildArenaInto(body) {
@@ -2352,8 +2375,10 @@ function buildArenaInto(body) {
     if (!r) { detailEl.innerHTML = `<div class="med-muted font-mono text-[11px] text-center py-12">방을 선택하세요.</div>`; return; }
     const cfg = Weapons[r.weapon] || Weapons.sword;
     const c = normalizeRoomConfig(r.config);
-    const rows = [['경기장', ARENA_SIZE_KO[c.arenaSize] || c.arenaSize], ['지형', BIOME_KO[c.biome] || c.biome || '낮'],
-      ['자기장', c.storm ? '켜짐' : '꺼짐'], ['엄폐물', COVER_KO[c.cover] || c.cover], ['물', c.water ? '켜짐' : '꺼짐'],
+    const rows = [['플랫폼', PLATFORM_KO[c.platforms] || c.platforms], ['플랫폼 모양', PLATFORM_SHAPE_KO[c.platformShape] || c.platformShape],
+      ['지형', BIOME_KO[c.biome] || c.biome || '낮'],
+      ['자기장', c.storm ? '켜짐' : '꺼짐'], ['엄폐물', COVER_KO[c.cover] || c.cover],
+      ['물', c.water ? '켜짐' : '꺼짐'],
       ['회복', c.healing ? `켜짐 · ${RATE_KO[c.healingRate] || ''}` : '꺼짐']];
     detailEl.innerHTML = `
       <div class="flex justify-between items-start mb-1">
