@@ -64,6 +64,11 @@ export class Player {
     this.dropThroughLeft = 0;    // brief window where one-way platforms are ignored
     this.halfW = 13;             // AABB half-width
     this.halfH = 20;             // AABB half-height
+    // Grapple (harpoon F): zip toward a hooked world point.
+    this.grappling = false;
+    this.grappleX = 0;
+    this.grappleY = 0;
+    this.grappleTimeLeft = 0;
 
     // --- F skill state ---
     this.skillCdLeft = 0;     // seconds remaining on the skill cooldown
@@ -193,7 +198,7 @@ export class Player {
    *
    * Input mapping (re-uses the synced movement keys so no protocol change):
    *   a / ArrowLeft = left, d / ArrowRight = right,
-   *   w / ArrowUp / (Space→w) = jump (held for variable height),
+   *   w / ArrowUp / Space = jump (held for variable height),
    *   s / ArrowDown = drop through one-way platforms (with jump).
    */
   updatePosition(deltaTime, keys, level) {
@@ -210,6 +215,32 @@ export class Player {
       const hit = Collision.moveAndCollide(this, level, dt);
       this.grounded = hit.grounded;
       if (hit.grounded && this.vy > 0) this.vy = 0;
+      this._tickTimers(dt);
+      if (this.dropThroughLeft > 0) this.dropThroughLeft -= dt;
+      return;
+    }
+
+    // --- Grapple: zip toward the hooked point, gravity-free, until reached,
+    //     blocked, or timed out — then exit with a little momentum. ---
+    if (this.grappling) {
+      const gdx = this.grappleX - this.x, gdy = this.grappleY - this.y;
+      const gd = Math.hypot(gdx, gdy);
+      this.grappleTimeLeft -= dt;
+      if (gd < 20 || this.grappleTimeLeft <= 0) {
+        this.grappling = false;
+        this.vx = (gd > 0.001 ? gdx / gd : 0) * PHYS.runSpeed;   // keep some glide
+        this.vy = PHYS.grappleExitVy;
+        this._tickTimers(dt);
+        return;
+      }
+      this.vx = (gdx / gd) * PHYS.grappleSpeed;
+      this.vy = (gdy / gd) * PHYS.grappleSpeed;
+      const hit = Collision.moveAndCollide(this, level, dt);
+      if (hit.grounded || hit.ceiling || hit.wallLeft || hit.wallRight) {
+        this.grappling = false;
+        if (hit.grounded) this.vy = 0; else this.vy = PHYS.grappleExitVy;
+      }
+      this.grounded = hit.grounded;
       this._tickTimers(dt);
       if (this.dropThroughLeft > 0) this.dropThroughLeft -= dt;
       return;
@@ -331,6 +362,8 @@ export class Player {
     this.dashDirX = 0;
     this.dashDirY = 0;
     this.stunTimeLeft = 0;
+    this.grappling = false;
+    this.grappleTimeLeft = 0;
     this.skillCdLeft = 0;
     this.buffType = null;
     this.buffTimeLeft = 0;
@@ -421,6 +454,9 @@ export class Player {
       maxHp: this.maxHp,
       x: this.x,
       y: this.y,
+      vx: this.vx,
+      vy: this.vy,
+      grounded: this.grounded,
       hp: this.hp,
       angle: this.angle,
       kills: this.kills,
@@ -472,6 +508,9 @@ export class Player {
     this.weapon = data.weapon;
     this.maxHp = Number.isFinite(data.maxHp) ? data.maxHp : (Weapons[this.weapon]?.maxHp || this.maxHp || 100);
     this.hp = Number.isFinite(data.hp) ? Math.min(data.hp, this.maxHp) : this.maxHp;
+    if (Number.isFinite(data.vx)) this.vx = data.vx;
+    if (Number.isFinite(data.vy)) this.vy = data.vy;
+    this.grounded = Boolean(data.grounded);
     this.kills = data.kills;
     this.dummyKills = data.dummyKills || 0;
     this.deaths = data.deaths || 0;

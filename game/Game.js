@@ -17,7 +17,7 @@ import { Sound } from './Sound.js';
 import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, coverClearOfPoint, coverBlocksCircle } from './Cover.js';
 import { generateWater, emptyWater } from './Water.js';
 import { buildLevel, PHYS } from './Level.js';
-import { Zone } from './Zone.js';
+import { PlatformerZone } from './PlatformerZone.js';
 import { STATUS } from './Status.js';
 
 // Time a dead player waits before respawning.
@@ -79,11 +79,10 @@ export class Game {
     this.level = null;
     this._buildLevel();
 
-    // Storm zone (Task 5): cycle-based safe circle. Host simulates, syncs state.
-    // NOTE: must come AFTER mapWidth/mapHeight are set — the Zone needs the real
-    // arena dimensions (previously it read undefined and the storm never ran).
+    // Platformer battle-royale pressure. Reuses the room "storm" switch, but the
+    // shape is now a rising bottom hazard plus late-cycle side compression.
     this.zone = (this.roomConfig.storm)
-      ? new Zone(this.mapWidth, this.mapHeight, this.roomConfig.arenaSize)
+      ? new PlatformerZone(this.mapWidth, this.mapHeight, this.roomConfig.arenaSize)
       : null;
 
     this.renderer = new Renderer(canvas);
@@ -220,18 +219,10 @@ export class Game {
     window.addEventListener('resize', this._resizeBound);
     window.visualViewport?.addEventListener('resize', this._resizeBound);
     window.visualViewport?.addEventListener('scroll', this._resizeBound);
-    // Mouse wheel = camera zoom (and don't let the page scroll underneath).
-    this.canvas.addEventListener('wheel', this._wheelBound, { passive: false });
   }
 
   // Bind resize context
   _resizeBound = () => this._resizeCanvas();
-
-  // Mouse wheel zooms the camera. Wheel up (deltaY < 0) zooms in.
-  _wheelBound = (e) => {
-    e.preventDefault();
-    if (this.camera) this.camera.adjustZoom(e.deltaY < 0 ? 1 : -1);
-  };
 
   _resizeCanvas() {
     // Render at the device's true pixel density so phones/retina screens look
@@ -339,7 +330,7 @@ export class Game {
       const hp = this.players[this.localPlayerId];
       if (hp) {
         this.input.setLocalWeapon(hp.weapon);
-        this.camera.updatePlatformer(hp.x, hp.y, this.canvas.width, this.canvas.height, this.level, (hp.facing || 1) * 90);
+        this.camera.updatePlatformer(hp.x, hp.y, this.canvas.width, this.canvas.height, this.level, hp.vx, hp.vy);
         if (!hp.isDead) {
           this.input.updateAimAngle(hp, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
           hp.angle = this.input.aimAngle;
@@ -383,7 +374,7 @@ export class Game {
       if (localPlayer && !localPlayer.isDead) {
         this.input.setLocalWeapon(localPlayer.weapon);
         // Update camera position to follow local player (2D platformer follow)
-        this.camera.updatePlatformer(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.level, (localPlayer.facing || 1) * 90);
+        this.camera.updatePlatformer(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.level, localPlayer.vx, localPlayer.vy);
 
         // Calibrate accurate aiming angle taking camera boundaries into account
         this.input.updateAimAngle(localPlayer, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
@@ -442,6 +433,8 @@ export class Game {
       // can sweep the target's path (prev → current) this frame.
       p.prevX = p.x;
       p.prevY = p.y;
+      const wasGrounded = p.grounded;
+      const fallVy = p.vy;
 
       if (id === this.localPlayerId) {
         // Local host: set aim first so facing follows the cursor this frame.
@@ -450,6 +443,9 @@ export class Game {
       } else {
         // Remote guest input updates (platformer physics vs the level).
         p.updatePosition(deltaTime, p.keys || {}, this.level);
+      }
+      if (!wasGrounded && p.grounded && fallVy > 520) {
+        this._spawnLandingDust(p, now, fallVy);
       }
     });
 
@@ -1698,20 +1694,58 @@ export class Game {
 
   // --- Storm zone (Task 5) --------------------------------------------------
   _updateZone(now, deltaTime) {
+    this._updateRingOutDeaths(now);
     if (!this.zone || typeof this.zone.update !== 'function') return; // host only
     this.zone.update(now);
-    if (!this.zone.isDamaging()) return;
+    if (!zoneIsDamaging(this.zone)) return;
     Object.values(this.players).forEach(p => {
       if (p.isDead || p.isDummy) return;
       if (p.isInvincible && p.isInvincible()) return; // respawn i-frames are safe
-      if (!this.zone.isOutside(p.x, p.y)) { p._zoneDmgAcc = 0; return; }
-      p._zoneDmgAcc = (p._zoneDmgAcc || 0) + this.zone.dps * deltaTime;
-      if (p._zoneDmgAcc >= 1) {
-        const dmg = Math.floor(p._zoneDmgAcc);
-        p._zoneDmgAcc -= dmg;
-        const died = p.takeDamage(dmg, '자기장');
-        if (died) this._creditKill(null, p, '자기장에');
+      if (!zoneIsOutside(this.zone, p.x, p.y)) { p._zoneDmgAcc = 0; return; }
+      this._killByEnvironment(p, '위험지대에', now);
+    });
+  }
+
+  _updateRingOutDeaths(now) {
+    const bottomLimit = (this.mapHeight || 0) + 220;
+    Object.values(this.players).forEach(p => {
+      if (p.isDead || p.isDummy) return;
+      if (p.y > bottomLimit || p.x < -160 || p.x > (this.mapWidth || 0) + 160) {
+        this._killByEnvironment(p, '낙사로', now);
       }
+    });
+  }
+
+  _killByEnvironment(player, viaLabel, now) {
+    if (!player || player.isDead) return;
+    player.hp = 0;
+    player.isDead = true;
+    player._zoneDmgAcc = 0;
+    this._creditKill(null, player, viaLabel);
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y,
+      weapon: '',
+      type: 'danger_pop',
+      progress: 0,
+      timestamp: now,
+      lifetime: 420
+    });
+  }
+
+  _spawnLandingDust(player, now, fallVy = 0) {
+    if (!player || player.isDead) return;
+    this.effects.push({
+      attackerId: player.id,
+      x: player.x,
+      y: player.y + (player.halfH || 20),
+      weapon: '',
+      type: 'landing_dust',
+      strength: Math.max(0.6, Math.min(1.5, fallVy / 900)),
+      progress: 0,
+      timestamp: now,
+      lifetime: 360
     });
   }
 
@@ -1732,10 +1766,11 @@ export class Game {
    *  its pixel size as the map bounds. Deterministic → host + clients match. */
   _buildLevel() {
     const side = arenaDimensions(this.roomConfig).mapWidth;
-    this.level = buildLevel(side);
+    this.level = buildLevel(side, this.roomConfig);
     this.mapWidth = this.level.width;
     this.mapHeight = this.level.height;
   }
+
   _buildTerrain() {
     this.biome = this.roomConfig?.biome || 'day';
     this.frozen = this.biome === 'snow';      // frozen water = walkable
@@ -1745,15 +1780,36 @@ export class Game {
     this.water = this.roomConfig?.water
       ? generateWater(this.mapWidth, this.mapHeight, waterSeed)
       : emptyWater();
-    // Cover is generated AFTER water so obstacles never spawn on a lake (the
-    // water tiles are passed as an avoid-list; same on host + clients).
-    this.cover = generateCover(this.roomConfig, this.mapWidth, this.mapHeight, this.coverSeed, this.water.tiles);
-    // Cover always blocks movement; water blocks movement only when not frozen.
+    // Platformer cover is baked into Level.solids so it is visible and collides
+    // through the same AABB path. Keep the old top-down random cover disabled
+    // here; otherwise invisible rectangles would still block projectiles/LOS.
+    this.cover = [];
+    // Water blocks movement only when not frozen. Platformer movement currently
+    // uses level geometry, so this list is retained only for legacy callers.
     this.moveTiles = this.frozen
       ? this.cover
       : this.cover.concat(this.water.tiles);
   }
   _findEmptyPosition() {
+    const anchors = this.level?.itemSpawns;
+    if (Array.isArray(anchors) && anchors.length) {
+      const shuffled = anchors
+        .map(a => ({ a, sort: Math.random() }))
+        .sort((l, r) => l.sort - r.sort)
+        .map(v => v.a);
+      for (const a of shuffled) {
+        const x = a.x, y = a.y;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        let tooClose = false;
+        for (const p of Object.values(this.players)) {
+          if (p.isDead) continue;
+          if ((p.x - x) ** 2 + (p.y - y) ** 2 < 110 * 110) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+        if (this.healingItems.some(it => (it.x - x) ** 2 + (it.y - y) ** 2 < 90 * 90)) continue;
+        return { x, y };
+      }
+    }
     const margin = 90;
     for (let i = 0; i < 24; i++) {
       const x = margin + Math.random() * (this.mapWidth - margin * 2);
@@ -3871,46 +3927,52 @@ export class Game {
     this.firePatches = survivors;
   }
 
-  // --- 작살 (harpoon): F yanks the player toward the aimed enemy/wall ---------
+  // --- 작살 (harpoon): F GRAPPLE — fire a hook along the aim, then zip the
+  //     player toward the anchored point (wall/platform/enemy). Works mid-air
+  //     and carries momentum out, so it doubles as platformer traversal. -------
   _harpoonPull(player, now) {
     const sk = SkillConfig.harpoon;
     player.skillCdLeft = (sk.cooldownMs || 5000) / 1000;
     const dirX = Math.cos(player.angle);
     const dirY = Math.sin(player.angle);
+    // Nearest anchor along the aim: terrain (solids) or an enemy, capped by the
+    // hook range and the arena bound.
     const wallDist = Collision.rayToBoundsDistance(player.x, player.y, dirX, dirY, this.mapWidth, this.mapHeight);
     let dist = Math.min(sk.pullRange || 360, Number.isFinite(wallDist) ? wallDist : (sk.pullRange || 360));
     dist = Math.min(dist, this._terrainRayDist(player.x, player.y, dirX, dirY));
+    let hookedEnemy = false;
     Object.keys(this.players).forEach(tid => {
       const t = this.players[tid];
       if (t.id === player.id || t.isDead) return;
       const d = Collision.rayCircleHitDistance(player.x, player.y, dirX, dirY, t.x, t.y, (t.radius || 14) + 5);
-      if (d !== null && d < dist) dist = d;
+      if (d !== null && d < dist) { dist = d; hookedEnemy = true; }
     });
-    const travel = Math.max(0, dist - (sk.stopGap || 32));
-    const fromX = player.x, fromY = player.y;
-    player.x += dirX * travel;
-    player.y += dirY * travel;
-    Collision.clampToMap(player, this.mapWidth, this.mapHeight);
-    this._resolveOutOfTerrain(player);
-    player.prevX = player.x; // discontinuous — avoid melee sweep across the yank
-    player.prevY = player.y;
-    // Arrival: slow enemies near the landing spot.
-    if (sk.arrivalSlowMs) {
-      const ar = sk.arrivalRadius || 80;
+
+    const anchorX = player.x + dirX * dist;
+    const anchorY = player.y + dirY * dist;
+    // Stop a little short of the anchor so we don't clip into the wall/enemy.
+    const stop = Math.max(0, dist - (sk.stopGap || 32));
+    player.grappleX = player.x + dirX * stop;
+    player.grappleY = player.y + dirY * stop;
+    player.grappling = true;
+    player.grappleTimeLeft = PHYS.grappleMaxMs / 1000;
+    player.jumping = false;
+
+    // Hooking an enemy still slows them where they stand.
+    if (hookedEnemy && sk.arrivalSlowMs) {
       Object.values(this.players).forEach(t => {
         if (t.id === player.id || t.isDead || t.isInvincible()) return;
-        if (Math.hypot(t.x - player.x, t.y - player.y) <= ar + (t.radius || 14)) {
-          this._applySlow(t, sk.arrivalSlowMs);
-        }
+        if (Math.hypot(t.x - anchorX, t.y - anchorY) <= (t.radius || 14) + 8) this._applySlow(t, sk.arrivalSlowMs);
       });
     }
+    // Chain beam from the player to the anchor for the zip's duration.
     this.effects.push({
       id: `${player.id}-harpoonpull-${now}`,
       attackerId: player.id,
-      x: fromX, y: fromY,
-      x2: player.x, y2: player.y,
+      x: player.x, y: player.y,
+      x2: anchorX, y2: anchorY,
       angle: player.angle, weapon: 'harpoon', type: 'railbeam',
-      progress: 0, timestamp: now, lifetime: 260
+      progress: 0, timestamp: now, lifetime: PHYS.grappleMaxMs
     });
   }
 
@@ -4354,17 +4416,12 @@ export class Game {
       ? this._hitFlashStrength * Math.min(1, flashLeft / 220)
       : 0;
 
-    // Storm zone: host (Zone instance) and client (plain synced object) share
-    // the same field names, so this works for both.
+    // Storm zone: host owns an instance, clients keep the serialized payload.
     const z = this.zone;
-    const storm = z ? {
-      x: z.cx, y: z.cy, radius: z.radius,
-      nextX: z.nextCx, nextY: z.nextCy, nextRadius: z.nextRadius, phase: z.phase
-    } : null;
+    const storm = zoneRenderPayload(z);
     const localP = this.players[this.localPlayerId];
     const zoneOutside = !!(z && localP && !localP.isDead &&
-      (z.phase === 'shrinking' || z.phase === 'hold') &&
-      ((localP.x - z.cx) ** 2 + (localP.y - z.cy) ** 2 > z.radius * z.radius));
+      zoneIsDamaging(z) && zoneIsOutside(z, localP.x, localP.y));
 
     // Generate simple state packet to supply to standard renderer
     const state = {
@@ -4508,7 +4565,7 @@ export class Game {
       projectileSnapshots,
       this.effects,
       this.remainingPlayersCount,
-      this.zone ? this.zone.serialize() : null,
+      zoneRenderPayload(this.zone),
       this.roomConfig.healing ? this.healingItems : null,
       this.mines.length ? this.mines : null,
       this.firePatches.length ? this.firePatches : null
@@ -4585,7 +4642,7 @@ export class Game {
     const nameEl = document.getElementById('hudName');
     if (nameEl) nameEl.textContent = local.nickname.toUpperCase();
 
-    // Skill (F) + Dash (Space) cooldown indicators
+    // Skill (F) + Dash (Shift) cooldown indicators
     this._updateAbilityHud(local);
 
     // Respawn Countdown Overlay
@@ -4619,7 +4676,7 @@ export class Game {
   }
 
   /**
-   * Update the F-skill and Space-dash readiness widgets.
+   * Update the F-skill and Shift-dash readiness widgets.
    */
   _updateAbilityHud(local) {
     const weaponColor = Weapons[local.weapon]?.color || '#d4af37';
@@ -4877,7 +4934,6 @@ export class Game {
     window.removeEventListener('resize', this._resizeBound);
     window.visualViewport?.removeEventListener('resize', this._resizeBound);
     window.visualViewport?.removeEventListener('scroll', this._resizeBound);
-    this.canvas.removeEventListener('wheel', this._wheelBound);
     this._cleanupVisualSettingsPanel();
     
     // Clear background tab active preservation loops
@@ -5052,6 +5108,9 @@ export class Game {
             p.weapon = Weapons[snap.weapon] ? snap.weapon : p.weapon;
             p.maxHp = positiveFinite(snap.maxHp) ? snap.maxHp : (Weapons[p.weapon]?.maxHp || p.maxHp || 100);
             p.hp = Number.isFinite(snap.hp) ? Math.min(snap.hp, p.maxHp) : p.maxHp;
+            if (Number.isFinite(snap.vx)) p.vx = snap.vx;
+            if (Number.isFinite(snap.vy)) p.vy = snap.vy;
+            p.grounded = Boolean(snap.grounded);
             p.respawnRemainingMs = snap.respawnRemainingMs || 0;
             p.iframeTimeLeft = (snap.iframeMs || 0) / 1000;
             p.buffType = snap.buffType || null;
@@ -5347,6 +5406,53 @@ function deserializeMagicCooldowns(cooldowns = {}) {
 function clamp01(value) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
+}
+
+function zoneSnapshot(zone) {
+  if (!zone) return null;
+  return (typeof zone.serialize === 'function') ? zone.serialize() : zone;
+}
+
+function zoneRenderPayload(zone) {
+  const z = zoneSnapshot(zone);
+  if (!z) return null;
+  if (z.kind === 'platformer_rise') return z;
+  const x = Number.isFinite(z.x) ? z.x : z.cx;
+  const y = Number.isFinite(z.y) ? z.y : z.cy;
+  const nextX = Number.isFinite(z.nextX) ? z.nextX : z.nextCx;
+  const nextY = Number.isFinite(z.nextY) ? z.nextY : z.nextCy;
+  return {
+    x,
+    y,
+    radius: z.radius,
+    nextX,
+    nextY,
+    nextRadius: z.nextRadius,
+    phase: z.phase
+  };
+}
+
+function zoneIsDamaging(zone) {
+  if (!zone) return false;
+  if (typeof zone.isDamaging === 'function') return zone.isDamaging();
+  const z = zoneSnapshot(zone);
+  return z?.phase === 'shrinking' || z?.phase === 'hold';
+}
+
+function zoneIsOutside(zone, x, y) {
+  if (!zone || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  if (typeof zone.isOutside === 'function') return zone.isOutside(x, y);
+  const z = zoneSnapshot(zone);
+  if (!z) return false;
+  if (z.kind === 'platformer_rise') {
+    return y >= z.floorY || x <= z.leftX || x >= z.rightX;
+  }
+  const cx = Number.isFinite(z.x) ? z.x : z.cx;
+  const cy = Number.isFinite(z.y) ? z.y : z.cy;
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(z.radius)) return false;
+  const dx = x - cx;
+  const dy = y - cy;
+  return dx * dx + dy * dy > z.radius * z.radius;
 }
 
 // Damage number styling tier (drives color + size in the renderer). Derived
