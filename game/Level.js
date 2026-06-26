@@ -33,7 +33,7 @@ export const PHYS = {
   dashSpeed: 980,
   dashMs: 150,
   dashCdMs: 700,
-  dashIframeMs: 150,
+  dashIframeMs: 220,   // i-frames linger a touch past the dash for forgiveness
   // Pogo: a downward air-attack that connects with an enemy or surface bounces
   // the attacker back up (Hollow-Knight style).
   pogoSpeed: 780,

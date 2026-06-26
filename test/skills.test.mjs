@@ -4,6 +4,7 @@ import { Player } from '../game/Player.js';
 import { Collision } from '../game/Collision.js';
 import { getEffectiveWeapon, SkillConfig, DashConfig, Weapons, ComboConfig, MagicConfig, AuxSkillConfig } from '../game/Weapons.js';
 import { Game, rebaseEffectSnapshot } from '../game/Game.js';
+import { PHYS, buildLevel } from '../game/Level.js';
 
 test('dash grants i-frames and bursts the player along the held direction', () => {
   const p = new Player('p1', 'Dasher', 'sword', 100, 100);
@@ -11,11 +12,12 @@ test('dash grants i-frames and bursts the player along the held direction', () =
   assert.equal(p.startDash(1, 0), true);
   assert.equal(p.isInvincible(), true);
 
-  // One 0.16s tick of dash should move ~the full dash distance.
-  p.updatePosition(DashConfig.durationMs / 1000, {}, 1000, 1000);
-  assert.ok(Math.abs(p.x - (100 + DashConfig.distance)) < 1e-6);
+  // Platformer dash: a gravity-free burst at dashSpeed for the dash window.
+  const dt = PHYS.dashMs / 1000;
+  p.updatePosition(dt, {}, null);
+  assert.ok(Math.abs(p.x - (100 + PHYS.dashSpeed * dt)) < 1, `x=${p.x}`);
 
-  // Invincibility outlasts the movement window (13 frames > 0.16s).
+  // Invincibility lingers a touch past the movement window (dashIframeMs > dashMs).
   assert.equal(p.isInvincible(), true);
 });
 
@@ -602,22 +604,27 @@ test('hammer skill forbids basic attacks until the final shockwave fires', () =>
   assert.equal(owner.canAttack(6000), true);
 });
 
-test('axe rage roots the wielder (no move, no dash) until the buff ends', () => {
-  const p = new Player('axe-rager', 'Rage', 'axe', 100, 100);
-  p.buffType = 'axe_rage';
-  p.buffTimeLeft = 5;
-  const x0 = p.x, y0 = p.y;
+test('axe rage slows the wielder (70%) and blocks dash until the buff ends', () => {
+  const level = buildLevel(700);
+  const groundTop = level.solids[0].y;
+  const spawnX = 240, spawnY = groundTop - 21;
+  const run = (raging) => {
+    const p = new Player('axe', 'Rage', 'axe', spawnX, spawnY);
+    if (raging) { p.buffType = 'axe_rage'; p.buffTimeLeft = 5; }
+    for (let i = 0; i < 30; i++) p.updatePosition(1 / 60, { d: true }, level);
+    return p.x - spawnX;
+  };
+  const ragingDist = run(true);
+  const normalDist = run(false);
+  assert.ok(ragingDist > 0, 'rage still allows some movement (not a full root)');
+  assert.ok(ragingDist < normalDist * 0.6, 'rage is a heavy slow vs normal speed');
 
-  p.updatePosition(0.1, { d: true, s: true }, 700, 700); // try to move while raging
-  assert.equal(p.x, x0);
-  assert.equal(p.y, y0);
-  assert.equal(p.startDash(1, 0), false); // dash is blocked too
-
-  // Buff over → locomotion resumes.
-  p.buffType = null;
-  p.buffTimeLeft = 0;
-  p.updatePosition(0.1, { d: true }, 700, 700);
-  assert.ok(p.x > x0);
+  // Dash is blocked while raging.
+  const r = new Player('axe', 'Rage', 'axe', spawnX, spawnY);
+  r.buffType = 'axe_rage'; r.buffTimeLeft = 5;
+  assert.equal(r.startDash(1, 0), false);
+  r.buffType = null; r.buffTimeLeft = 0;
+  assert.equal(r.startDash(1, 0), true); // resumes once the buff ends
 });
 
 test('hammer outer shockwave misses targets beyond the first wave radius', () => {

@@ -254,13 +254,14 @@ export class Player {
     const jumpHeld = !stunned && (keys.w || keys.ArrowUp);
     const downHeld = keys.s || keys.ArrowDown;
 
-    // Horizontal target speed (status slows still apply).
+    // Horizontal target speed (status slow + axe-rage slow still apply).
     const slowMul = this.slowTimeLeft > 0 ? STATUS.slow.moveFactor : 1;
+    const rageSlowMul = (this.buffType === 'axe_rage' && this.buffTimeLeft > 0) ? 0.3 : 1; // 70% slow while spinning
     const weaponConfig = Weapons[this.weapon] || Weapons.sword;
     let baseMul = weaponConfig.moveSpeed ?? 1;
     if (this.weapon === 'flamethrower' && this.flameSpraying) baseMul = weaponConfig.sprayMoveSpeed ?? baseMul;
     const target = (right ? 1 : 0) - (left ? 1 : 0);
-    const targetVx = target * PHYS.runSpeed * baseMul * slowMul;
+    const targetVx = target * PHYS.runSpeed * baseMul * slowMul * rageSlowMul;
 
     const accel = this.grounded ? PHYS.groundAccel : PHYS.airAccel;
     const decel = this.grounded ? PHYS.groundDecel : PHYS.airDecel;

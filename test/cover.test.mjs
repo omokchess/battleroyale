@@ -10,20 +10,23 @@ test('no cover when density is none', () => {
   assert.deepEqual(generateCover({}, 1400, 1400), []);
 });
 
-test('generated cover is left-right symmetric and scales with area', () => {
-  const small = generateCover({ cover: 'some' }, 700, 700);
-  const big = generateCover({ cover: 'some' }, 1400, 1400);
-  assert.ok(small.length > 0);
-  assert.ok(small.length % 2 === 0);              // mirrored pairs
-  assert.ok(big.length > small.length);            // 4x area → more tiles
+test('generated cover is deterministic, freely scattered, and scales with area', () => {
+  // Pivot: cover is no longer left-right mirrored — it is a seeded free scatter
+  // (same seed → identical, different seed → different), still scaling with area.
+  const a1 = generateCover({ cover: 'some' }, 700, 700, 1234);
+  const a2 = generateCover({ cover: 'some' }, 700, 700, 1234);
+  const b = generateCover({ cover: 'some' }, 700, 700, 9999);
+  const big = generateCover({ cover: 'some' }, 1400, 1400, 1234);
+  assert.ok(a1.length > 0);
+  assert.deepEqual(a1, a2);                         // deterministic from the seed
+  assert.notDeepEqual(a1, b);                       // varies with the seed
+  assert.ok(big.length > a1.length);               // 4x area → more tiles
 
-  // Every tile has a mirror across the vertical center.
+  // It must NOT be a perfect mirror: most tiles have no exact mirror twin.
   const W = 700;
-  for (const t of small) {
-    const mx = W - t.x - t.w;
-    assert.ok(small.some(o => Math.abs(o.x - mx) < 1e-6 && Math.abs(o.y - t.y) < 1e-6),
-      `missing mirror for tile at ${t.x},${t.y}`);
-  }
+  const mirrored = a1.filter(t =>
+    a1.some(o => Math.abs(o.x - (W - t.x - t.w)) < 1e-6 && Math.abs(o.y - t.y) < 1e-6));
+  assert.ok(mirrored.length < a1.length, 'cover should not be left-right mirrored');
 });
 
 test('circle overlap + point clearance', () => {

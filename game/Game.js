@@ -1457,8 +1457,9 @@ export class Game {
    *  column x — used to drop placed entities (mines / fire patches) onto the
    *  ground or platform instead of floating in mid-air. */
   _surfaceBelow(x, fromY) {
+    if (!this.level) return fromY;   // no level (tests/mocks) → leave the point as-is
     let best = Infinity;
-    const rects = this.level ? [...(this.level.solids || []), ...(this.level.oneWays || [])] : [];
+    const rects = [...(this.level.solids || []), ...(this.level.oneWays || [])];
     for (const s of rects) {
       if (x < s.x || x > s.x + s.w) continue;
       if (s.y >= fromY - 2 && s.y < best) best = s.y;
