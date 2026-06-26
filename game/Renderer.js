@@ -2144,7 +2144,18 @@ export class Renderer {
     }
 
     let drawFrame, flip;
-    if (moving) {
+    let airStretch = 1;
+    if (player.grounded === false) {
+      // Airborne (jump/fall): hold a single mid-stride leap frame instead of
+      // cycling the run, and stretch a touch when rising / squash when falling
+      // so a jump reads distinctly from a ground run. (grounded + vy are synced,
+      // so remote players get the same pose.)
+      anim.at = now;
+      drawFrame = 3;                       // a mid-stride frame that reads as a leap
+      flip = !anim.faceRight;
+      const vy = Number.isFinite(player.vy) ? player.vy : 0;
+      airStretch = vy < 0 ? 1.08 : 0.96;   // rising taller, falling flatter
+    } else if (moving) {
       if (now - anim.at > 110) { anim.frame = (anim.frame + 1) % RUN_FRAMES; anim.at = now; }
       // Run art faces right; flip when moving left.
       drawFrame = anim.frame;
@@ -2163,7 +2174,7 @@ export class Renderer {
     const IDLE_SQUASH = 0.92;
     const refH = radius * 4.15;
     const drawW = refH * (cellW / cellH);
-    const drawH = refH * (moving ? 1 : IDLE_SQUASH);
+    const drawH = refH * (player.grounded === false ? airStretch : (moving ? 1 : IDLE_SQUASH));
     const feetY = scr.y + refH * 0.38;   // keep feet planted regardless of squash
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
