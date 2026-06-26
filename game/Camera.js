@@ -46,6 +46,45 @@ export class Camera {
   }
 
   /**
+   * Fighting-game action camera (1v1 focus): frame ALL the given focus points
+   * (the local player + nearby opponents) inside the view and zoom by how far
+   * apart they are — pull in tight for close combat, ease out as they separate.
+   * Smoothly lerps both zoom and position, clamped to the level bounds.
+   */
+  updateAction(points, vw, vh, level) {
+    this.tracking = true;
+    this.screenOffsetY = 0;
+    if (!points || !points.length) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX)) return;
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+
+    // World-space view size grows with the player spread, clamped to a punchy
+    // range: small spread → small view → zoomed IN; large spread → zoomed OUT.
+    const MARGIN_X = 250, MARGIN_Y = 200;
+    const MIN_VIEW_W = 560, MAX_VIEW_W = 1650, MIN_VIEW_H = 400, MAX_VIEW_H = 1040;
+    const viewW = Math.max(MIN_VIEW_W, Math.min(MAX_VIEW_W, (maxX - minX) + MARGIN_X * 2));
+    const viewH = Math.max(MIN_VIEW_H, Math.min(MAX_VIEW_H, (maxY - minY) + MARGIN_Y * 2));
+    let targetZoom = Math.min(vw / viewW, vh / viewH) * (this.userZoom || 1);
+    targetZoom = Math.max(0.1, Math.min(3, targetZoom));
+
+    // Snappy-but-smooth zoom, then clamp the focus at the new zoom.
+    this.zoom += (targetZoom - this.zoom) * 0.085;
+    const halfW = vw / (2 * this.zoom), halfH = vh / (2 * this.zoom);
+    const lw = level?.width || vw, lh = level?.height || vh;
+    const fx = clampRange(cx, halfW, lw - halfW, lw / 2);
+    const fy = clampRange(cy, halfH, lh - halfH, lh / 2);
+    this.x += (fx - this.x) * 0.13;
+    this.y += (fy - this.y) * 0.13;
+  }
+
+  /**
    * Move the camera toward its focus with smooth inertia.
    *
    * Auto mode:

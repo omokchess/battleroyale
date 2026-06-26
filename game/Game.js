@@ -330,7 +330,7 @@ export class Game {
       const hp = this.players[this.localPlayerId];
       if (hp) {
         this.input.setLocalWeapon(hp.weapon);
-        this.camera.updatePlatformer(hp.x, hp.y, this.canvas.width, this.canvas.height, this.level, hp.vx, hp.vy);
+        this.camera.updateAction(this._cameraFocusPoints(), this.canvas.width, this.canvas.height, this.level);
         if (!hp.isDead) {
           this.input.updateAimAngle(hp, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
           hp.angle = this.input.aimAngle;
@@ -374,7 +374,7 @@ export class Game {
       if (localPlayer && !localPlayer.isDead) {
         this.input.setLocalWeapon(localPlayer.weapon);
         // Update camera position to follow local player (2D platformer follow)
-        this.camera.updatePlatformer(localPlayer.x, localPlayer.y, this.canvas.width, this.canvas.height, this.level, localPlayer.vx, localPlayer.vy);
+        this.camera.updateAction(this._cameraFocusPoints(), this.canvas.width, this.canvas.height, this.level);
 
         // Calibrate accurate aiming angle taking camera boundaries into account
         this.input.updateAimAngle(localPlayer, this.camera, this.canvas.width, this.canvas.height, this.mapWidth, this.mapHeight);
@@ -1763,6 +1763,30 @@ export class Game {
    * grass), so host and clients build the identical terrain with no extra sync.
    * Call after `this.cover`, `this.roomConfig` and the map dims are set.
    */
+  /**
+   * Focus points for the action camera: the local player (with a small facing
+   * look-ahead so the view leads the action) plus every other living player
+   * within range, so a 1v1 frames both fighters and zooms by their distance.
+   * Far-off players are excluded so a single distant target can't yank the zoom.
+   */
+  _cameraFocusPoints() {
+    const lp = this.players[this.localPlayerId];
+    const ax = lp ? lp.x : this.mapWidth / 2;
+    const ay = lp ? lp.y : this.mapHeight / 2;
+    const pts = [];
+    if (lp) pts.push({ x: ax + (lp.isDead ? 0 : (lp.facing || 1) * 70), y: ay });
+    const MAX_SPREAD = 1250;
+    for (const id in this.players) {
+      if (id === this.localPlayerId) continue;
+      const p = this.players[id];
+      if (!p || p.isDead) continue;
+      if (Math.hypot(p.x - ax, p.y - ay) > MAX_SPREAD) continue;   // ignore far targets
+      pts.push({ x: p.x, y: p.y });
+    }
+    if (!pts.length) pts.push({ x: ax, y: ay });
+    return pts;
+  }
+
   /** Build the side-scroller level from the room's arena-size preset and adopt
    *  its pixel size as the map bounds. Deterministic → host + clients match. */
   _buildLevel() {
