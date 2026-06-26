@@ -4891,12 +4891,30 @@ export class Game {
    * Spawner positions math
    */
   _getRandomSpawnPoint() {
-    // Platformer: spawn on a ground spawn point, body lifted so the feet rest on
-    // the slab. Pick the spawn farthest from existing players for a fair start.
-    const spawns = this.level?.spawns || [{ x: this.mapWidth / 2, y: this.mapHeight / 2 }];
+    // Platformer: stand the body on a ground spawn OR a one-way platform top.
+    // When the 2D hazard is intruding, only stand points clear of the rising
+    // flood and the closing side walls are eligible — otherwise the player
+    // would respawn straight into the lava and die in a loop.
     const halfH = 20;
-    let best = spawns[0], bestDist = -1;
-    for (const s of spawns) {
+    const cands = [];
+    for (const s of (this.level?.spawns || [])) cands.push({ x: s.x, y: s.y });
+    for (const ow of (this.level?.oneWays || [])) cands.push({ x: ow.x + ow.w / 2, y: ow.y });
+    if (!cands.length) cands.push({ x: this.mapWidth / 2, y: this.mapHeight / 2 });
+
+    const z = this.zone;
+    const hazard = !!(z && typeof z.isDamaging === 'function' && z.isDamaging());
+    const margin = 30;
+    const isSafe = (p) => {
+      if (!hazard) return true;
+      if (p.y >= (z.floorY ?? Infinity) - margin) return false;               // in/under the flood
+      if (p.x <= (z.leftX ?? 0) + margin || p.x >= (z.rightX ?? this.mapWidth) - margin) return false; // beyond a wall
+      return true;
+    };
+    let pool = cands.filter(isSafe);
+    if (!pool.length) pool = [cands.reduce((a, b) => (b.y < a.y ? b : a))]; // none safe → highest
+
+    let best = pool[0], bestDist = -1;
+    for (const s of pool) {
       let nearest = Infinity;
       for (const id in this.players) {
         const o = this.players[id];
