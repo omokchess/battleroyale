@@ -18,6 +18,7 @@ import { generateCover, resolveCover, coverBlocksSegment, coverRayDistance, cove
 import { generateWater, emptyWater } from './Water.js';
 import { buildLevel, PHYS } from './Level.js';
 import { PlatformerZone } from './PlatformerZone.js';
+import { BotBrain, BOT_DIFFICULTY, BOT_LOADOUT } from './Bot.js';
 import { STATUS } from './Status.js';
 
 // Time a dead player waits before respawning.
@@ -33,6 +34,16 @@ export class Game {
     // Dummy (practice) room: the host spawns stationary training dummies.
     this.dummyRoom = !!options.dummyRoom;
     this.dummyCount = Number.isFinite(options.dummyCount) ? options.dummyCount : 3;
+
+    // Bot match: the host fills the arena with AI bots (synthetic-input Players).
+    // Used by the one-click offline "바로 플레이". `botFill` tops the lobby up to
+    // a target headcount; `botCount` is an explicit number of bots to spawn.
+    this.botMatch = !!options.botMatch;
+    this.botCount = Number.isFinite(options.botCount) ? options.botCount : 3;
+    this.botFill = Number.isFinite(options.botFill) ? options.botFill : 0;
+    this.botDifficulty = BOT_DIFFICULTY[options.botDifficulty] ? options.botDifficulty : 'normal';
+    this._botSeq = 0;
+    this._bots = [];   // BotBrain instances (host only)
 
     // Room custom settings (arena size / storm / cover / healing). The host owns
     // these; clients overwrite them from the ROOM_JOINED handshake. Defaults match
@@ -182,7 +193,13 @@ export class Game {
         this._spawnDummies(this.dummyCount);
       }
 
-      this._announce(this.dummyRoom ? '더미 연습장 입장' : 'MATCH STARTED');
+      // Bot match: fill the arena with AI bots so a solo player has a real fight.
+      if (this.botMatch) {
+        const n = this.botFill > 0 ? Math.max(0, this.botFill - 1) : this.botCount;
+        this._spawnBots(n, this.botDifficulty);
+      }
+
+      this._announce(this.dummyRoom ? '더미 연습장 입장' : (this.botMatch ? '봇 매치 시작!' : 'MATCH STARTED'));
 
       // Preserve active ticking when Host's tab is backgrounded
       this._visibilityChangeHandler = () => {
@@ -424,6 +441,10 @@ export class Game {
    * Host specific update routine
    */
   _updateHostPhysics(deltaTime, now) {
+    // 0. Synthesize bot input first so their freshly-set keys/aim are consumed
+    //    by the same physics + auto-attack pass as every other player.
+    this._updateBots(deltaTime, now);
+
     // 1. Process all active players inputs (including guests)
     Object.keys(this.players).forEach(id => {
       const p = this.players[id];
@@ -1601,6 +1622,85 @@ export class Game {
       d.homeY = y;
       this.players[id] = d;
     }
+  }
+
+  /**
+   * Spawn `count` AI bots (host only). Each is a normal Player flagged `isBot`
+   * with a curated weapon and an attached BotBrain (see Bot.js). Their input is
+   * synthesized every host tick by _updateBots; the rest of the sim is shared.
+   */
+  _spawnBots(count, difficulty = 'normal') {
+    const n = Math.max(0, Math.min(12, Math.floor(count) || 0));
+    const NAMES = ['글라디우스', '레기온', '발로르', '모르가나', '카이저', '도르', '벨라', '녹스', '아레스', '루멘', '가레스', '세라핌'];
+    for (let i = 0; i < n; i++) {
+      const weapon = BOT_LOADOUT[(this._botSeq + i) % BOT_LOADOUT.length];
+      const spawnP = this._getRandomSpawnPoint();
+      const id = `bot_${this._botSeq++}`;
+      const name = NAMES[i % NAMES.length];
+      const bot = new Player(id, `🤖${name}`, weapon, spawnP.x, spawnP.y);
+      bot.isBot = true;
+      bot.keys = {};
+      bot.brain = new BotBrain(bot, difficulty);
+      this._bots.push(bot.brain);
+      this.players[id] = bot;
+    }
+  }
+
+  /**
+   * Drive every alive bot one host tick: build a shared context, let each brain
+   * synthesize its keys/aim, then route its one-shot intents (dash/skill)
+   * through the same action helpers a human's input uses. Runs BEFORE the player
+   * physics loop so the freshly-set keys are consumed this same frame.
+   */
+  _updateBots(dt, now) {
+    if (!this._bots.length) return;
+    const ctx = this._botContext();
+    for (const brain of this._bots) {
+      const bot = brain.player;
+      if (!bot || bot.isDead) { if (bot) bot.keys = {}; continue; }
+      const intents = brain.think(dt, now, ctx);
+      if (intents.dash) this._tryDash(bot, intents.dash.dx, intents.dash.dy);
+      if (intents.skill) this._handleSkillPressed(bot, now);
+      if (intents.altSkill) {
+        this._handleAltSkillPressed(bot, now);
+        // Katana R is a hold-then-release charge; auto-release so the bot never
+        // gets stuck mid-charge (charging blocks its basic attacks).
+        if (bot.weapon === 'katana') bot._botAltReleaseAt = now + 420;
+      }
+      if (bot._botAltReleaseAt && now >= bot._botAltReleaseAt) {
+        this._handleAltSkillReleased(bot, now);
+        bot._botAltReleaseAt = 0;
+      }
+    }
+  }
+
+  /** Read-only world view + nav helpers handed to each bot brain each tick. */
+  _botContext() {
+    const z = this.zone;
+    const damaging = !!(z && typeof z.isDamaging === 'function' && z.isDamaging());
+    const floorY = damaging ? (z.floorY ?? Infinity) : Infinity;
+    return {
+      players: this.players,
+      healingItems: this.healingItems,
+      mapWidth: this.mapWidth,
+      mapHeight: this.mapHeight,
+      zoneDamaging: damaging,
+      zoneFloorY: floorY,
+      zoneSafeX: (x) => ({
+        min: damaging ? (z.leftX ?? 0) + 24 : 0,
+        max: damaging ? (z.rightX ?? this.mapWidth) - 24 : this.mapWidth,
+      }),
+      weaponOf: (p) => getEffectiveWeapon(p.weapon, p.buffType),
+      solidBlocks: (x, y, r) => this._levelSolidBlocks(x, y, r),
+      surfaceBelow: (x, fromY) => this._surfaceBelow(x, fromY),
+      // True when the only thing under the feet here is a one-way platform (so a
+      // drop-through actually moves the bot down toward a lower target).
+      onOneWayOnly: (x, footY) => {
+        const ow = (this.level?.oneWays || []).some(s => x >= s.x && x <= s.x + s.w && Math.abs(s.y - footY) <= 6);
+        const solid = (this.level?.solids || []).some(s => x >= s.x && x <= s.x + s.w && Math.abs(s.y - footY) <= 6);
+        return ow && !solid;
+      },
+    };
   }
 
   /**
@@ -4965,7 +5065,8 @@ export class Game {
       deaths: local?.deaths || 0,
       weapon: local?.weapon || 'sword',
       durationMs: Math.max(0, Date.now() - (this.matchStartTime || Date.now())),
-      dummy: !!this.dummyRoom            // practice rooms are never reported to the server
+      // Practice & offline bot matches are never reported to the server (no rank/coins).
+      dummy: !!this.dummyRoom || !!this.botMatch
     };
 
     this._hasQuit = true;

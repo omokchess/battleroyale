@@ -305,6 +305,25 @@ export class NetworkManager {
     this.peer.on('error', (err) => this._handlePeerError(err, 'host', session));
   }
 
+  /**
+   * Offline solo host: become the authoritative host with NO signaling peer and
+   * no broker dependency, for the one-click bot match. There are never any
+   * guests, so broadcast()/sendToHost() are harmless no-ops over an empty
+   * connection table. Emits onInit/onConnected asynchronously to mirror the
+   * normal hostRoom flow (callers wire up inside onInit).
+   */
+  hostLocal(roomCode = 'SOLO') {
+    const session = this._beginSession(true, roomCode);
+    this.peer = null;
+    this.localId = `local-${Date.now()}`;
+    // Defer so listeners registered right after this call still fire.
+    setTimeout(() => {
+      if (!this._isCurrentSession(session)) return;
+      this._emit('onInit', this.roomCode);
+      this._emit('onConnected');
+    }, 0);
+  }
+
   _setupHostConnection(conn, session) {
     const remoteId = conn.peer;
     this.connections[remoteId] = conn;

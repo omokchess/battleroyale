@@ -1170,6 +1170,46 @@ hostBtn.addEventListener('click', () => doHost(false));
 if (dummyBtn) dummyBtn.addEventListener('click', () => doHost(true));
 
 /**
+ * One-click bot match: an offline, host-only fight against AI bots. No room
+ * code, no lobby wait, no MQTT/PeerJS broker — NetworkManager.hostLocal() makes
+ * us the authoritative host with no signaling peer. Defaults to a punchy small
+ * arena with the storm + healing on so the game's hooks show fast.
+ */
+function doBotMatch() {
+  let nickname = nicknameInput.value.trim();
+  if (!nickname) { nickname = '용사'; nicknameInput.value = nickname; }
+
+  hideError();
+  closeRoomCustom();
+  const btn = document.getElementById('quickPlayBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '전장 준비 중...'; }
+
+  const demoConfig = normalizeRoomConfig({
+    arenaSize: 'medium', storm: true, platforms: 'some', platformShape: 'balanced',
+    healing: true, healingRate: 'fast', biome: 'day'
+  });
+
+  netManager = new NetworkManager();
+  netManager.on('onInit', () => {
+    if (btn) { btn.disabled = false; btn.innerHTML = '▶ 바로 플레이 <span class="text-[#d6ffe2] normal-case font-bold">(봇전 · 즉시 시작)</span>'; }
+    enterGameScreen(true);
+    activeGame = new Game(gameCanvas, netManager, localAppearance(), {
+      botMatch: true, botFill: 4, botDifficulty: 'normal', roomConfig: demoConfig
+    });
+    activeGame.start((stats) => handleMatchEnd(stats));
+  });
+  netManager.on('onError', (err) => {
+    if (btn) { btn.disabled = false; btn.innerHTML = '▶ 바로 플레이 <span class="text-[#d6ffe2] normal-case font-bold">(봇전 · 즉시 시작)</span>'; }
+    showError(err);
+    netManager.stop();
+  });
+  netManager.hostLocal('SOLO');
+}
+
+const quickPlayBtn = document.getElementById('quickPlayBtn');
+if (quickPlayBtn) quickPlayBtn.addEventListener('click', doBotMatch);
+
+/**
  * 4. Match Joining workflow (shared by the Join button and room-list clicks)
  */
 function startJoin(rawCode) {
