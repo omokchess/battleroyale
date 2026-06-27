@@ -60,6 +60,10 @@ export class Game {
     this._hitFlashUntil = 0;    // local-player damage vignette end time
     this._hitFlashStrength = 0; // 0..1 vignette intensity
     this._killFeed = [];        // recent kill notices (synced via Protocol)
+    // Local-only juice particles (hit sparks / death bursts). Derived from synced
+    // HP so they fire on host AND clients without netcode; kept OUT of this.effects
+    // so the host never broadcasts them (clients derive their own copy).
+    this._localFx = [];
 
     // Cover tiles (Task 9): static obstacles. Host picks one per-match seed and
     // ships only that number via ROOM_JOINED; clients regenerate the identical
@@ -622,6 +626,11 @@ export class Game {
         if (proj.isDead || target.isInvincible()) return;
 
         if (Collision.checkProjectileHit(proj, target)) {
+          // Juice: a landed projectile from the local player gives a small
+          // hitstop, matching the melee feel (the kill blow adds a bigger one).
+          if (proj.ownerId === this.localPlayerId && !target.isInvincible?.()) {
+            this._triggerHitstop(now, 34);
+          }
           if (proj.kind === 'swordwave') {
             // Direct contact damage, then the explosion AoE.
             const died = target.takeDamage(proj.damage, 'swordwave');
@@ -1719,6 +1728,16 @@ export class Game {
       killer.kills++;
       const via = viaLabel ? `${viaLabel} ` : '';
       this._announce(`${killer.nickname}님이 ${via}${target.nickname}님을 처치했습니다!`);
+
+      // Kill juice for the local slayer: a heavier hitstop + a strong shake make
+      // the finishing blow land. Local render-only (never touches the sim).
+      if (killer.id === this.localPlayerId) {
+        const t = Date.now();
+        this._triggerHitstop(t, 65);
+        if (this.camera?.startShake) this.camera.startShake(14, 340, performance.now());
+        this._vibrateDevice([40, 25, 55]);
+        Sound.play('kill');
+      }
 
       // Kill feed: broadcast so every peer shows it, and add locally (host).
       const evt = Protocol.killEvent(
@@ -4531,6 +4550,11 @@ export class Game {
     this._trackDamagePopups(now);
     this._trackSoundCues();
 
+    // Expire local-only juice particles (own lifetime, never broadcast).
+    if (this._localFx.length) {
+      this._localFx = this._localFx.filter(e => now - e.timestamp < e.lifetime);
+    }
+
     // Hitstop: hold the previously drawn frame (skip re-render). Simulation has
     // already advanced above/around this — only the picture pauses.
     if (now < this._hitstopUntil) return;
@@ -4553,6 +4577,7 @@ export class Game {
       players: this.players,
       projectiles: this.projectiles,
       effects: this.effects,
+      localFx: this._localFx,
       damagePopups: this._dmgPopups,
       hitFlash,
       killFeed: this._killFeed,
@@ -4620,6 +4645,12 @@ export class Game {
               vx: (Math.random() - 0.5) * 2
             });
             if (this._dmgPopups.length > 60) this._dmgPopups.shift();
+            // Juice: flash the struck body white + spit a pixel spark burst at the
+            // impact. DoT ticks (dmg ≤ 6) get only a faint flash, not a full spark.
+            p._hurtFlashUntil = now + (dmg > 6 ? 130 : 70);
+            if (dmg > 6 && !dotColor) {
+              this._spawnHitSpark(p.x, p.y - (p.halfH || 20) * 0.4, dmg, p.color, now);
+            }
           }
           // Local player took damage → screen-edge vignette + camera shake,
           // scaled by how hard the hit was (instakills hit hardest).
@@ -4637,6 +4668,13 @@ export class Game {
       const wasDead = this._prevDeadById?.[id];
       if (wasDead !== undefined && wasDead !== p.isDead && id === this.localPlayerId) {
         Sound.play(p.isDead ? 'death' : 'respawn');
+      }
+      // Juice: a pixel death-burst when anyone you can see dies (derived from the
+      // synced isDead flip → fires on host and clients alike). Kill sound + the
+      // killer's hitstop/shake are handled host-side in _creditKill.
+      if (wasDead === false && p.isDead === true && !p.isDummy) {
+        this._spawnDeathBurst(p.x, p.y, p.color, now);
+        if (id !== this.localPlayerId) Sound.play('kill');
       }
       if (!this._prevDeadById) this._prevDeadById = {};
       this._prevDeadById[id] = p.isDead;
@@ -4670,7 +4708,40 @@ export class Game {
    */
   _triggerHitstop(now, ms = 40) {
     if (now < this._hitstopUntil) return; // already stopping → don't accumulate
-    this._hitstopUntil = now + Math.min(50, Math.max(20, ms));
+    this._hitstopUntil = now + Math.min(70, Math.max(20, ms));
+  }
+
+  /** Pixel spark burst at an impact point (local render-only). Particle count +
+   *  speed scale with the damage so big blows pop harder. */
+  _spawnHitSpark(x, y, dmg, color, now) {
+    const n = Math.min(10, 3 + Math.round(dmg / 9));
+    const power = Math.min(1.6, 0.6 + dmg / 60);
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (60 + Math.random() * 180) * power;
+      parts.push({ ox: Math.cos(a), oy: Math.sin(a) - 0.4, sp, sz: 2 + Math.random() * 2 });
+    }
+    this._localFx.push({
+      type: 'hit_spark', x, y, parts, color: color || '#ffe9a8',
+      timestamp: now, lifetime: 260 + power * 120
+    });
+    if (this._localFx.length > 80) this._localFx.shift();
+  }
+
+  /** Pixel death-burst: a bigger, slower-decaying shower in the victim's color. */
+  _spawnDeathBurst(x, y, color, now) {
+    const parts = [];
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 90 + Math.random() * 320;
+      parts.push({ ox: Math.cos(a), oy: Math.sin(a) - 0.5, sp, sz: 2 + Math.random() * 3 });
+    }
+    this._localFx.push({
+      type: 'death_burst', x, y: y - 6, parts, color: color || '#ff5a5a',
+      timestamp: now, lifetime: 560
+    });
+    if (this._localFx.length > 80) this._localFx.shift();
   }
 
   /**

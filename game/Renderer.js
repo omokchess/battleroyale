@@ -209,6 +209,10 @@ export class Renderer {
       this._drawEffects(ctx, camera, cw, ch, state.effects, state.players || {}, localPlayerId, visualSettings);
       this._drawPlatformerEffects(ctx, camera, cw, ch, state.effects, now);
     }
+    // Local-only juice particles (hit sparks / death bursts), drawn over the level.
+    if (state.localFx && state.localFx.length) {
+      this._drawPlatformerEffects(ctx, camera, cw, ch, state.localFx, now);
+    }
     if (state.projectiles && state.projectiles.length) this._drawProjectiles(ctx, camera, cw, ch, state.projectiles, state.players || {});
 
     const players = state.players || {};
@@ -323,6 +327,33 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(scr.x, scr.y, (10 + life * 34) * z, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (e.type === 'hit_spark' || e.type === 'death_burst') {
+        // Pixel (square) particle shower. Each part flies out along its own unit
+        // vector, decelerating, with a little gravity, fading as it ages.
+        const tSec = (now - e.timestamp) / 1000;
+        const alpha = 1 - life;
+        const grav = 520;
+        const isDeath = e.type === 'death_burst';
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = e.color || '#ffe9a8';
+        ctx.imageSmoothingEnabled = false;
+        for (const pt of (e.parts || [])) {
+          const decel = Math.max(0, 1 - tSec * 1.6);
+          const px = e.x + pt.ox * pt.sp * tSec * decel;
+          const py = e.y + pt.oy * pt.sp * tSec * decel + 0.5 * grav * tSec * tSec;
+          const s = pt.sz * z * (isDeath ? 1.2 : 1);
+          const sc = camera.toScreen(px, py, cw, ch);
+          ctx.fillRect(sc.x - s / 2, sc.y - s / 2, s, s);
+        }
+        // Death gets a quick white flash ring at the origin for extra pop.
+        if (isDeath && life < 0.4) {
+          ctx.globalAlpha = (1 - life / 0.4) * 0.8;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = Math.max(2, 3 * z);
+          ctx.beginPath();
+          ctx.arc(scr.x, scr.y, (8 + life * 70) * z, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
     }
     ctx.restore();
@@ -2182,6 +2213,19 @@ export class Renderer {
     ctx.translate(scr.x, feetY);
     if (flip) ctx.scale(-1, 1);
     ctx.drawImage(runSheet, sx, 0, cellW, cellH, -drawW / 2, -drawH, drawW, drawH);
+    // Hit-flash: overlay a white silhouette of the same frame while the player's
+    // _hurtFlashUntil window is open (set in Game._trackDamagePopups from the
+    // synced HP drop, so it fires on host and clients).
+    const flashLeft = (player._hurtFlashUntil || 0) - now;
+    if (flashLeft > 0) {
+      const fa = Math.min(1, flashLeft / 110);
+      const prevFilter = ctx.filter;
+      ctx.globalAlpha = fa;
+      ctx.filter = 'brightness(0) invert(1)';
+      ctx.drawImage(runSheet, sx, 0, cellW, cellH, -drawW / 2, -drawH, drawW, drawH);
+      ctx.filter = prevFilter || 'none';
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
     ctx.imageSmoothingEnabled = prevSmooth;
     return true;
