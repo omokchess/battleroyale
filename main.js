@@ -1197,6 +1197,7 @@ function doBotMatch() {
       botMatch: true, botFill: 4, botDifficulty: 'normal', roomConfig: demoConfig
     });
     activeGame.start((stats) => handleMatchEnd(stats));
+    showOnboardCard('🎯 목표 — 봇들을 처치하고 최다 킬을 노려라!');
   });
   netManager.on('onError', (err) => {
     if (btn) { btn.disabled = false; btn.innerHTML = '▶ 바로 플레이 <span class="text-[#d6ffe2] normal-case font-bold">(봇전 · 즉시 시작)</span>'; }
@@ -1208,6 +1209,26 @@ function doBotMatch() {
 
 const quickPlayBtn = document.getElementById('quickPlayBtn');
 if (quickPlayBtn) quickPlayBtn.addEventListener('click', doBotMatch);
+
+// --- Onboarding controls card -------------------------------------------------
+function showOnboardCard(objective) {
+  const card = document.getElementById('onboardCard');
+  if (!card) return;
+  if (objective) {
+    const obj = document.getElementById('onboardObjective');
+    if (obj) obj.textContent = objective;
+  }
+  card.classList.remove('hidden');
+}
+function hideOnboardCard() {
+  document.getElementById('onboardCard')?.classList.add('hidden');
+}
+document.getElementById('onboardCloseBtn')?.addEventListener('click', () => { Sound.play('uiConfirm'); hideOnboardCard(); });
+document.getElementById('pauseHelpBtn')?.addEventListener('click', () => {
+  Sound.play('ui');
+  document.getElementById('pauseMenu')?.classList.add('hidden'); // close the menu behind it
+  showOnboardCard();
+});
 
 /**
  * 4. Match Joining workflow (shared by the Join button and room-list clicks)
@@ -1311,6 +1332,7 @@ async function lockPortraitForLobby() {
 function enterGameScreen(isHost) {
   lobbyMenu.classList.add('hidden');
   gameScreen.classList.remove('hidden');
+  document.getElementById('onboardCard')?.classList.add('hidden'); // never carry the card across matches
   hostServerIndicator?.classList.toggle('hidden', !isHost);
   stopLobbyBrowsing();
   lockLandscapeForArena();
