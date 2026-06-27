@@ -1194,10 +1194,12 @@ function doBotMatch() {
     if (btn) { btn.disabled = false; btn.innerHTML = '▶ 바로 플레이 <span class="text-[#d6ffe2] normal-case font-bold">(봇전 · 즉시 시작)</span>'; }
     enterGameScreen(true);
     activeGame = new Game(gameCanvas, netManager, localAppearance(), {
-      botMatch: true, botFill: 4, botDifficulty: 'normal', roomConfig: demoConfig
+      botMatch: true, botFill: 4, botDifficulty: 'normal', roomConfig: demoConfig,
+      matchDurationMs: 120000, killTarget: 12,
+      onMatchOver: (results) => showMatchResult(results)
     });
     activeGame.start((stats) => handleMatchEnd(stats));
-    showOnboardCard('🎯 목표 — 봇들을 처치하고 최다 킬을 노려라!');
+    showOnboardCard('🎯 목표 — 2분 안에 최다 킬! (먼저 12킬 시 즉시 승리)');
   });
   netManager.on('onError', (err) => {
     if (btn) { btn.disabled = false; btn.innerHTML = '▶ 바로 플레이 <span class="text-[#d6ffe2] normal-case font-bold">(봇전 · 즉시 시작)</span>'; }
@@ -1228,6 +1230,44 @@ document.getElementById('pauseHelpBtn')?.addEventListener('click', () => {
   Sound.play('ui');
   document.getElementById('pauseMenu')?.classList.add('hidden'); // close the menu behind it
   showOnboardCard();
+});
+
+// --- Match result scoreboard (timed bot match) --------------------------------
+function showMatchResult(results) {
+  const card = document.getElementById('matchResultCard');
+  if (!card || !Array.isArray(results)) return;
+  const localR = results.find(r => r.isLocal);
+  const headline = document.getElementById('matchResultHeadline');
+  if (headline) {
+    headline.textContent = (localR && localR.rank === 1)
+      ? '🏆 승리! 당신이 1위입니다'
+      : (localR ? `${localR.rank}위 — 다음엔 정상을 노려보세요!` : '결과');
+  }
+  const list = document.getElementById('matchResultList');
+  if (list) {
+    list.innerHTML = results.map(r => `
+      <div class="flex items-center justify-between px-3 py-2 ${r.isLocal ? 'bg-[#3a2e16] border border-[#c9a227]' : 'bg-[#14100b] border border-gray-700'}">
+        <span class="flex items-center gap-2 text-[13px] ${r.rank === 1 ? 'text-[#ffd24a] font-bold' : 'text-gray-200'}">
+          <span class="w-5 text-center">${r.rank === 1 ? '👑' : r.rank}</span>
+          <span class="truncate max-w-[160px]">${escapeHtml(r.name)}</span>
+        </span>
+        <span class="text-[12px] text-gray-300 shrink-0">처치 <b class="text-[#e8d5a3]">${r.kills}</b> · 사망 ${r.deaths}</span>
+      </div>`).join('');
+  }
+  Sound.play(localR && localR.rank === 1 ? 'kill' : 'uiConfirm');
+  card.classList.remove('hidden');
+}
+function hideMatchResult() { document.getElementById('matchResultCard')?.classList.add('hidden'); }
+document.getElementById('matchRestartBtn')?.addEventListener('click', () => {
+  Sound.play('uiConfirm');
+  hideMatchResult();
+  if (activeGame) activeGame.quit();   // tears down the finished match (→ lobby)
+  doBotMatch();                        // …then immediately launch a fresh one
+});
+document.getElementById('matchLeaveBtn')?.addEventListener('click', () => {
+  Sound.play('ui');
+  hideMatchResult();
+  if (activeGame) activeGame.quit();
 });
 
 /**
@@ -1333,6 +1373,7 @@ function enterGameScreen(isHost) {
   lobbyMenu.classList.add('hidden');
   gameScreen.classList.remove('hidden');
   document.getElementById('onboardCard')?.classList.add('hidden'); // never carry the card across matches
+  document.getElementById('matchResultCard')?.classList.add('hidden');
   hostServerIndicator?.classList.toggle('hidden', !isHost);
   stopLobbyBrowsing();
   lockLandscapeForArena();

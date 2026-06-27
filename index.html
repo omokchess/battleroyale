@@ -683,6 +683,29 @@
         </div>
       </div>
 
+      <!-- Match result scoreboard (shown when a timed/bot round ends). -->
+      <div id="matchResultCard" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm pointer-events-auto">
+        <div class="bg-[#2c2016] border-4 border-[#c9a227] shadow-[0_0_32px_rgba(201,162,39,0.45)] max-w-md w-[92%] p-6 font-mono">
+          <h2 class="font-display text-3xl font-extrabold text-[#c9a227] uppercase tracking-tight text-center mb-1">라운드 종료</h2>
+          <div id="matchResultHeadline" class="text-center text-[13px] text-[#7df09a] font-bold mb-4">결과</div>
+          <div id="matchResultList" class="space-y-1.5 mb-5"></div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="matchRestartBtn" type="button" class="bg-gradient-to-r from-[#3aa856] to-[#1c6b33] hover:from-[#4cc96b] hover:to-[#175a2a] border-2 border-[#7df09a] text-white font-mono text-sm px-4 py-3 uppercase tracking-wider cursor-pointer font-extrabold active:scale-95 transition-transform">
+              다시 하기
+            </button>
+            <button id="matchLeaveBtn" type="button" class="bg-[#14100b] hover:bg-[#1a0e12] border-2 border-gray-500 text-gray-200 font-mono text-sm px-4 py-3 uppercase tracking-wider cursor-pointer font-bold active:scale-95 transition-transform">
+              나가기
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Round timer + objective (only shown for timed/bot matches) -->
+      <div id="hudMatchInfo" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none select-none font-mono flex flex-col items-center gap-0.5">
+        <div id="hudMatchTime" class="text-2xl font-extrabold text-[#e8d5a3] drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tabular-nums">2:00</div>
+        <div id="hudMatchObjective" class="text-[11px] font-bold text-[#7df09a] bg-black/45 px-2 py-0.5 border border-[#7df09a]/40">최다킬 0</div>
+      </div>
+
       <!-- HUD OVERLAY -->
       <div id="gameHudOverlay" class="absolute inset-x-0 top-0 p-4 flex justify-between items-start pointer-events-none select-none z-20 font-mono">
         

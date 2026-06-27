@@ -45,6 +45,14 @@ export class Game {
     this._botSeq = 0;
     this._bots = [];   // BotBrain instances (host only)
 
+    // Short-round support (demo bot match): an optional time limit and/or kill
+    // target end the match with a result screen. 0/unset = endless (the normal
+    // respawn deathmatch, unchanged). onMatchOver(results) is fired once on end.
+    this.matchDurationMs = Number.isFinite(options.matchDurationMs) ? options.matchDurationMs : 0;
+    this.killTarget = Number.isFinite(options.killTarget) ? options.killTarget : 0;
+    this.onMatchOver = typeof options.onMatchOver === 'function' ? options.onMatchOver : null;
+    this.matchOver = false;
+
     // Room custom settings (arena size / storm / cover / healing). The host owns
     // these; clients overwrite them from the ROOM_JOINED handshake. Defaults match
     // current behavior so an untouched config plays identically to before.
@@ -381,8 +389,10 @@ export class Game {
         }
       }
 
-      this._updateHostPhysics(deltaTime, now);
-      
+      // Freeze the simulation once the round is over (the result screen holds
+      // the final tableau); the render below keeps drawing the frozen scene.
+      if (!this.matchOver) this._updateHostPhysics(deltaTime, now);
+
       // Render frame
       this._renderFrame();
 
@@ -774,8 +784,41 @@ export class Game {
       this._broadcastState();
     }
 
+    // Round end (demo bot match): time limit or kill target reached.
+    this._checkMatchEnd(now);
+
     // Update stats UI counters
     this._updateHUD();
+  }
+
+  /** Milliseconds left in the round (Infinity when there is no time limit). */
+  matchTimeLeftMs(now = Date.now()) {
+    if (!this.matchDurationMs) return Infinity;
+    return Math.max(0, this.matchDurationMs - (now - (this.matchStartTime || now)));
+  }
+
+  /**
+   * End the round when the timer runs out or someone hits the kill target, then
+   * hand a ranked result table to the host UI. No-op for endless matches.
+   */
+  _checkMatchEnd(now) {
+    if (this.matchOver || (!this.matchDurationMs && !this.killTarget)) return;
+    const timeUp = this.matchDurationMs && this.matchTimeLeftMs(now) <= 0;
+    const reached = this.killTarget && Object.values(this.players).some(p => !p.isDummy && p.kills >= this.killTarget);
+    if (!timeUp && !reached) return;
+
+    this.matchOver = true;
+    const results = Object.values(this.players)
+      .filter(p => !p.isDummy)
+      .map(p => ({
+        id: p.id, name: p.nickname, weapon: p.weapon,
+        kills: p.kills || 0, deaths: p.deaths || 0,
+        isLocal: p.id === this.localPlayerId, isBot: !!p.isBot,
+        color: p.color
+      }))
+      .sort((a, b) => (b.kills - a.kills) || (a.deaths - b.deaths) || (a.isBot - b.isBot));
+    results.forEach((r, i) => { r.rank = i + 1; });
+    if (this.onMatchOver) { try { this.onMatchOver(results); } catch {} }
   }
 
   _performAutomaticAttack(player, weaponConfig, now) {
@@ -4832,6 +4875,29 @@ export class Game {
     // HUD shows total takedowns (real + practice dummies) so practice still feels
     // rewarding; only `local.kills` (real) is ever reported to the server.
     if (killsEl) killsEl.textContent = local.kills + (local.dummyKills || 0);
+
+    // Round timer / objective pill (only when the match has a limit — bot match).
+    const matchInfo = document.getElementById('hudMatchInfo');
+    if (matchInfo) {
+      if (this.matchDurationMs || this.killTarget) {
+        matchInfo.classList.remove('hidden');
+        const leftMs = this.matchTimeLeftMs();
+        const timeEl = document.getElementById('hudMatchTime');
+        if (timeEl && Number.isFinite(leftMs)) {
+          const s = Math.ceil(leftMs / 1000);
+          timeEl.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+          timeEl.classList.toggle('text-red-400', s <= 15);
+        }
+        const objEl = document.getElementById('hudMatchObjective');
+        if (objEl) {
+          const top = Object.values(this.players).filter(p => !p.isDummy)
+            .reduce((m, p) => Math.max(m, p.kills || 0), 0);
+          objEl.textContent = this.killTarget ? `최다킬 ${top}/${this.killTarget}` : `최다킬 ${top}`;
+        }
+      } else {
+        matchInfo.classList.add('hidden');
+      }
+    }
 
     // Minimal HUD (C-4): only the local player's name + HP + kills remain.
     // Survivor count, weapon badge, room code and ping panels were removed.
