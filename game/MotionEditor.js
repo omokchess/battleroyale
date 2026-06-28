@@ -21,6 +21,7 @@
 import { solveStickman, drawStickFromJoints, samplePose, STICK_NEUTRAL, WEAPON_STICK_COLOR } from './Stickman.js';
 import { resolveMotion, weaponSetId, sanitizeMotion, registerMotionSet, MOTION_LIMITS } from './Motion.js';
 import { MOTION_PRESETS } from './MotionPresets.js';
+import { captureMotionFromWebcam } from './PoseCapture.js';
 
 const MAX_KF = 8;                                  // editor keyframe budget
 const HIT_WINDOW = { start: 0.3, end: 0.7 };       // fixed cosmetic impact band (normalized)
@@ -96,6 +97,7 @@ export class MotionEditor {
     $('mePlay')?.addEventListener('click', () => this._togglePlay());
     $('meReset')?.addEventListener('click', () => this._loadTemplate());
     $('meSave')?.addEventListener('click', () => this._save());
+    $('meCapture')?.addEventListener('click', () => this._capture());
     const dur = $('meDuration');
     dur?.addEventListener('input', () => {
       this.motion.duration = clamp(parseFloat(dur.value) || 0.5, MOTION_LIMITS.minDuration, 1.5);
@@ -179,6 +181,46 @@ export class MotionEditor {
     const nm = document.getElementById('meName'); if (nm && !nm.value.trim()) nm.value = preset.name;
     this._setStatus(`프리셋 "${preset.name}" 적용됨. 그대로 저장하거나 관절을 끌어 다듬으세요.`);
     this._renderAll();
+  }
+
+  /**
+   * Webcam pose capture (Phase D AI path). Records a short clip, retargets it to
+   * the stick skeleton, and loads the result as the working motion to tweak/save.
+   * Fully fail-soft: any error (no camera, denied, model down, no pose) just
+   * shows a message and leaves the editor + presets untouched.
+   */
+  async _capture() {
+    const btn = document.getElementById('meCapture');
+    const video = document.getElementById('meVideo');
+    if (this._capturing) return;
+    this._capturing = true;
+    if (btn) { btn.disabled = true; }
+    this._setStatus('카메라 준비 중… 화면 앞에서 전신이 보이게 서서 동작을 취해 주세요.');
+    try {
+      const motion = await captureMotionFromWebcam(video, {
+        durationMs: 1400,
+        onProgress: (p) => this._setStatus(`포즈 캡처 중… ${Math.round(p * 100)}%`),
+      });
+      this.motion = motion;
+      if (this.motion.keyframes.length > MAX_KF) this.motion.keyframes = this.motion.keyframes.slice(0, MAX_KF);
+      for (const e of this.motion.events) if (e.type === 'impact') e.t = clamp(e.t, HIT_WINDOW.start, HIT_WINDOW.end);
+      this.selKf = 0; this.scrubT = 0; this.playing = false;
+      const dur = document.getElementById('meDuration'); if (dur) dur.value = String(this.motion.duration);
+      const dv = document.getElementById('meDurationVal'); if (dv) dv.textContent = this.motion.duration.toFixed(2) + 's';
+      this._setStatus('웹캠 모션을 가져왔습니다! 관절을 끌어 다듬거나 그대로 저장하세요.');
+      this._renderAll();
+    } catch (err) {
+      const msg = {
+        'camera-unavailable': '이 브라우저/기기에서 카메라를 쓸 수 없어요. 에디터와 프리셋으로 계속 만들 수 있습니다.',
+        'camera-denied': '카메라 권한이 거부됐어요. 에디터와 프리셋은 그대로 사용할 수 있습니다.',
+        'model-unavailable': 'AI 모델을 불러오지 못했어요(네트워크?). 에디터와 프리셋으로 계속하세요.',
+        'no-pose-detected': '포즈를 인식하지 못했어요. 전신이 보이게 다시 시도하거나 프리셋을 쓰세요.',
+      }[err?.message] || '웹캠 캡처에 실패했어요. 에디터와 프리셋은 정상 동작합니다.';
+      this._setStatus('⚠ ' + msg);
+    } finally {
+      this._capturing = false;
+      if (btn) btn.disabled = false;
+    }
   }
 
   // --- Pose helpers ----------------------------------------------------------

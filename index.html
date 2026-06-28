@@ -934,6 +934,11 @@
               <div class="text-[10px] text-gray-300 uppercase mb-1">프리셋 (눌러 바로 적용)</div>
               <div id="mePresets" class="flex flex-wrap gap-1.5"></div>
             </div>
+            <div class="flex items-center gap-2">
+              <button id="meCapture" class="bg-[#14100b] hover:bg-gray-800 border border-[#45f3ff] text-[#45f3ff] text-[10px] px-3 py-2 uppercase cursor-pointer active:scale-95 whitespace-nowrap">📷 웹캠으로 캡처</button>
+              <span class="text-[9px] text-gray-500 leading-tight">카메라로 포즈를 따 모션으로 (실패 시 에디터/프리셋은 그대로)</span>
+              <video id="meVideo" class="hidden" width="160" height="120" playsinline muted></video>
+            </div>
             <div>
               <div class="text-[10px] text-gray-300 uppercase mb-1">타임라인 (판정 창 = 초록)</div>
               <canvas id="meTimeline" width="380" height="70" class="w-full bg-[#0d0a06] border border-gray-600 touch-none"></canvas>
