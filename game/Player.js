@@ -132,6 +132,9 @@ export class Player {
     // renderer validates it against its local registry and falls back to the
     // weapon's default set if unknown (Phase B stickman pivot). null = default.
     this.motionSetId = (costume && typeof costume.motionSetId === 'string') ? costume.motionSetId : null;
+    // Stick appearance blob (color/lineW/head/accessory). Held raw + synced;
+    // the renderer sanitizes it. Cosmetic only — never affects collision.
+    this.stickLook = (costume && costume.stick && typeof costume.stick === 'object') ? costume.stick : null;
   }
 
   /** Adopt an equipped-cosmetics set ({weaponskins, killfx, dashtrail, respawnfx, title}). */
@@ -503,6 +506,7 @@ export class Player {
       costumeDecoration: this.costumeDecoration || null,
       costumeEffect: this.costumeEffect || null,
       msid: this.motionSetId || null,   // stickman motion-set loadout id (cosmetic; id only)
+      look: this.stickLook || null,     // stick appearance blob (cosmetic; sanitized at render)
       cos: this.cosmeticsSnapshot()
     };
   }
@@ -552,6 +556,7 @@ export class Player {
     this.costumeDecoration = data.costumeDecoration || null;
     this.costumeEffect = data.costumeEffect || null;
     this.motionSetId = (typeof data.msid === 'string') ? data.msid : null; // validated at render
+    this.stickLook = (data.look && typeof data.look === 'object') ? data.look : null; // sanitized at render
     this.applyCosmeticsSnapshot(data.cos);
 
     // Coordinate smoothing can be applied in game loop,

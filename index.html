@@ -939,6 +939,28 @@
               <span class="text-[9px] text-gray-500 leading-tight">카메라로 포즈를 따 모션으로 (실패 시 에디터/프리셋은 그대로)</span>
               <video id="meVideo" class="hidden" width="160" height="120" playsinline muted></video>
             </div>
+            <div class="border-t border-gray-700 pt-2">
+              <div class="text-[10px] text-gray-300 uppercase mb-1.5">외형 (즉시 적용 · 장착)</div>
+              <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                <label class="flex items-center gap-1.5 text-gray-300">색
+                  <input id="meColor" type="color" value="#7df09a" class="w-7 h-6 bg-transparent border border-gray-600 cursor-pointer" />
+                  <button id="meColorClear" class="text-[9px] text-gray-500 underline cursor-pointer">기본</button>
+                </label>
+                <label class="flex items-center gap-1.5 text-gray-300">두께
+                  <input id="meLineW" type="range" min="2" max="6" step="1" value="3" class="flex-1" />
+                </label>
+                <label class="flex items-center gap-1.5 text-gray-300">머리
+                  <select id="meHead" class="bg-[#14100b] border border-gray-600 text-white px-1 py-0.5 flex-1">
+                    <option value="circle">원</option><option value="square">사각</option><option value="diamond">마름모</option>
+                  </select>
+                </label>
+                <label class="flex items-center gap-1.5 text-gray-300">악세
+                  <select id="meAccessory" class="bg-[#14100b] border border-gray-600 text-white px-1 py-0.5 flex-1">
+                    <option value="none">없음</option><option value="horns">뿔</option><option value="antenna">안테나</option><option value="halo">후광</option><option value="crown">왕관</option>
+                  </select>
+                </label>
+              </div>
+            </div>
             <div>
               <div class="text-[10px] text-gray-300 uppercase mb-1">타임라인 (판정 창 = 초록)</div>
               <canvas id="meTimeline" width="380" height="70" class="w-full bg-[#0d0a06] border border-gray-600 touch-none"></canvas>

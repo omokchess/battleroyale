@@ -214,7 +214,7 @@ export function solveStickman(pose, scale, x, y, facing = 1, opts = {}) {
 
 /** Draw a stick figure from solved screen joints. `aimAngle` only orients the
  *  held weapon. Used by both the game and the editor preview. */
-export function drawStickFromJoints(ctx, sc, headR, { color = '#cdd3da', accent = '#0d0a06', lineW = 3, scale = 14, weapon = 'sword', drawWeapon = true, aimAngle = 0 } = {}) {
+export function drawStickFromJoints(ctx, sc, headR, { color = '#cdd3da', accent = '#0d0a06', lineW = 3, scale = 14, weapon = 'sword', drawWeapon = true, aimAngle = 0, headShape = 'circle', accessory = 'none' } = {}) {
   const lw = Math.max(2, lineW * (scale / 14));
   const limb = (a, b, w, col) => {
     ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
@@ -225,8 +225,7 @@ export function drawStickFromJoints(ctx, sc, headR, { color = '#cdd3da', accent 
   limb(sc.shoulder, sc.elbowF, lw * 0.9, back); limb(sc.elbowF, sc.handF, lw * 0.9, back);
   limb(sc.pelvis, sc.neck, lw * 1.15, color);
   limb(sc.pelvis, sc.kneeN, lw, color); limb(sc.kneeN, sc.footN, lw, color);
-  ctx.fillStyle = color; ctx.strokeStyle = accent; ctx.lineWidth = Math.max(1, lw * 0.5);
-  ctx.beginPath(); ctx.arc(sc.head.x, sc.head.y, headR, 0, TAU); ctx.fill(); ctx.stroke();
+  drawHead(ctx, sc.head, sc.neck, headR, color, accent, Math.max(1, lw * 0.5), headShape, accessory);
   limb(sc.shoulder, sc.elbowN, lw, color); limb(sc.elbowN, sc.handN, lw, color);
   if (drawWeapon) {
     const wcol = WEAPON_STICK_COLOR[weapon] || color;
@@ -234,11 +233,48 @@ export function drawStickFromJoints(ctx, sc, headR, { color = '#cdd3da', accent 
   }
 }
 
+// Head shape + optional accessory (cosmetic appearance, Phase E).
+function drawHead(ctx, head, neck, r, color, accent, lineW, shape, accessory) {
+  ctx.fillStyle = color; ctx.strokeStyle = accent; ctx.lineWidth = lineW;
+  ctx.beginPath();
+  if (shape === 'square') {
+    ctx.rect(head.x - r, head.y - r, r * 2, r * 2);
+  } else if (shape === 'diamond') {
+    ctx.moveTo(head.x, head.y - r * 1.15); ctx.lineTo(head.x + r, head.y);
+    ctx.lineTo(head.x, head.y + r * 1.15); ctx.lineTo(head.x - r, head.y); ctx.closePath();
+  } else {
+    ctx.arc(head.x, head.y, r, 0, TAU);
+  }
+  ctx.fill(); ctx.stroke();
+
+  if (!accessory || accessory === 'none') return;
+  ctx.lineWidth = Math.max(1.5, lineW * 1.3); ctx.lineCap = 'round';
+  if (accessory === 'horns') {
+    ctx.strokeStyle = '#e8d5a3';
+    ctx.beginPath(); ctx.moveTo(head.x - r * 0.7, head.y - r * 0.6); ctx.lineTo(head.x - r * 1.4, head.y - r * 1.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(head.x + r * 0.7, head.y - r * 0.6); ctx.lineTo(head.x + r * 1.4, head.y - r * 1.6); ctx.stroke();
+  } else if (accessory === 'antenna') {
+    ctx.strokeStyle = '#7df09a';
+    ctx.beginPath(); ctx.moveTo(head.x, head.y - r); ctx.lineTo(head.x, head.y - r * 2.1); ctx.stroke();
+    ctx.fillStyle = '#7df09a'; ctx.beginPath(); ctx.arc(head.x, head.y - r * 2.3, r * 0.32, 0, TAU); ctx.fill();
+  } else if (accessory === 'halo') {
+    ctx.strokeStyle = '#ffe08a';
+    ctx.beginPath(); ctx.ellipse(head.x, head.y - r * 1.6, r * 0.95, r * 0.4, 0, 0, TAU); ctx.stroke();
+  } else if (accessory === 'crown') {
+    ctx.fillStyle = '#ffd24a';
+    const cy = head.y - r;
+    ctx.beginPath();
+    ctx.moveTo(head.x - r, cy); ctx.lineTo(head.x - r, cy - r * 0.5); ctx.lineTo(head.x - r * 0.5, cy - r * 0.15);
+    ctx.lineTo(head.x, cy - r * 0.7); ctx.lineTo(head.x + r * 0.5, cy - r * 0.15); ctx.lineTo(head.x + r, cy - r * 0.5);
+    ctx.lineTo(head.x + r, cy); ctx.closePath(); ctx.fill();
+  }
+}
+
 export function drawStickman(opts) {
   const { ctx, x, y, scale, facing = 1, color = '#cdd3da', accent = '#0d0a06',
-    lineW = 3, pose, aimAngle = 0, weapon = 'sword' } = opts;
+    lineW = 3, pose, aimAngle = 0, weapon = 'sword', headShape = 'circle', accessory = 'none' } = opts;
   const { joints, headR } = solveStickman(pose, scale, x, y, facing, { aimAngle });
-  drawStickFromJoints(ctx, joints, headR, { color, accent, lineW, scale, weapon, aimAngle });
+  drawStickFromJoints(ctx, joints, headR, { color, accent, lineW, scale, weapon, aimAngle, headShape, accessory });
 }
 
 // A simple held weapon: a length-scaled bar/blade from the hand along the aim.

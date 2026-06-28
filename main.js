@@ -17,6 +17,7 @@ import { isMobileDevice, isPhoneDevice } from './game/Device.js';
 import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
 import { Sound } from './game/Sound.js';
 import { MotionEditor, loadStoredMotionSets, equippedMotionSetId } from './game/MotionEditor.js';
+import { equippedStickLook } from './game/StickLook.js';
 
 // Dom Elements
 const authScreen = document.getElementById('authScreen');
@@ -1106,6 +1107,7 @@ function localAppearance() {
   return Object.assign({}, accountUI.getEquippedCostume() || {}, {
     cosmetics: accountUI.getEquippedCosmetics(),
     motionSetId: equippedMotionSetId(),   // equipped custom stickman motion (cosmetic, id only)
+    stick: equippedStickLook(),           // stick appearance (color/lineW/head/accessory)
   });
 }
 

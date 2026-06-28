@@ -22,6 +22,7 @@ import { solveStickman, drawStickFromJoints, samplePose, STICK_NEUTRAL, WEAPON_S
 import { resolveMotion, weaponSetId, sanitizeMotion, registerMotionSet, MOTION_LIMITS } from './Motion.js';
 import { MOTION_PRESETS } from './MotionPresets.js';
 import { captureMotionFromWebcam } from './PoseCapture.js';
+import { equippedStickLook, saveStickLook } from './StickLook.js';
 
 const MAX_KF = 8;                                  // editor keyframe budget
 const HIT_WINDOW = { start: 0.3, end: 0.7 };       // fixed cosmetic impact band (normalized)
@@ -76,6 +77,7 @@ export class MotionEditor {
     this.tctx = this.timeline?.getContext('2d');
 
     this.weapon = 'sword';
+    this.look = equippedStickLook();   // stick appearance (live-applied + equipped)
     this.motion = null;          // working { duration, loop:false, keyframes, events }
     this.selKf = 0;
     this.playing = false;
@@ -120,6 +122,17 @@ export class MotionEditor {
         btn.addEventListener('click', () => this._loadPreset(btn.dataset.preset));
       });
     }
+    // Appearance controls (Phase E): live-apply + persist the equipped look.
+    const applyLook = (patch) => {
+      this.look = saveStickLook({ ...this.look, ...patch });
+      this._renderPreview();
+    };
+    $('meColor')?.addEventListener('input', (e) => applyLook({ color: e.target.value }));
+    $('meColorClear')?.addEventListener('click', () => applyLook({ color: null }));
+    $('meLineW')?.addEventListener('input', (e) => applyLook({ lineW: parseInt(e.target.value, 10) }));
+    $('meHead')?.addEventListener('change', (e) => applyLook({ head: e.target.value }));
+    $('meAccessory')?.addEventListener('change', (e) => applyLook({ accessory: e.target.value }));
+
     // Preview canvas: drag joint handles.
     this.canvas?.addEventListener('pointerdown', (e) => this._previewDown(e));
     window.addEventListener('pointermove', (e) => this._pointerMove(e));
@@ -132,6 +145,13 @@ export class MotionEditor {
     if (!this.root) return;
     this.weapon = EDITOR_WEAPONS.includes(weapon) ? weapon : 'sword';
     const wsel = document.getElementById('meWeapon'); if (wsel) wsel.value = this.weapon;
+    // Reflect the equipped look in the appearance controls.
+    this.look = equippedStickLook();
+    const $ = (id) => document.getElementById(id);
+    if ($('meColor')) $('meColor').value = this.look.color || '#7df09a';
+    if ($('meLineW')) $('meLineW').value = String(this.look.lineW);
+    if ($('meHead')) $('meHead').value = this.look.head;
+    if ($('meAccessory')) $('meAccessory').value = this.look.accessory;
     this._loadTemplate();
     this.root.classList.remove('hidden');
   }
@@ -245,8 +265,8 @@ export class MotionEditor {
     const cx = W / 2, cyCenter = H - 30 - scale * 1.28; // body centre so feet sit on the ground line
     const pose = this._displayPose();
     const { joints, headR } = solveStickman(pose, scale, cx, cyCenter, 1, { rawNearArm: true });
-    const color = WEAPON_STICK_COLOR[this.weapon] || '#cdd3da';
-    drawStickFromJoints(ctx, joints, headR, { color, accent: '#0d0a06', lineW: 3, scale, weapon: this.weapon, drawWeapon: true, aimAngle: 0 });
+    const color = this.look.color || WEAPON_STICK_COLOR[this.weapon] || '#cdd3da';
+    drawStickFromJoints(ctx, joints, headR, { color, accent: '#0d0a06', lineW: this.look.lineW, scale, weapon: this.weapon, drawWeapon: true, aimAngle: 0, headShape: this.look.head, accessory: this.look.accessory });
 
     // Joint handles (only when a keyframe is selected & not playing).
     if (!this.playing && this.motion.keyframes[this.selKf]) {

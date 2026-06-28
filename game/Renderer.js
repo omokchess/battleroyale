@@ -7,6 +7,7 @@ import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.
 import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW, WEAPON_SPRITE_TUNE, WEAPON_TUNE_DEFAULT } from './SpriteAtlas.js';
 import { drawStickman, WEAPON_STICK_COLOR } from './Stickman.js';
 import { StickAnimator } from './Motion.js';
+import { sanitizeLook } from './StickLook.js';
 
 // Pixel-detected frame x-ranges of fx/slash2 (SpriteSheetSlash02.png, H=50).
 // The sheet is not a uniform grid; these are the real crescent frames
@@ -536,10 +537,12 @@ export class Renderer {
     // combat stays code-defined. The weapon is drawn in-hand by the stickman in
     // its weapon colour, biased to the (synced) aim so it reads in combat.
     const { pose } = this._stick.sample(p, now);
+    const look = sanitizeLook(p.stickLook);
     drawStickman({
       ctx, x: bodyScr.x, y: bodyScr.y, scale: radius, facing: face,
-      color: bodyColor, accent: '#0d0a06', lineW: p.costumeLineWidth || 3,
+      color: look.color || bodyColor, accent: '#0d0a06', lineW: look.lineW,
       pose, aimAngle: p.angle || 0, weapon: p.weapon,
+      headShape: look.head, accessory: look.accessory,
     });
 
     if (p.burnTimeLeft > 0) this._drawBurnFlames(ctx, bodyScr, radius, z);
