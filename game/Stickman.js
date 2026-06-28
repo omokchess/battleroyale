@@ -182,64 +182,63 @@ function solveSkeleton(pose, scale) {
  *   pose (sampled), aimAngle (world rad, for the weapon arm), weapon (id),
  *   attackBlend (0..1 — how much the near arm follows the swing vs. aim).
  */
-export function drawStickman(opts) {
-  const { ctx, x, y, scale, facing = 1, color = '#cdd3da', accent = '#0d0a06',
-    lineW = 3, pose, aimAngle = 0, weapon = 'sword' } = opts;
-
+/**
+ * Resolve a pose into SCREEN-space joint points anchored at (x, y = body centre),
+ * with the facing flip applied. Shared by the game renderer and the motion editor
+ * so handle hit-testing matches exactly what is drawn.
+ *   opts.rawNearArm = true → keep the authored near-arm pose (editor); otherwise
+ *   the near (weapon) arm is overridden to follow `aimAngle` (in-game readability).
+ * Returns { joints: {name:{x,y}}, headR }.
+ */
+export function solveStickman(pose, scale, x, y, facing = 1, opts = {}) {
   const S = solveSkeleton(pose, scale);
-
-  // Anchor: place the pelvis so the lower foot rests near the body's foot line
-  // (y is the player CENTER; feet are ~scale*1.3 below). Map local→screen with
-  // the facing flip applied to local x.
   const footLocalY = Math.max(S.footN.y, S.footF.y);
   const anchorY = y + scale * 1.28 - footLocalY;          // keep feet planted
   const toScreen = (pt) => ({ x: x + pt.x * facing, y: anchorY + pt.y });
 
-  // The near arm follows the aim so the weapon points at the cursor. In local
-  // space the aim angle must be un-flipped by facing.
-  const localAim = facing >= 0 ? aimAngle : Math.PI - aimAngle;
-  const aimDeg = (localAim / DEG);
-  // Override near arm: shoulder → hand straight toward aim (slightly bent).
-  const sh = S.shoulder;
-  const reach = (SEG.upperArm + SEG.lowerArm) * scale * 0.92;
-  const elbowAim = { x: sh.x + Math.cos(localAim) * SEG.upperArm * scale,
-                     y: sh.y + Math.sin(localAim) * SEG.upperArm * scale };
-  const handAim = { x: sh.x + Math.cos(localAim) * reach, y: sh.y + Math.sin(localAim) * reach };
-  S.elbowN = elbowAim; S.handN = handAim;
+  if (!opts.rawNearArm) {
+    // Near arm follows the aim so the weapon points at the cursor (un-flip by facing).
+    const localAim = facing >= 0 ? (opts.aimAngle || 0) : Math.PI - (opts.aimAngle || 0);
+    const sh = S.shoulder;
+    const reach = (SEG.upperArm + SEG.lowerArm) * scale * 0.92;
+    S.elbowN = { x: sh.x + Math.cos(localAim) * SEG.upperArm * scale, y: sh.y + Math.sin(localAim) * SEG.upperArm * scale };
+    S.handN = { x: sh.x + Math.cos(localAim) * reach, y: sh.y + Math.sin(localAim) * reach };
+  }
 
-  const sc = {
-    pelvis: toScreen(S.pelvis), neck: toScreen(S.neck), shoulder: toScreen(S.shoulder),
-    head: toScreen(S.head), elbowN: toScreen(S.elbowN), handN: toScreen(S.handN),
-    elbowF: toScreen(S.elbowF), handF: toScreen(S.handF),
-    kneeN: toScreen(S.kneeN), footN: toScreen(S.footN),
-    kneeF: toScreen(S.kneeF), footF: toScreen(S.footF),
-  };
+  const joints = {};
+  for (const k of ['pelvis', 'neck', 'shoulder', 'head', 'elbowN', 'handN', 'elbowF', 'handF', 'kneeN', 'footN', 'kneeF', 'footF']) {
+    joints[k] = toScreen(S[k]);
+  }
+  return { joints, headR: S.headR };
+}
 
+/** Draw a stick figure from solved screen joints. `aimAngle` only orients the
+ *  held weapon. Used by both the game and the editor preview. */
+export function drawStickFromJoints(ctx, sc, headR, { color = '#cdd3da', accent = '#0d0a06', lineW = 3, scale = 14, weapon = 'sword', drawWeapon = true, aimAngle = 0 } = {}) {
   const lw = Math.max(2, lineW * (scale / 14));
   const limb = (a, b, w, col) => {
     ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   };
-
-  // Far (back) limbs first, dimmed for depth.
   const back = shade(color, -0.32);
   limb(sc.pelvis, sc.kneeF, lw, back); limb(sc.kneeF, sc.footF, lw, back);
   limb(sc.shoulder, sc.elbowF, lw * 0.9, back); limb(sc.elbowF, sc.handF, lw * 0.9, back);
-
-  // Torso.
   limb(sc.pelvis, sc.neck, lw * 1.15, color);
-
-  // Near limbs.
   limb(sc.pelvis, sc.kneeN, lw, color); limb(sc.kneeN, sc.footN, lw, color);
-
-  // Head.
   ctx.fillStyle = color; ctx.strokeStyle = accent; ctx.lineWidth = Math.max(1, lw * 0.5);
-  ctx.beginPath(); ctx.arc(sc.head.x, sc.head.y, S.headR, 0, TAU); ctx.fill(); ctx.stroke();
-
-  // Weapon arm + held weapon (in weapon colour) over the body.
-  const wcol = WEAPON_STICK_COLOR[weapon] || color;
+  ctx.beginPath(); ctx.arc(sc.head.x, sc.head.y, headR, 0, TAU); ctx.fill(); ctx.stroke();
   limb(sc.shoulder, sc.elbowN, lw, color); limb(sc.elbowN, sc.handN, lw, color);
-  drawHeldWeapon(ctx, sc.handN, aimAngle, scale, weapon, wcol, accent);
+  if (drawWeapon) {
+    const wcol = WEAPON_STICK_COLOR[weapon] || color;
+    drawHeldWeapon(ctx, sc.handN, aimAngle, scale, weapon, wcol, accent);
+  }
+}
+
+export function drawStickman(opts) {
+  const { ctx, x, y, scale, facing = 1, color = '#cdd3da', accent = '#0d0a06',
+    lineW = 3, pose, aimAngle = 0, weapon = 'sword' } = opts;
+  const { joints, headR } = solveStickman(pose, scale, x, y, facing, { aimAngle });
+  drawStickFromJoints(ctx, joints, headR, { color, accent, lineW, scale, weapon, aimAngle });
 }
 
 // A simple held weapon: a length-scaled bar/blade from the hand along the aim.

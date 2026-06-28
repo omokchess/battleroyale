@@ -16,6 +16,7 @@ import * as accountUI from './ui/account-ui.js';
 import { isMobileDevice, isPhoneDevice } from './game/Device.js';
 import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
 import { Sound } from './game/Sound.js';
+import { MotionEditor, loadStoredMotionSets, equippedMotionSetId } from './game/MotionEditor.js';
 
 // Dom Elements
 const authScreen = document.getElementById('authScreen');
@@ -1104,6 +1105,7 @@ function readRoomConfig() {
 function localAppearance() {
   return Object.assign({}, accountUI.getEquippedCostume() || {}, {
     cosmetics: accountUI.getEquippedCosmetics(),
+    motionSetId: equippedMotionSetId(),   // equipped custom stickman motion (cosmetic, id only)
   });
 }
 
@@ -1211,6 +1213,19 @@ function doBotMatch() {
 
 const quickPlayBtn = document.getElementById('quickPlayBtn');
 if (quickPlayBtn) quickPlayBtn.addEventListener('click', doBotMatch);
+
+// --- Stickman motion editor (Phase C) ----------------------------------------
+// Re-register any saved user motion sets so equipped ids resolve, then wire the
+// lobby entry button.
+loadStoredMotionSets();
+let motionEditor = null;
+const motionBtn = document.getElementById('motionBtn');
+if (motionBtn) motionBtn.addEventListener('click', () => {
+  Sound.play('ui');
+  if (!motionEditor) motionEditor = new MotionEditor();
+  const weapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
+  motionEditor.open(weapon);
+});
 
 // --- Onboarding controls card -------------------------------------------------
 function showOnboardCard(objective) {

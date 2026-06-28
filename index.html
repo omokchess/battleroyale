@@ -212,6 +212,7 @@
               </span>
               <button id="rankBtn" class="bg-[#2c2016] border border-[#c9a227] text-[#c9a227] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">랭킹</button>
               <button id="shopBtn" class="bg-[#2c2016] border border-[#e8d5a3] text-[#e8d5a3] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">상점</button>
+              <button id="motionBtn" class="bg-[#2c2016] border border-[#7df09a] text-[#7df09a] font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">🎬 모션</button>
               <button id="logoutBtn" class="bg-[#2c2016] border border-gray-600 text-gray-400 font-mono text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95 transition-all hover:bg-gray-700">로그아웃</button>
             </div>
           </div>
@@ -909,6 +910,48 @@
           </div>
         </div>
         <div id="shopBody" class="overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-3 pr-1"></div>
+      </div>
+    </div>
+
+    <!-- MOTION EDITOR (Stickman Phase C) -->
+    <div id="motionEditor" class="hidden absolute inset-0 z-[75] flex items-center justify-center bg-black/75 p-3 font-mono">
+      <div class="w-full max-w-2xl bg-[#2c2016] border-4 border-[#7df09a] p-4 max-h-[94vh] overflow-y-auto shadow-[0_0_24px_rgba(125,240,154,0.3)]">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-display text-xl text-[#7df09a] font-bold uppercase tracking-widest">🎬 모션 에디터</h2>
+          <button id="meClose" class="text-gray-400 hover:text-white font-mono text-lg leading-none px-2 cursor-pointer">✕</button>
+        </div>
+        <p class="text-[10px] text-gray-400 mb-3 leading-snug">관절(초록 점)을 끌어 포즈를 만들고, 타임라인에 키프레임을 추가하세요. 빨간 <b class="text-[#ff5a5a]">임팩트</b> 마커는 <b class="text-[#7df09a]">판정 창</b> 안에서만 움직입니다 — 모션은 겉모습일 뿐, 사거리·데미지·쿨타임은 바뀌지 않습니다.</p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <div class="flex flex-col items-center">
+            <canvas id="meCanvas" width="300" height="340" class="bg-[#14100b] border-2 border-gray-600 touch-none"></canvas>
+          </div>
+          <div class="flex-1 flex flex-col gap-3 min-w-0">
+            <div class="flex items-center gap-2">
+              <label class="text-[11px] text-gray-300 uppercase">무기</label>
+              <select id="meWeapon" class="bg-[#14100b] border border-gray-600 text-white text-xs px-2 py-1 flex-1"></select>
+            </div>
+            <div>
+              <div class="text-[10px] text-gray-300 uppercase mb-1">타임라인 (판정 창 = 초록)</div>
+              <canvas id="meTimeline" width="380" height="70" class="w-full bg-[#0d0a06] border border-gray-600 touch-none"></canvas>
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="text-[11px] text-gray-300 uppercase">길이</label>
+              <input id="meDuration" type="range" min="0.2" max="1.5" step="0.02" value="0.42" class="flex-1" />
+              <span id="meDurationVal" class="text-[11px] text-[#e8d5a3] w-12 text-right">0.42s</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button id="meAddKf" class="bg-[#14100b] hover:bg-gray-800 border border-[#c9a227] text-[#c9a227] text-[10px] py-2 uppercase cursor-pointer active:scale-95">＋키프레임</button>
+              <button id="meDelKf" class="bg-[#14100b] hover:bg-gray-800 border border-red-500 text-red-300 text-[10px] py-2 uppercase cursor-pointer active:scale-95">－키프레임</button>
+              <button id="mePlay" class="bg-[#14100b] hover:bg-gray-800 border border-[#45f3ff] text-[#45f3ff] text-[10px] py-2 uppercase cursor-pointer active:scale-95">▶ 재생</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="meName" type="text" maxlength="24" placeholder="모션 이름" class="flex-1 min-w-0 bg-[#14100b] border border-gray-600 text-white text-xs px-2 py-1.5" />
+              <button id="meReset" class="bg-[#14100b] hover:bg-gray-800 border border-gray-500 text-gray-300 text-[10px] px-3 py-1.5 uppercase cursor-pointer active:scale-95">초기화</button>
+            </div>
+            <button id="meSave" class="w-full bg-gradient-to-r from-[#3aa856] to-[#1c6b33] hover:from-[#4cc96b] hover:to-[#175a2a] border-2 border-[#7df09a] text-white text-xs px-4 py-2.5 uppercase tracking-wider cursor-pointer font-extrabold active:scale-95 transition-transform">저장 + 장착</button>
+            <div id="meStatus" class="text-[10px] text-gray-400 leading-snug min-h-[28px]"></div>
+          </div>
+        </div>
       </div>
     </div>
 
