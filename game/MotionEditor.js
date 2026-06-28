@@ -20,6 +20,7 @@
 
 import { solveStickman, drawStickFromJoints, samplePose, STICK_NEUTRAL, WEAPON_STICK_COLOR } from './Stickman.js';
 import { resolveMotion, weaponSetId, sanitizeMotion, registerMotionSet, MOTION_LIMITS } from './Motion.js';
+import { MOTION_PRESETS } from './MotionPresets.js';
 
 const MAX_KF = 8;                                  // editor keyframe budget
 const HIT_WINDOW = { start: 0.3, end: 0.7 };       // fixed cosmetic impact band (normalized)
@@ -106,6 +107,17 @@ export class MotionEditor {
       wsel.innerHTML = EDITOR_WEAPONS.map(w => `<option value="${w}">${w}</option>`).join('');
       wsel.addEventListener('change', () => { this.weapon = wsel.value; this._loadTemplate(); });
     }
+    // Preset library (Phase D, no-ML path): click a preset to retarget it onto
+    // the current stick instantly; the user can then tweak + save as usual.
+    const presets = $('mePresets');
+    if (presets) {
+      presets.innerHTML = MOTION_PRESETS.map(p =>
+        `<button data-preset="${p.id}" class="me-preset bg-[#14100b] hover:bg-gray-800 border border-[#7df09a] text-[#7df09a] text-[10px] px-2 py-1 cursor-pointer active:scale-95">${p.name}</button>`
+      ).join('');
+      presets.querySelectorAll('.me-preset').forEach(btn => {
+        btn.addEventListener('click', () => this._loadPreset(btn.dataset.preset));
+      });
+    }
     // Preview canvas: drag joint handles.
     this.canvas?.addEventListener('pointerdown', (e) => this._previewDown(e));
     window.addEventListener('pointermove', (e) => this._pointerMove(e));
@@ -144,6 +156,28 @@ export class MotionEditor {
     if (dur) { dur.value = String(this.motion.duration); }
     const dv = document.getElementById('meDurationVal'); if (dv) dv.textContent = this.motion.duration.toFixed(2) + 's';
     this._setStatus('무기 기본 스윙을 불러왔습니다. 관절을 끌어 포즈를 만들고 키프레임을 추가하세요.');
+    this._renderAll();
+  }
+
+  /** Retarget a library preset onto the current stick (Phase D no-ML path). The
+   *  preset is sanitized + its impact re-clamped into the window, exactly like
+   *  any other motion, then becomes the working motion to tweak or save. */
+  _loadPreset(id) {
+    const preset = MOTION_PRESETS.find(p => p.id === id);
+    if (!preset) return;
+    this.motion = sanitizeMotion(preset.motion);
+    if (this.motion.keyframes.length > MAX_KF) this.motion.keyframes = this.motion.keyframes.slice(0, MAX_KF);
+    if (!this.motion.events.some(e => e.type === 'impact')) {
+      this.motion.events.push({ t: (HIT_WINDOW.start + HIT_WINDOW.end) / 2, type: 'impact' });
+    }
+    for (const e of this.motion.events) if (e.type === 'impact') e.t = clamp(e.t, HIT_WINDOW.start, HIT_WINDOW.end);
+    this.selKf = 0;
+    this.scrubT = this.motion.keyframes[0]?.t || 0;
+    this.playing = false;
+    const dur = document.getElementById('meDuration'); if (dur) dur.value = String(this.motion.duration);
+    const dv = document.getElementById('meDurationVal'); if (dv) dv.textContent = this.motion.duration.toFixed(2) + 's';
+    const nm = document.getElementById('meName'); if (nm && !nm.value.trim()) nm.value = preset.name;
+    this._setStatus(`프리셋 "${preset.name}" 적용됨. 그대로 저장하거나 관절을 끌어 다듬으세요.`);
     this._renderAll();
   }
 
