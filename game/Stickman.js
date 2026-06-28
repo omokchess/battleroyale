@@ -42,6 +42,7 @@ const NEUTRAL = {
   armFarU: 108, armFarL: 95,    // far arm hangs slightly back
   legNearU: 84, legNearL: 90,
   legFarU: 96, legFarL: 92,
+  weapon: 75,      // weapon angle from the hand (≈ continues the neutral forearm)
 };
 
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -190,11 +191,29 @@ function solveSkeleton(pose, scale) {
  *   the near (weapon) arm is overridden to follow `aimAngle` (in-game readability).
  * Returns { joints: {name:{x,y}}, headR }.
  */
+// Per-weapon held length (× scale). Exported so the editor can place the weapon
+// handle at the real tip.
+export function weaponReach(weapon, scale) {
+  const m = {
+    spear: 2.6, greatsword: 2.2, scythe: 2.2, rapier: 2.0, katana: 1.9, sword: 1.6,
+    hammer: 1.7, axe: 1.5, dagger: 1.0, gauntlet: 0.7, harpoon: 2.3,
+    bow: 1.2, sniper: 2.0, pistols: 0.9, chakram: 0.9, magicstaff: 2.0,
+    guardian: 1.5, minebag: 0.8, flamethrower: 1.5,
+  }[weapon] ?? 1.5;
+  return m * scale;
+}
+
+const segAngle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) / DEG;
+
 export function solveStickman(pose, scale, x, y, facing = 1, opts = {}) {
   const S = solveSkeleton(pose, scale);
   const footLocalY = Math.max(S.footN.y, S.footF.y);
   const anchorY = y + scale * 1.28 - footLocalY;          // keep feet planted
   const toScreen = (pt) => ({ x: x + pt.x * facing, y: anchorY + pt.y });
+
+  // Authored forearm direction (local) BEFORE any aim override — used to keep the
+  // weapon's authored angle relative to the arm when the arm tracks the aim.
+  const authForeDeg = segAngle(S.elbowN, S.handN);
 
   if (!opts.rawNearArm) {
     // Near arm follows the aim so the weapon points at the cursor (un-flip by facing).
@@ -205,8 +224,22 @@ export function solveStickman(pose, scale, x, y, facing = 1, opts = {}) {
     S.handN = { x: sh.x + Math.cos(localAim) * reach, y: sh.y + Math.sin(localAim) * reach };
   }
 
+  // Weapon segment from the hand. The authored `pose.weapon` is an ABSOLUTE local
+  // angle; in-game we preserve its OFFSET from the (authored) forearm so the weapon
+  // still tracks the aim when unedited (offset 0 → points along the aim).
+  const wAuthored = (pose.weapon ?? NEUTRAL.weapon);
+  const wLen = weaponReach(opts.weapon, scale);
+  let wDeg;
+  if (opts.rawNearArm) {
+    wDeg = wAuthored;
+  } else {
+    const curForeDeg = segAngle(S.elbowN, S.handN);
+    wDeg = curForeDeg + (wAuthored - authForeDeg);
+  }
+  S.weaponTip = { x: S.handN.x + Math.cos(wDeg * DEG) * wLen, y: S.handN.y + Math.sin(wDeg * DEG) * wLen };
+
   const joints = {};
-  for (const k of ['pelvis', 'neck', 'shoulder', 'head', 'elbowN', 'handN', 'elbowF', 'handF', 'kneeN', 'footN', 'kneeF', 'footF']) {
+  for (const k of ['pelvis', 'neck', 'shoulder', 'head', 'elbowN', 'handN', 'elbowF', 'handF', 'kneeN', 'footN', 'kneeF', 'footF', 'weaponTip']) {
     joints[k] = toScreen(S[k]);
   }
   return { joints, headR: S.headR };
@@ -227,9 +260,9 @@ export function drawStickFromJoints(ctx, sc, headR, { color = '#cdd3da', accent 
   limb(sc.pelvis, sc.kneeN, lw, color); limb(sc.kneeN, sc.footN, lw, color);
   drawHead(ctx, sc.head, sc.neck, headR, color, accent, Math.max(1, lw * 0.5), headShape, accessory);
   limb(sc.shoulder, sc.elbowN, lw, color); limb(sc.elbowN, sc.handN, lw, color);
-  if (drawWeapon) {
+  if (drawWeapon && sc.weaponTip) {
     const wcol = WEAPON_STICK_COLOR[weapon] || color;
-    drawHeldWeapon(ctx, sc.handN, aimAngle, scale, weapon, wcol, accent);
+    drawHeldWeapon(ctx, sc.handN, sc.weaponTip, scale, weapon, wcol);
   }
 }
 
@@ -273,19 +306,12 @@ function drawHead(ctx, head, neck, r, color, accent, lineW, shape, accessory) {
 export function drawStickman(opts) {
   const { ctx, x, y, scale, facing = 1, color = '#cdd3da', accent = '#0d0a06',
     lineW = 3, pose, aimAngle = 0, weapon = 'sword', headShape = 'circle', accessory = 'none' } = opts;
-  const { joints, headR } = solveStickman(pose, scale, x, y, facing, { aimAngle });
+  const { joints, headR } = solveStickman(pose, scale, x, y, facing, { aimAngle, weapon });
   drawStickFromJoints(ctx, joints, headR, { color, accent, lineW, scale, weapon, aimAngle, headShape, accessory });
 }
 
-// A simple held weapon: a length-scaled bar/blade from the hand along the aim.
-function drawHeldWeapon(ctx, hand, aimAngle, scale, weapon, color, accent) {
-  const len = ({
-    spear: 2.6, greatsword: 2.2, scythe: 2.2, rapier: 2.0, katana: 1.9, sword: 1.6,
-    hammer: 1.7, axe: 1.5, dagger: 1.0, gauntlet: 0.7, harpoon: 2.3,
-    bow: 1.2, sniper: 2.0, pistols: 0.9, chakram: 0.9, magicstaff: 2.0,
-    guardian: 1.5, minebag: 0.8, flamethrower: 1.5,
-  }[weapon] ?? 1.5) * scale;
-  const tip = { x: hand.x + Math.cos(aimAngle) * len, y: hand.y + Math.sin(aimAngle) * len };
+// A held weapon: a bar/blade from the hand to the (already-solved) tip.
+function drawHeldWeapon(ctx, hand, tip, scale, weapon, color) {
   ctx.strokeStyle = color;
   ctx.lineWidth = Math.max(2, (weapon === 'hammer' || weapon === 'greatsword' ? 4 : 2.4) * (scale / 14));
   ctx.lineCap = 'round';

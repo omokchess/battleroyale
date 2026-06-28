@@ -44,6 +44,7 @@ const HANDLES = [
   { name: 'footN',  joint: 'legNearL',  parent: 'kneeN' },
   { name: 'kneeF',  joint: 'legFarU',   parent: 'pelvis' },
   { name: 'footF',  joint: 'legFarL',   parent: 'kneeF' },
+  { name: 'weaponTip', joint: 'weapon', parent: 'handN' },   // rotate the held weapon
 ];
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -264,7 +265,7 @@ export class MotionEditor {
     const scale = 46;
     const cx = W / 2, cyCenter = H - 30 - scale * 1.28; // body centre so feet sit on the ground line
     const pose = this._displayPose();
-    const { joints, headR } = solveStickman(pose, scale, cx, cyCenter, 1, { rawNearArm: true });
+    const { joints, headR } = solveStickman(pose, scale, cx, cyCenter, 1, { rawNearArm: true, weapon: this.weapon });
     const color = this.look.color || WEAPON_STICK_COLOR[this.weapon] || '#cdd3da';
     drawStickFromJoints(ctx, joints, headR, { color, accent: '#0d0a06', lineW: this.look.lineW, scale, weapon: this.weapon, drawWeapon: true, aimAngle: 0, headShape: this.look.head, accessory: this.look.accessory });
 
@@ -272,8 +273,9 @@ export class MotionEditor {
     if (!this.playing && this.motion.keyframes[this.selKf]) {
       for (const h of HANDLES) {
         const p = joints[h.name]; if (!p) continue;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = this.dragHandle === h.name ? '#ffd24a' : 'rgba(125,240,154,0.85)';
+        const isWeapon = h.name === 'weaponTip';
+        ctx.beginPath(); ctx.arc(p.x, p.y, isWeapon ? 7 : 6, 0, Math.PI * 2);
+        ctx.fillStyle = this.dragHandle === h.name ? '#ffd24a' : (isWeapon ? 'rgba(255,160,80,0.9)' : 'rgba(125,240,154,0.85)');
         ctx.fill(); ctx.strokeStyle = '#0d0a06'; ctx.lineWidth = 1.5; ctx.stroke();
       }
     }
