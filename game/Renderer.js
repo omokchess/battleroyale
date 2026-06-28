@@ -5,6 +5,7 @@
 
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
 import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW, WEAPON_SPRITE_TUNE, WEAPON_TUNE_DEFAULT } from './SpriteAtlas.js';
+import { drawStickman, StickAnimator, WEAPON_STICK_COLOR } from './Stickman.js';
 
 // Pixel-detected frame x-ranges of fx/slash2 (SpriteSheetSlash02.png, H=50).
 // The sheet is not a uniform grid; these are the real crescent frames
@@ -172,6 +173,7 @@ export class Renderer {
     this._charTintCache = {};   // tinted body frames keyed by skin+color
     this._charPrev = {};        // last positions, to detect movement for the walk cycle
     this._charAnim = {};        // per-player walk frame state
+    this._stick = new StickAnimator();   // procedural stickman animation state (per player)
   }
 
   /**
@@ -496,15 +498,6 @@ export class Renderer {
       y: pos.y + motion.bodyY
     };
     const radius = 14 * z;
-    const weaponTune = WEAPON_SPRITE_TUNE[p.weapon] || WEAPON_TUNE_DEFAULT;
-    const drawWeaponFrame = () => {
-      ctx.save();
-      ctx.translate(bodyScr.x, bodyScr.y);
-      ctx.scale(z, z);
-      ctx.translate(-bodyScr.x, -bodyScr.y);
-      this._drawPlayerWeapon(ctx, bodyScr, p, motion);
-      ctx.restore();
-    };
 
     if (p.dashTrailColor && p.iframeTimeLeft > 0) {
       const t = Math.min(1, p.iframeTimeLeft / 0.2);
@@ -536,32 +529,20 @@ export class Renderer {
     const bodyColor = p.color || '#cdd3da';
     const accent = p.accentColor || '#ffffff';
     this._drawCostumeEffect(ctx, bodyScr, p, radius, now);
-    if (!weaponTune.drawOverBody) drawWeaponFrame();
 
-    const drewSprite = this._drawCharacterSprite(ctx, bodyScr, p, radius, isLocal, { faceByAim: true });
-    if (!drewSprite) {
-      const left = bodyScr.x - bw / 2, top = bodyScr.y - bh / 2;
-      roundRect(ctx, left, top + bh * 0.28, bw, bh * 0.72, Math.min(6, bw * 0.3));
-      ctx.fillStyle = bodyColor; ctx.fill();
-      ctx.strokeStyle = '#0d0a06'; ctx.lineWidth = Math.max(1, z); ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(bodyScr.x, top + bh * 0.2, bh * 0.2, 0, Math.PI * 2);
-      ctx.fillStyle = bodyColor; ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#0d0a06';
-      ctx.beginPath();
-      ctx.arc(bodyScr.x + face * bh * 0.09, top + bh * 0.19, Math.max(1.2, bh * 0.04), 0, Math.PI * 2);
-      ctx.fill();
-      const ax = bodyScr.x, ay = top + bh * 0.45;
-      const armLen = bw * 0.9;
-      ctx.strokeStyle = accent; ctx.lineWidth = Math.max(2, 3 * z); ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(ax + Math.cos(p.angle) * armLen, ay + Math.sin(p.angle) * armLen);
-      ctx.stroke();
-    }
+    // Procedural stick-figure body (Phase A stickman pivot): replaces the sprite
+    // sheet + in-hand weapon sprite. The motion only chooses joint angles — all
+    // combat stays code-defined. The weapon is drawn in-hand by the stickman in
+    // its weapon colour, biased to the (synced) aim so it reads in combat.
+    const { pose } = this._stick.sample(p, now);
+    drawStickman({
+      ctx, x: bodyScr.x, y: bodyScr.y, scale: radius, facing: face,
+      color: bodyColor, accent: '#0d0a06', lineW: p.costumeLineWidth || 3,
+      pose, aimAngle: p.angle || 0, weapon: p.weapon,
+    });
+
     if (p.burnTimeLeft > 0) this._drawBurnFlames(ctx, bodyScr, radius, z);
     if (p.pendingIcicles > 0) this._drawLoadedIcicles(ctx, bodyScr, p.pendingIcicles, radius, z);
-    if (weaponTune.drawOverBody) drawWeaponFrame();
     this._drawCostumeDecoration(ctx, bodyScr, p, radius, now);
 
     ctx.globalAlpha = 1;

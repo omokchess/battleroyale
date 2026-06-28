@@ -1,0 +1,340 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Procedural stick-figure character (Phase A of the stickman pivot). Replaces the
+ * sprite-sheet body with a skeleton drawn from motion data, so users / AI can
+ * later author motions (Phases C/D) as pure cosmetics. NOTHING here touches
+ * gameplay: hitboxes, range, damage, cooldowns and movement physics stay defined
+ * in Weapons.js / Game.js. A motion only chooses joint angles for a frame; the
+ * engine time-aligns its "impact" marker to the weapon's fixed hit window so the
+ * swing reads as connected.
+ *
+ * Skeleton (side view, faces +x; flipped by `facing`). 10 posable joints — within
+ * the editor budget (Phase C): spine lean, head, near/far upper+lower arm, and
+ * near/far upper+lower leg. The "near" arm is the weapon arm and is biased toward
+ * the aim so combat stays readable regardless of the cosmetic motion.
+ *
+ * Motion schema (informal in A; formalized as JSON in Phase B):
+ *   { duration, loop, keyframes:[{ t, pose:{ joint:deg } }], events:[{ t, type }] }
+ * Angles are ABSOLUTE degrees in local space measured from +x, clockwise positive
+ * (screen y is down), so -90 points straight up. Missing joints inherit NEUTRAL.
+ */
+
+const DEG = Math.PI / 180;
+const TAU = Math.PI * 2;
+
+// Segment lengths as multiples of `scale` (scale ≈ body radius in px).
+const SEG = {
+  spine: 1.15,     // pelvis → neck
+  neck: 0.30,      // neck → head base
+  headR: 0.42,     // head radius
+  upperArm: 0.62, lowerArm: 0.56,
+  upperLeg: 0.72, lowerLeg: 0.70,
+  shoulderDrop: 0.16, // shoulders sit slightly below the neck
+};
+
+// Neutral standing pose (absolute degrees). Joints not in a keyframe fall back here.
+const NEUTRAL = {
+  spine: -90,      // torso points up
+  head: -90,
+  armNearU: 60, armNearL: 75,   // near (weapon) arm hangs slightly forward
+  armFarU: 108, armFarL: 95,    // far arm hangs slightly back
+  legNearU: 84, legNearL: 90,
+  legFarU: 96, legFarL: 92,
+};
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerpAngle = (a, b, t) => a + angWrap(b - a) * t;
+function angWrap(d) { while (d > 180) d -= 360; while (d < -180) d += 360; return d; }
+
+/**
+ * Built-in developer motions (Phase A). Locomotion (idle/run/brake/jump/fall) is
+ * weapon-agnostic; the attack motion is a generic swing whose `impact` event the
+ * engine aligns to the real hit. Weapon-specific motion sets arrive in Phase B.
+ */
+export const STICK_MOTIONS = {
+  idle: {
+    duration: 2.2, loop: true,
+    keyframes: [
+      { t: 0,   pose: { spine: -90, armNearU: 62, armNearL: 78, armFarU: 110, armFarL: 96, legNearU: 86, legFarU: 94 } },
+      { t: 0.5, pose: { spine: -88, armNearU: 64, armNearL: 80, armFarU: 112, armFarL: 98 } },
+      { t: 1,   pose: { spine: -90, armNearU: 62, armNearL: 78, armFarU: 110, armFarL: 96, legNearU: 86, legFarU: 94 } },
+    ],
+    events: [],
+  },
+  run: {
+    duration: 0.5, loop: true,
+    keyframes: [
+      { t: 0,    pose: { spine: -82, armNearU: 40, armNearL: 70, armFarU: 130, armFarL: 110, legNearU: 55, legNearL: 80, legFarU: 120, legFarL: 70 } },
+      { t: 0.25, pose: { spine: -84, armNearU: 75, armNearL: 90, armFarU: 95,  armFarL: 100, legNearU: 90, legNearL: 95, legFarU: 90,  legFarL: 120 } },
+      { t: 0.5,  pose: { spine: -82, armNearU: 130, armNearL: 110, armFarU: 40, armFarL: 70, legNearU: 120, legNearL: 70, legFarU: 55, legFarL: 80 } },
+      { t: 0.75, pose: { spine: -84, armNearU: 95, armNearL: 100, armFarU: 75, armFarL: 90, legNearU: 90, legNearL: 120, legFarU: 90, legFarL: 95 } },
+      { t: 1,    pose: { spine: -82, armNearU: 40, armNearL: 70, armFarU: 130, armFarL: 110, legNearU: 55, legNearL: 80, legFarU: 120, legFarL: 70 } },
+    ],
+    events: [],
+  },
+  brake: {
+    duration: 0.3, loop: false,
+    keyframes: [
+      { t: 0, pose: { spine: -98, legNearU: 70, legNearL: 100, legFarU: 110, legFarL: 80, armNearU: 50, armFarU: 120 } },
+      { t: 1, pose: { spine: -94, legNearU: 78, legNearL: 95, legFarU: 102, legFarL: 88 } },
+    ],
+    events: [],
+  },
+  jump: {
+    duration: 0.4, loop: false,
+    keyframes: [
+      { t: 0, pose: { spine: -90, armNearU: 30, armFarU: 40, legNearU: 70, legNearL: 60, legFarU: 78, legFarL: 64 } },
+      { t: 1, pose: { spine: -92, armNearU: 20, armFarU: 30, legNearU: 64, legNearL: 70, legFarU: 70, legFarL: 76 } },
+    ],
+    events: [],
+  },
+  fall: {
+    duration: 0.5, loop: true,
+    keyframes: [
+      { t: 0, pose: { spine: -88, armNearU: 35, armFarU: 50, legNearU: 80, legNearL: 110, legFarU: 100, legFarL: 120 } },
+      { t: 0.5, pose: { spine: -90, armNearU: 30, armFarU: 45, legNearU: 84, legNearL: 115, legFarU: 96, legFarL: 124 } },
+      { t: 1, pose: { spine: -88, armNearU: 35, armFarU: 50, legNearU: 80, legNearL: 110, legFarU: 100, legFarL: 120 } },
+    ],
+    events: [],
+  },
+  // Generic attack swing: windup (back) → strike (through aim) → recover. The
+  // near arm is overridden to sweep around the aim direction (see drawStickman),
+  // so this mainly animates the torso/legs/off-arm for weight. impact at t≈0.45.
+  attack: {
+    duration: 0.42, loop: false,
+    keyframes: [
+      { t: 0,    pose: { spine: -86, armFarU: 120, legNearU: 80, legFarU: 100 } },
+      { t: 0.3,  pose: { spine: -78, armFarU: 70 } },
+      { t: 0.45, pose: { spine: -98, armFarU: 60, legNearU: 70, legFarU: 110 } },
+      { t: 1,    pose: { spine: -88, armFarU: 110, legNearU: 84, legFarU: 96 } },
+    ],
+    events: [{ t: 0.45, type: 'impact' }],
+  },
+};
+
+// Weapon → stick colour (Phase A). Phase B turns this into the formal
+// weapon = { color, motionSet } table. Falls back to the player colour.
+export const WEAPON_STICK_COLOR = {
+  sword: '#d8dee9', axe: '#c98b53', spear: '#9fb4c9', bow: '#8fcf86',
+  gauntlet: '#e0a85a', greatsword: '#b0b6c2', scythe: '#9a7bd0', dagger: '#cdd3da',
+  rapier: '#a9d3e8', hammer: '#c2773f', katana: '#e08a8a', magicstaff: '#7fd0c4',
+  sniper: '#6f7b8c', chakram: '#e6c14a', pistols: '#caa15a', guardian: '#d0c089',
+  harpoon: '#7fb0c9', minebag: '#b58b5a', flamethrower: '#e07a3a',
+};
+
+// Pose at a normalised phase [0,1) of a motion, interpolated between keyframes.
+function samplePose(motion, phase) {
+  const kfs = motion.keyframes;
+  const p = Math.max(0, Math.min(0.99999, phase));
+  let a = kfs[0], b = kfs[kfs.length - 1];
+  for (let i = 0; i < kfs.length - 1; i++) {
+    if (p >= kfs[i].t && p <= kfs[i + 1].t) { a = kfs[i]; b = kfs[i + 1]; break; }
+  }
+  const span = Math.max(1e-4, b.t - a.t);
+  const lt = Math.max(0, Math.min(1, (p - a.t) / span));
+  const pose = {};
+  for (const j in NEUTRAL) {
+    const av = (a.pose[j] !== undefined) ? a.pose[j] : NEUTRAL[j];
+    const bv = (b.pose[j] !== undefined) ? b.pose[j] : NEUTRAL[j];
+    pose[j] = lerpAngle(av, bv, lt);
+  }
+  return pose;
+}
+
+/**
+ * Resolve the FK chain into local joint points (facing +x, pelvis at origin),
+ * in px (already multiplied by `scale`).
+ */
+function solveSkeleton(pose, scale) {
+  const dir = (deg) => ({ x: Math.cos(deg * DEG), y: Math.sin(deg * DEG) });
+  const add = (p, d, len) => ({ x: p.x + d.x * len, y: p.y + d.y * len });
+
+  const pelvis = { x: 0, y: 0 };
+  const sp = dir(pose.spine);
+  const neck = add(pelvis, sp, SEG.spine * scale);
+  const shoulder = add(neck, dir(90), SEG.shoulderDrop * scale); // a touch below neck
+  const headBase = add(neck, dir(pose.head), SEG.neck * scale);
+  const head = add(headBase, dir(pose.head), SEG.headR * scale * 0.5);
+
+  const elbowN = add(shoulder, dir(pose.armNearU), SEG.upperArm * scale);
+  const handN = add(elbowN, dir(pose.armNearL), SEG.lowerArm * scale);
+  const elbowF = add(shoulder, dir(pose.armFarU), SEG.upperArm * scale);
+  const handF = add(elbowF, dir(pose.armFarL), SEG.lowerArm * scale);
+
+  const kneeN = add(pelvis, dir(pose.legNearU), SEG.upperLeg * scale);
+  const footN = add(kneeN, dir(pose.legNearL), SEG.lowerLeg * scale);
+  const kneeF = add(pelvis, dir(pose.legFarU), SEG.upperLeg * scale);
+  const footF = add(kneeF, dir(pose.legFarL), SEG.lowerLeg * scale);
+
+  return { pelvis, neck, shoulder, headBase, head, headR: SEG.headR * scale,
+    elbowN, handN, elbowF, handF, kneeN, footN, kneeF, footF };
+}
+
+/**
+ * Draw a stick character. `opts`:
+ *   ctx, x, y (anchor = player CENTER in screen px), scale (≈ radius px),
+ *   facing (+1/-1), color (stick colour), accent, lineW,
+ *   pose (sampled), aimAngle (world rad, for the weapon arm), weapon (id),
+ *   attackBlend (0..1 — how much the near arm follows the swing vs. aim).
+ */
+export function drawStickman(opts) {
+  const { ctx, x, y, scale, facing = 1, color = '#cdd3da', accent = '#0d0a06',
+    lineW = 3, pose, aimAngle = 0, weapon = 'sword' } = opts;
+
+  const S = solveSkeleton(pose, scale);
+
+  // Anchor: place the pelvis so the lower foot rests near the body's foot line
+  // (y is the player CENTER; feet are ~scale*1.3 below). Map local→screen with
+  // the facing flip applied to local x.
+  const footLocalY = Math.max(S.footN.y, S.footF.y);
+  const anchorY = y + scale * 1.28 - footLocalY;          // keep feet planted
+  const toScreen = (pt) => ({ x: x + pt.x * facing, y: anchorY + pt.y });
+
+  // The near arm follows the aim so the weapon points at the cursor. In local
+  // space the aim angle must be un-flipped by facing.
+  const localAim = facing >= 0 ? aimAngle : Math.PI - aimAngle;
+  const aimDeg = (localAim / DEG);
+  // Override near arm: shoulder → hand straight toward aim (slightly bent).
+  const sh = S.shoulder;
+  const reach = (SEG.upperArm + SEG.lowerArm) * scale * 0.92;
+  const elbowAim = { x: sh.x + Math.cos(localAim) * SEG.upperArm * scale,
+                     y: sh.y + Math.sin(localAim) * SEG.upperArm * scale };
+  const handAim = { x: sh.x + Math.cos(localAim) * reach, y: sh.y + Math.sin(localAim) * reach };
+  S.elbowN = elbowAim; S.handN = handAim;
+
+  const sc = {
+    pelvis: toScreen(S.pelvis), neck: toScreen(S.neck), shoulder: toScreen(S.shoulder),
+    head: toScreen(S.head), elbowN: toScreen(S.elbowN), handN: toScreen(S.handN),
+    elbowF: toScreen(S.elbowF), handF: toScreen(S.handF),
+    kneeN: toScreen(S.kneeN), footN: toScreen(S.footN),
+    kneeF: toScreen(S.kneeF), footF: toScreen(S.footF),
+  };
+
+  const lw = Math.max(2, lineW * (scale / 14));
+  const limb = (a, b, w, col) => {
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  };
+
+  // Far (back) limbs first, dimmed for depth.
+  const back = shade(color, -0.32);
+  limb(sc.pelvis, sc.kneeF, lw, back); limb(sc.kneeF, sc.footF, lw, back);
+  limb(sc.shoulder, sc.elbowF, lw * 0.9, back); limb(sc.elbowF, sc.handF, lw * 0.9, back);
+
+  // Torso.
+  limb(sc.pelvis, sc.neck, lw * 1.15, color);
+
+  // Near limbs.
+  limb(sc.pelvis, sc.kneeN, lw, color); limb(sc.kneeN, sc.footN, lw, color);
+
+  // Head.
+  ctx.fillStyle = color; ctx.strokeStyle = accent; ctx.lineWidth = Math.max(1, lw * 0.5);
+  ctx.beginPath(); ctx.arc(sc.head.x, sc.head.y, S.headR, 0, TAU); ctx.fill(); ctx.stroke();
+
+  // Weapon arm + held weapon (in weapon colour) over the body.
+  const wcol = WEAPON_STICK_COLOR[weapon] || color;
+  limb(sc.shoulder, sc.elbowN, lw, color); limb(sc.elbowN, sc.handN, lw, color);
+  drawHeldWeapon(ctx, sc.handN, aimAngle, scale, weapon, wcol, accent);
+}
+
+// A simple held weapon: a length-scaled bar/blade from the hand along the aim.
+function drawHeldWeapon(ctx, hand, aimAngle, scale, weapon, color, accent) {
+  const len = ({
+    spear: 2.6, greatsword: 2.2, scythe: 2.2, rapier: 2.0, katana: 1.9, sword: 1.6,
+    hammer: 1.7, axe: 1.5, dagger: 1.0, gauntlet: 0.7, harpoon: 2.3,
+    bow: 1.2, sniper: 2.0, pistols: 0.9, chakram: 0.9, magicstaff: 2.0,
+    guardian: 1.5, minebag: 0.8, flamethrower: 1.5,
+  }[weapon] ?? 1.5) * scale;
+  const tip = { x: hand.x + Math.cos(aimAngle) * len, y: hand.y + Math.sin(aimAngle) * len };
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, (weapon === 'hammer' || weapon === 'greatsword' ? 4 : 2.4) * (scale / 14));
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(hand.x, hand.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+  // A small guard/head marker for heavy weapons.
+  if (weapon === 'hammer' || weapon === 'axe') {
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(tip.x, tip.y, scale * 0.28, 0, TAU); ctx.fill();
+  }
+}
+
+// Lighten/darken a hex/hsl-ish colour for back-limb depth shading.
+function shade(col, amt) {
+  // Works for #rrggbb; otherwise just return the original (hsl etc.).
+  const m = /^#([0-9a-f]{6})$/i.exec(col);
+  if (!m) return col;
+  const n = parseInt(m[1], 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const f = amt < 0 ? (1 + amt) : 1;
+  const add = amt > 0 ? amt * 255 : 0;
+  r = Math.max(0, Math.min(255, Math.round(r * f + add)));
+  g = Math.max(0, Math.min(255, Math.round(g * f + add)));
+  b = Math.max(0, Math.min(255, Math.round(b * f + add)));
+  return `rgb(${r},${g},${b})`;
+}
+
+/**
+ * Per-player animation state machine (kept on the Renderer, one per id). Chooses
+ * the locomotion motion from synced player flags and advances a phase clock; the
+ * attack motion is triggered + time-aligned by the caller (impact alignment).
+ */
+export class StickAnimator {
+  constructor() { this.state = {}; }
+
+  _for(id) {
+    if (!this.state[id]) this.state[id] = { motion: 'idle', phase: 0, last: 0, attackUntil: 0, attackStart: 0, attackDur: 0.42, prevX: 0, prevAttack: 0 };
+    return this.state[id];
+  }
+
+  /**
+   * Advance + sample a player's pose for this frame.
+   * Returns { pose, attackBlend }.
+   */
+  sample(player, now) {
+    const s = this._for(player.id);
+    const dt = s.last ? Math.min(0.05, (now - s.last) / 1000) : 0;
+    s.last = now;
+
+    const moving = Math.abs(player.vx || 0) > 30;
+    const airborne = player.grounded === false;
+    const vy = player.vy || 0;
+
+    // Attack trigger: lastAttackTime advanced this frame → restart the swing.
+    if (player.lastAttackTime && player.lastAttackTime !== s.prevAttack) {
+      s.prevAttack = player.lastAttackTime;
+      s.attackStart = now;
+      s.attackUntil = now + s.attackDur * 1000;
+    }
+    const attacking = now < s.attackUntil;
+
+    let motionName;
+    if (attacking) motionName = 'attack';
+    else if (airborne) motionName = vy < -40 ? 'jump' : 'fall';
+    else if (moving) motionName = 'run';
+    else motionName = 'idle';
+
+    const motion = STICK_MOTIONS[motionName] || STICK_MOTIONS.idle;
+    if (motionName !== s.motion) {
+      s.motion = motionName;
+      s.phase = 0;
+      if (motionName === 'attack') s.phase = 0;
+    }
+
+    // Advance the phase. Run speed scales a touch with horizontal speed.
+    let speedMul = 1;
+    if (motionName === 'run') speedMul = Math.min(2.2, Math.max(0.7, Math.abs(player.vx || 0) / 300));
+    if (motionName === 'attack') {
+      const e = (now - s.attackStart) / 1000;
+      s.phase = Math.min(0.999, e / s.attackDur);
+    } else {
+      s.phase += (dt / motion.duration) * speedMul;
+      if (motion.loop) s.phase %= 1; else s.phase = Math.min(0.999, s.phase);
+    }
+
+    const pose = samplePose(motion, s.phase);
+    // During an attack, blend the near arm toward the swing for impact feel.
+    const attackBlend = attacking ? Math.sin(Math.min(1, s.phase) * Math.PI) : 0;
+    return { pose, attackBlend, motionName };
+  }
+}
