@@ -127,6 +127,11 @@ export class Player {
 
     // Cosmetic-only loadout (shop). None of these touch combat.
     this.applyCosmetics(costume?.cosmetics);
+
+    // Stickman motion-set loadout id (cosmetic). Synced as a bare id only; the
+    // renderer validates it against its local registry and falls back to the
+    // weapon's default set if unknown (Phase B stickman pivot). null = default.
+    this.motionSetId = (costume && typeof costume.motionSetId === 'string') ? costume.motionSetId : null;
   }
 
   /** Adopt an equipped-cosmetics set ({weaponskins, killfx, dashtrail, respawnfx, title}). */
@@ -497,6 +502,7 @@ export class Player {
       accentColor: this.accentColor,
       costumeDecoration: this.costumeDecoration || null,
       costumeEffect: this.costumeEffect || null,
+      msid: this.motionSetId || null,   // stickman motion-set loadout id (cosmetic; id only)
       cos: this.cosmeticsSnapshot()
     };
   }
@@ -545,6 +551,7 @@ export class Player {
     this.accentColor = data.accentColor;
     this.costumeDecoration = data.costumeDecoration || null;
     this.costumeEffect = data.costumeEffect || null;
+    this.motionSetId = (typeof data.msid === 'string') ? data.msid : null; // validated at render
     this.applyCosmeticsSnapshot(data.cos);
 
     // Coordinate smoothing can be applied in game loop,

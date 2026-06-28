@@ -124,8 +124,11 @@ export const WEAPON_STICK_COLOR = {
   harpoon: '#7fb0c9', minebag: '#b58b5a', flamethrower: '#e07a3a',
 };
 
+// Neutral pose accessor (so Motion.js can sanitize against the joint set).
+export const STICK_NEUTRAL = NEUTRAL;
+
 // Pose at a normalised phase [0,1) of a motion, interpolated between keyframes.
-function samplePose(motion, phase) {
+export function samplePose(motion, phase) {
   const kfs = motion.keyframes;
   const p = Math.max(0, Math.min(0.99999, phase));
   let a = kfs[0], b = kfs[kfs.length - 1];
@@ -274,67 +277,3 @@ function shade(col, amt) {
   return `rgb(${r},${g},${b})`;
 }
 
-/**
- * Per-player animation state machine (kept on the Renderer, one per id). Chooses
- * the locomotion motion from synced player flags and advances a phase clock; the
- * attack motion is triggered + time-aligned by the caller (impact alignment).
- */
-export class StickAnimator {
-  constructor() { this.state = {}; }
-
-  _for(id) {
-    if (!this.state[id]) this.state[id] = { motion: 'idle', phase: 0, last: 0, attackUntil: 0, attackStart: 0, attackDur: 0.42, prevX: 0, prevAttack: 0 };
-    return this.state[id];
-  }
-
-  /**
-   * Advance + sample a player's pose for this frame.
-   * Returns { pose, attackBlend }.
-   */
-  sample(player, now) {
-    const s = this._for(player.id);
-    const dt = s.last ? Math.min(0.05, (now - s.last) / 1000) : 0;
-    s.last = now;
-
-    const moving = Math.abs(player.vx || 0) > 30;
-    const airborne = player.grounded === false;
-    const vy = player.vy || 0;
-
-    // Attack trigger: lastAttackTime advanced this frame → restart the swing.
-    if (player.lastAttackTime && player.lastAttackTime !== s.prevAttack) {
-      s.prevAttack = player.lastAttackTime;
-      s.attackStart = now;
-      s.attackUntil = now + s.attackDur * 1000;
-    }
-    const attacking = now < s.attackUntil;
-
-    let motionName;
-    if (attacking) motionName = 'attack';
-    else if (airborne) motionName = vy < -40 ? 'jump' : 'fall';
-    else if (moving) motionName = 'run';
-    else motionName = 'idle';
-
-    const motion = STICK_MOTIONS[motionName] || STICK_MOTIONS.idle;
-    if (motionName !== s.motion) {
-      s.motion = motionName;
-      s.phase = 0;
-      if (motionName === 'attack') s.phase = 0;
-    }
-
-    // Advance the phase. Run speed scales a touch with horizontal speed.
-    let speedMul = 1;
-    if (motionName === 'run') speedMul = Math.min(2.2, Math.max(0.7, Math.abs(player.vx || 0) / 300));
-    if (motionName === 'attack') {
-      const e = (now - s.attackStart) / 1000;
-      s.phase = Math.min(0.999, e / s.attackDur);
-    } else {
-      s.phase += (dt / motion.duration) * speedMul;
-      if (motion.loop) s.phase %= 1; else s.phase = Math.min(0.999, s.phase);
-    }
-
-    const pose = samplePose(motion, s.phase);
-    // During an attack, blend the near arm toward the swing for impact feel.
-    const attackBlend = attacking ? Math.sin(Math.min(1, s.phase) * Math.PI) : 0;
-    return { pose, attackBlend, motionName };
-  }
-}

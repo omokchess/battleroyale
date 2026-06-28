@@ -5,7 +5,8 @@
 
 import { Weapons, getEffectiveWeapon, SkillConfig, DashConfig } from './Weapons.js';
 import { SpriteAtlas, SPRITE_MANIFEST, CHAR_FRAME, CHAR_COLS, CHAR_ROW, WEAPON_SPRITE_TUNE, WEAPON_TUNE_DEFAULT } from './SpriteAtlas.js';
-import { drawStickman, StickAnimator, WEAPON_STICK_COLOR } from './Stickman.js';
+import { drawStickman, WEAPON_STICK_COLOR } from './Stickman.js';
+import { StickAnimator } from './Motion.js';
 
 // Pixel-detected frame x-ranges of fx/slash2 (SpriteSheetSlash02.png, H=50).
 // The sheet is not a uniform grid; these are the real crescent frames

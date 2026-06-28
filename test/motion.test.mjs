@@ -1,0 +1,63 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import {
+  sanitizeMotion, sanitizeMotionSetId, registerMotionSet, hasMotionSet,
+  weaponSetId, resolveMotion, MOTION_LIMITS, DEFAULT_MOTION,
+} from '../game/Motion.js';
+
+test('sanitizeMotion clamps angles and caps keyframes', () => {
+  const huge = { duration: 999, loop: true,
+    keyframes: Array.from({ length: 40 }, (_, i) => ({ t: i / 40, pose: { spine: 99999 } })),
+    events: [{ t: 0.5, type: 'impact' }] };
+  const m = sanitizeMotion(huge);
+  assert.ok(m.duration <= MOTION_LIMITS.maxDuration);
+  assert.ok(m.keyframes.length <= MOTION_LIMITS.maxKeyframes);
+  assert.equal(m.keyframes[0].pose.spine, MOTION_LIMITS.angleMax); // clamped, not 99999
+  assert.equal(m.events[0].type, 'impact');
+});
+
+test('sanitizeMotion drops unknown joints and invalid events', () => {
+  const m = sanitizeMotion({
+    duration: 0.4, keyframes: [{ t: 0, pose: { spine: -90, notAJoint: 12 } }],
+    events: [{ t: 0.5, type: 'hack' }, { t: 0.2, type: 'sfx' }],
+  });
+  assert.ok('spine' in m.keyframes[0].pose);
+  assert.ok(!('notAJoint' in m.keyframes[0].pose));
+  assert.deepEqual(m.events.map(e => e.type), ['sfx']); // 'hack' rejected
+});
+
+test('sanitizeMotion falls back to default on garbage', () => {
+  for (const bad of [null, undefined, {}, { keyframes: [] }, { keyframes: 'x' }, 42]) {
+    const m = sanitizeMotion(bad);
+    assert.ok(Array.isArray(m.keyframes) && m.keyframes.length > 0);
+    assert.equal(m.duration, DEFAULT_MOTION.duration);
+  }
+});
+
+test('unknown motion-set id is rejected; weapon fallback resolves', () => {
+  assert.equal(sanitizeMotionSetId('does-not-exist'), null);
+  assert.equal(sanitizeMotionSetId(123), null);
+  assert.equal(sanitizeMotionSetId('default'), 'default');
+  // Weapon mapping + resolution always yields a playable motion.
+  assert.equal(weaponSetId('spear'), 'thrust');
+  assert.equal(weaponSetId('unknownWeapon'), 'default');
+  const atk = resolveMotion(weaponSetId('hammer'), 'attack');
+  assert.ok(atk.keyframes.length > 0);
+});
+
+test('registerMotionSet sanitizes incoming data before storing', () => {
+  registerMotionSet('user_test', { attack: { duration: 50, keyframes: [{ t: 0, pose: { spine: 99999, bogus: 1 } }] } });
+  assert.ok(hasMotionSet('user_test'));
+  assert.equal(sanitizeMotionSetId('user_test'), 'user_test');
+  const m = resolveMotion('user_test', 'attack');
+  assert.ok(m.duration <= MOTION_LIMITS.maxDuration);
+  assert.equal(m.keyframes[0].pose.spine, MOTION_LIMITS.angleMax);
+  assert.ok(!('bogus' in m.keyframes[0].pose));
+  // A state the set doesn't define falls back to the base locomotion.
+  assert.ok(resolveMotion('user_test', 'run').keyframes.length > 0);
+});
+
+test('registerMotionSet rejects a bad id', () => {
+  assert.equal(registerMotionSet('', {}), null);
+  assert.equal(registerMotionSet(null, {}), null);
+});
