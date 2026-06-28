@@ -1888,7 +1888,11 @@ function setupLobbyHub() {
     // Quick play (offline bot match) + motion editor reuse their existing (hidden
     // legacy-layout) buttons' handlers — the hub card just forwards the click.
     if (mod === 'quickplay') { document.getElementById('quickPlayBtn')?.click(); return; }
-    if (mod === 'motion') { document.getElementById('motionBtn')?.click(); return; }
+    if (mod === 'motion') {
+      if (!accountUI.isAdminUser?.()) return;   // admin-only for now
+      document.getElementById('motionBtn')?.click();
+      return;
+    }
     if (mod === 'shop') { openShellMove('상점', 'SHOP', 'shopModal', 'shopBtn', 'shopBody', fromLeft); return; }
     if (mod === 'rank') { openShellMove('랭킹', 'RANK', 'leaderboardModal', 'rankBtn', 'leaderboardBody', fromLeft); return; }
     if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto, fromLeft); return; }

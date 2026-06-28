@@ -135,6 +135,11 @@ export function isGoogleLinked() {
   return hasGoogleLinked();
 }
 
+/** True when the signed-in user is an admin (/admins/{uid} exists). */
+export function isAdminUser() {
+  return !!isAdmin;
+}
+
 /** 구글 계정 연동 (성공 시 프로필 사진 사용 가능) */
 export async function linkGoogleAccount() {
   await linkGoogle();
@@ -408,6 +413,8 @@ function renderAccountBar() {
     if (coinEl) coinEl.textContent = Number(profile.coins || 0).toLocaleString();
   }
   $('adminBtn')?.classList.toggle('hidden', !profile || !isAdmin);
+  // Motion editor is admin-only for now (hub card + its gating in main.js).
+  $('motionHubCard')?.classList.toggle('hidden', !profile || !isAdmin);
 }
 
 // ── 랭킹 모달 ───────────────────────────────────────────────
