@@ -24,7 +24,7 @@ import { MOTION_PRESETS } from './MotionPresets.js';
 import { captureMotionFromWebcam } from './PoseCapture.js';
 import { equippedStickLook, saveStickLook } from './StickLook.js';
 
-const MAX_KF = 8;                                  // editor keyframe budget
+const MAX_KF = 16;                                 // editor keyframe budget (admin authoring)
 const HIT_WINDOW = { start: 0.3, end: 0.7 };       // fixed cosmetic impact band (normalized)
 const STORE_SETS = 'pixelroyale_motionsets_v1';    // { id: { attack: motion } }
 const STORE_EQUIP = 'pixelroyale_equipped_motion_v1';
@@ -392,13 +392,28 @@ export class MotionEditor {
 
   // --- Keyframe ops ----------------------------------------------------------
   _addKeyframe() {
-    if (this.motion.keyframes.length >= MAX_KF) { this._setStatus(`키프레임은 최대 ${MAX_KF}개입니다.`); return; }
-    const t = this.playing ? this.scrubT : clamp(this.scrubT, 0, 1);
-    const pose = { ...samplePose(this.motion, t) };            // snapshot current look
+    const kfs = this.motion.keyframes;
+    if (kfs.length >= MAX_KF) { this._setStatus(`키프레임은 최대 ${MAX_KF}개입니다.`); return; }
+    // Insert at the playhead — but if that lands on (or next to) an existing
+    // keyframe, drop it in the MIDDLE OF THE LARGEST EMPTY GAP instead. Otherwise
+    // a new frame at an existing one's time is an invisible duplicate (the old
+    // "add does nothing" bug): samplePose returns the same pose, hidden behind it.
+    let t = clamp(this.scrubT, 0, 1);
+    const collides = (tt) => kfs.some(k => Math.abs(k.t - tt) < 0.03);
+    if (collides(t)) {
+      const ts = [0, ...kfs.map(k => k.t), 1].sort((a, b) => a - b);
+      let bestGap = -1;
+      for (let i = 0; i < ts.length - 1; i++) {
+        const g = ts[i + 1] - ts[i];
+        if (g > bestGap) { bestGap = g; t = (ts[i] + ts[i + 1]) / 2; }
+      }
+    }
+    const pose = { ...samplePose(this.motion, t) };            // snapshot the current look
     const kf = { t, pose };
-    this.motion.keyframes.push(kf);
-    this.motion.keyframes.sort((a, b) => a.t - b.t);
-    this.selKf = this.motion.keyframes.indexOf(kf);
+    kfs.push(kf);
+    kfs.sort((a, b) => a.t - b.t);
+    this.selKf = kfs.indexOf(kf);
+    this.scrubT = t;                                           // move the playhead onto the new frame
     this.playing = false;
     this._setStatus('키프레임 추가됨. 관절을 끌어 이 프레임의 포즈를 편집하세요.');
     this._renderAll();
