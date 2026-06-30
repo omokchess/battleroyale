@@ -19,7 +19,7 @@ import { generateWater, emptyWater } from './Water.js';
 import { buildLevel, PHYS } from './Level.js';
 import { PlatformerZone } from './PlatformerZone.js';
 import { BotBrain, BOT_DIFFICULTY, BOT_LOADOUT } from './Bot.js';
-import { resolveMotion, weaponSetId, sanitizeMotionSetId, canonicalWeaponMotion } from './Motion.js';
+import { resolveMotion, weaponSetId, sanitizeMotionSetId, canonicalWeaponMotion, canonicalWeaponsSnapshot, setCanonicalWeapon } from './Motion.js';
 import { STATUS } from './Status.js';
 
 // Time a dead player waits before respawning.
@@ -5366,7 +5366,8 @@ export class Game {
         this.mapWidth,
         this.mapHeight,
         this.roomConfig,
-        this.coverSeed
+        this.coverSeed,
+        canonicalWeaponsSnapshot()   // host-authoritative canonical weapon defs (T1-F)
       ));
 
       // 5. Broadcast to everyone else that a new player entered
@@ -5422,6 +5423,15 @@ export class Game {
           // (grass-style deterministic generation — no per-tile data synced).
           this.coverSeed = Number.isFinite(data.coverSeed) ? data.coverSeed : 0;
           this._buildTerrain();   // biome + water + cover (deterministic from config + seed)
+
+          // Adopt the host's canonical weapon defs so every peer simulates/renders
+          // identically (host authority). Re-sanitized with allowGameplay → clamped,
+          // never trusting the raw blob (T1-F).
+          if (data.weaponMotions && typeof data.weaponMotions === 'object') {
+            for (const weapon in data.weaponMotions) {
+              setCanonicalWeapon(weapon, data.weaponMotions[weapon], { allowGameplay: true });
+            }
+          }
 
           // Reconstitute players list
           this.players = {};

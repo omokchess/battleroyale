@@ -35,9 +35,11 @@ export const Protocol = {
   // Handshake registration acceptance frame. roomConfig carries the arena-size /
   // storm / cover / healing settings, and coverSeed the per-match seed clients
   // use to regenerate the identical obstacle layout locally, so late-joiners get
-  // the exact same arena/rules.
-  roomJoined(id, initialPlayers, mapWidth, mapHeight, roomConfig = null, coverSeed = 0) {
-    return { type: MsgType.ROOM_JOINED, id, initialPlayers, mapWidth, mapHeight, roomConfig, coverSeed };
+  // the exact same arena/rules. weaponMotions carries the host's CANONICAL weapon
+  // definitions (incl. hitboxes) so every peer simulates/renders with the same
+  // host-authoritative set (T1-F); clients re-sanitize before use.
+  roomJoined(id, initialPlayers, mapWidth, mapHeight, roomConfig = null, coverSeed = 0, weaponMotions = null) {
+    return { type: MsgType.ROOM_JOINED, id, initialPlayers, mapWidth, mapHeight, roomConfig, coverSeed, weaponMotions };
   },
 
   // Notify clients of a newcomer
