@@ -40,6 +40,13 @@ export const MOTION_LIMITS = {
   maxEvents: 12,
   angleMin: -360,
   angleMax: 360,
+  // Admin-canonical gameplay fields (T1-C). Geometry is in world px relative to
+  // the player centre (ox is forward, flipped by facing at sim time).
+  maxHitboxes: 4,
+  hitboxOffsetMax: 220,   // |ox|, |oy|
+  hitboxSizeMin: 4,
+  hitboxSizeMax: 320,     // w, h
+  knockbackMax: 400,
 };
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -51,8 +58,14 @@ export const DEFAULT_MOTION = Object.freeze(deepFreeze(cloneMotion(STICK_MOTIONS
  * Validate + clamp arbitrary motion data into a safe motion. Returns a brand-new
  * object (never aliases the input). On any structural problem returns a clone of
  * `fallback` (default: DEFAULT_MOTION) so callers always get something playable.
+ *
+ * DUAL-TRUST RULE (T1-C): gameplay fields (hitboxes / knockback) drive real
+ * combat, so they are kept ONLY when `opts.allowGameplay` is set — used solely on
+ * the admin-canonical load path. Every other caller (cosmetic save, P2P-received
+ * motion) leaves it false, so those fields are stripped and the motion stays
+ * purely cosmetic. A malicious/stale peer therefore cannot ship a hitbox.
  */
-export function sanitizeMotion(raw, fallback = DEFAULT_MOTION) {
+export function sanitizeMotion(raw, fallback = DEFAULT_MOTION, opts = {}) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.keyframes) || raw.keyframes.length === 0) {
     return cloneMotion(fallback);
   }
@@ -84,15 +97,42 @@ export function sanitizeMotion(raw, fallback = DEFAULT_MOTION) {
       events.push({ t: Number.isFinite(e.t) ? clamp(e.t, 0, 1) : 0, type: e.type });
     }
   }
-  return { duration, loop: !!raw.loop, keyframes, events };
+  const out = { duration, loop: !!raw.loop, keyframes, events };
+  // Admin-canonical gameplay fields — only when explicitly trusted (see rule above).
+  if (opts.allowGameplay) {
+    out.hitboxes = sanitizeHitboxes(raw.hitboxes);
+    if (Number.isFinite(raw.knockback)) out.knockback = clamp(raw.knockback, 0, MOTION_LIMITS.knockbackMax);
+  }
+  return out;
+}
+
+/** Clamp an array of attack hitboxes (admin-canonical only). Each is world px
+ *  relative to the player centre + an active window in normalized motion time. */
+function sanitizeHitboxes(arr) {
+  if (!Array.isArray(arr)) return [];
+  const L = MOTION_LIMITS;
+  const out = [];
+  for (const hb of arr.slice(0, L.maxHitboxes)) {
+    if (!hb || typeof hb !== 'object') continue;
+    const ox = Number.isFinite(hb.ox) ? clamp(hb.ox, -L.hitboxOffsetMax, L.hitboxOffsetMax) : 0;
+    const oy = Number.isFinite(hb.oy) ? clamp(hb.oy, -L.hitboxOffsetMax, L.hitboxOffsetMax) : 0;
+    const w = Number.isFinite(hb.w) ? clamp(hb.w, L.hitboxSizeMin, L.hitboxSizeMax) : 40;
+    const h = Number.isFinite(hb.h) ? clamp(hb.h, L.hitboxSizeMin, L.hitboxSizeMax) : 40;
+    let aS = Number.isFinite(hb.activeStart) ? clamp(hb.activeStart, 0, 1) : 0;
+    let aE = Number.isFinite(hb.activeEnd) ? clamp(hb.activeEnd, 0, 1) : 1;
+    if (aE < aS) { const t = aS; aS = aE; aE = t; }
+    out.push({ ox, oy, w, h, activeStart: aS, activeEnd: aE });
+  }
+  return out;
 }
 
 /** Sanitize a whole motion set ({ stateName: motion }). Unknown states pass
- *  through (any state name is allowed); every motion is individually sanitized. */
-export function sanitizeMotionSet(raw) {
+ *  through (any state name is allowed); every motion is individually sanitized.
+ *  `opts.allowGameplay` threads the dual-trust rule to each motion. */
+export function sanitizeMotionSet(raw, opts = {}) {
   const out = {};
   if (raw && typeof raw === 'object') {
-    for (const state in raw) out[state] = sanitizeMotion(raw[state]);
+    for (const state in raw) out[state] = sanitizeMotion(raw[state], DEFAULT_MOTION, opts);
   }
   return out;
 }
@@ -157,10 +197,11 @@ for (const id in BUILTIN_SETS) MOTION_SETS[id] = sanitizeMotionSet(BUILTIN_SETS[
  * Register a user/AI motion set under an id (e.g. a content hash). The set is
  * sanitized before storage, so nothing unsafe ever enters the registry. Phase C
  * (editor) and Phase D (AI) call this; multiplayer only ever ships the id.
+ * `opts.allowGameplay` (admin-canonical only) keeps hitboxes; default cosmetic.
  */
-export function registerMotionSet(id, rawSet) {
+export function registerMotionSet(id, rawSet, opts = {}) {
   if (!id || typeof id !== 'string') return null;
-  MOTION_SETS[id] = sanitizeMotionSet(rawSet);
+  MOTION_SETS[id] = sanitizeMotionSet(rawSet, opts);
   return id;
 }
 
@@ -248,11 +289,15 @@ export class StickAnimator {
 
 // --- small helpers ----------------------------------------------------------
 function cloneMotion(m) {
-  return {
+  const c = {
     duration: m.duration, loop: !!m.loop,
     keyframes: m.keyframes.map(k => ({ t: k.t, pose: { ...k.pose } })),
     events: (m.events || []).map(e => ({ t: e.t, type: e.type })),
   };
+  // Preserve admin-canonical gameplay fields when present (already sanitized).
+  if (Array.isArray(m.hitboxes)) c.hitboxes = m.hitboxes.map(h => ({ ...h }));
+  if (Number.isFinite(m.knockback)) c.knockback = m.knockback;
+  return c;
 }
 function deepFreeze(m) {
   m.keyframes.forEach(k => { Object.freeze(k.pose); Object.freeze(k); });

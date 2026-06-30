@@ -61,3 +61,35 @@ test('registerMotionSet rejects a bad id', () => {
   assert.equal(registerMotionSet('', {}), null);
   assert.equal(registerMotionSet(null, {}), null);
 });
+
+// --- T1-C: admin-canonical gameplay fields (dual-trust) ---------------------
+const motionWithHitbox = {
+  duration: 0.4, keyframes: [{ t: 0, pose: { spine: -90 } }, { t: 1, pose: { spine: -90 } }],
+  events: [{ t: 0.5, type: 'impact' }],
+  hitboxes: [{ ox: 9999, oy: -9999, w: 0.1, h: 9999, activeStart: 0.8, activeEnd: 0.2 }],
+  knockback: 99999,
+};
+
+test('gameplay fields are STRIPPED by default (peer/cosmetic path)', () => {
+  const m = sanitizeMotion(motionWithHitbox);              // no allowGameplay
+  assert.equal(m.hitboxes, undefined);
+  assert.equal(m.knockback, undefined);
+});
+
+test('gameplay fields are KEPT + clamped on the admin path', () => {
+  const m = sanitizeMotion(motionWithHitbox, DEFAULT_MOTION, { allowGameplay: true });
+  assert.equal(m.hitboxes.length, 1);
+  const hb = m.hitboxes[0];
+  assert.ok(Math.abs(hb.ox) <= MOTION_LIMITS.hitboxOffsetMax, 'ox clamped');
+  assert.ok(Math.abs(hb.oy) <= MOTION_LIMITS.hitboxOffsetMax, 'oy clamped');
+  assert.ok(hb.w >= MOTION_LIMITS.hitboxSizeMin && hb.h <= MOTION_LIMITS.hitboxSizeMax, 'size clamped');
+  assert.ok(hb.activeStart <= hb.activeEnd, 'active window ordered');  // swapped from 0.8>0.2
+  assert.ok(m.knockback <= MOTION_LIMITS.knockbackMax, 'knockback clamped');
+});
+
+test('hitbox count is capped and bad entries dropped', () => {
+  const many = { duration: 0.4, keyframes: [{ t: 0, pose: {} }, { t: 1, pose: {} }],
+    hitboxes: [null, 'x', {}, { ox: 1 }, { ox: 2 }, { ox: 3 }, { ox: 4 }, { ox: 5 }] };
+  const m = sanitizeMotion(many, DEFAULT_MOTION, { allowGameplay: true });
+  assert.ok(m.hitboxes.length <= MOTION_LIMITS.maxHitboxes);
+});
