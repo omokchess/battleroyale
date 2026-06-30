@@ -7,6 +7,7 @@ import { Weapons, getEffectiveWeapon, DashConfig } from './Weapons.js';
 import { STATUS } from './Status.js';
 import { PHYS } from './Level.js';
 import { Collision } from './Collision.js';
+import { clampWorkshopWeapon } from './Workshop.js';
 
 export class Player {
   constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
@@ -135,6 +136,23 @@ export class Player {
     // Stick appearance blob (color/lineW/head/accessory). Held raw + synced;
     // the renderer sanitizes it. Cosmetic only — never affects collision.
     this.stickLook = (costume && costume.stick && typeof costume.stick === 'object') ? costume.stick : null;
+
+    // Tier-2 workshop weapon (user-authored). When equipped, its ENVELOPE-clamped
+    // stats override the base weapon's damage/cooldown/hp/move and its motion's
+    // hitboxes drive the hit (combat path is Tier-1's hitbox swing). Always stored
+    // pre-clamped; never trust a raw def.
+    this.workshopWeapon = null;
+    if (costume && costume.workshopWeapon) this._applyWorkshopWeapon(costume.workshopWeapon);
+  }
+
+  /** Install (and ENVELOPE re-clamp) a workshop weapon def, applying its maxHp. */
+  _applyWorkshopWeapon(def) {
+    const safe = clampWorkshopWeapon(def);
+    this.workshopWeapon = safe;
+    if (safe.stats && Number.isFinite(safe.stats.maxHp)) {
+      this.maxHp = safe.stats.maxHp;
+      this.hp = Math.min(this.hp, this.maxHp);
+    }
   }
 
   /** Adopt an equipped-cosmetics set ({weaponskins, killfx, dashtrail, respawnfx, title}). */
@@ -266,7 +284,7 @@ export class Player {
     const slowMul = this.slowTimeLeft > 0 ? STATUS.slow.moveFactor : 1;
     const rageSlowMul = (this.buffType === 'axe_rage' && this.buffTimeLeft > 0) ? 0.3 : 1; // 70% slow while spinning
     const weaponConfig = Weapons[this.weapon] || Weapons.sword;
-    let baseMul = weaponConfig.moveSpeed ?? 1;
+    let baseMul = this.workshopWeapon?.stats?.moveSpeed ?? weaponConfig.moveSpeed ?? 1;
     if (this.weapon === 'flamethrower' && this.flameSpraying) baseMul = weaponConfig.sprayMoveSpeed ?? baseMul;
     const target = (right ? 1 : 0) - (left ? 1 : 0);
     const targetVx = target * PHYS.runSpeed * baseMul * slowMul * rageSlowMul;
@@ -422,8 +440,9 @@ export class Player {
     const ignoresComboDelay = this.weapon === 'axe' && this.buffType === 'axe_rage';
     if (!ignoresComboDelay && now < (this.comboDelayUntil || 0)) return false;
     const weaponConfig = getEffectiveWeapon(this.weapon, this.buffType);
-    if (weaponConfig.automaticAttack === false) return false;
-    let cd = weaponConfig.cooldown;
+    if (weaponConfig.automaticAttack === false && !this.workshopWeapon) return false;
+    // Workshop weapons fire on their own (clamped) cooldown floor.
+    let cd = (this.workshopWeapon?.stats?.cooldownMs) || weaponConfig.cooldown;
     // 구르기 장전 (pistols LMB): +30% fire rate for a short window.
     if (this.weapon === 'pistols' && this.pistolReloadUntil && now < this.pistolReloadUntil) cd *= 0.7;
     return (now - this.lastAttackTime) >= cd;
@@ -507,6 +526,7 @@ export class Player {
       costumeEffect: this.costumeEffect || null,
       msid: this.motionSetId || null,   // stickman motion-set loadout id (cosmetic; id only)
       look: this.stickLook || null,     // stick appearance blob (cosmetic; sanitized at render)
+      wsw: this.workshopWeapon || null, // workshop weapon def (re-clamped on receive)
       cos: this.cosmeticsSnapshot()
     };
   }
@@ -557,6 +577,9 @@ export class Player {
     this.costumeEffect = data.costumeEffect || null;
     this.motionSetId = (typeof data.msid === 'string') ? data.msid : null; // validated at render
     this.stickLook = (data.look && typeof data.look === 'object') ? data.look : null; // sanitized at render
+    // Workshop weapon: re-clamp the received def through the envelope (never trust
+    // a peer's raw blob — host authority + double clamp).
+    if (data.wsw) this._applyWorkshopWeapon(data.wsw); else this.workshopWeapon = null;
     this.applyCosmeticsSnapshot(data.cos);
 
     // Coordinate smoothing can be applied in game loop,

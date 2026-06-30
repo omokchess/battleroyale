@@ -757,6 +757,8 @@ export class Game {
             p.maxHp = Weapons[p.weapon].maxHp || 100;
           }
           p.pendingWeapon = null;
+          // An equipped workshop weapon's (clamped) maxHp wins on respawn.
+          if (p.workshopWeapon?.stats?.maxHp) p.maxHp = p.workshopWeapon.stats.maxHp;
 
           const spawnP = p.isDummy
             ? { x: p.homeX, y: p.homeY }
@@ -837,7 +839,11 @@ export class Game {
    * guest can't fabricate one — the host only ever reads its own registry here.
    */
   _canonicalHitboxMotion(player) {
-    if (!player || player.weapon === 'magicstaff' || player.weapon === 'chakram') return null;
+    if (!player) return null;
+    // 0) An equipped workshop weapon (per-player) defines its own attack hitboxes.
+    const ws = player.workshopWeapon?.motionSet?.attack;
+    if (ws && Array.isArray(ws.hitboxes) && ws.hitboxes.length) return ws;
+    if (player.weapon === 'magicstaff' || player.weapon === 'chakram') return null;
     // 1) The weapon's admin-canonical motion (shared by all players of that weapon).
     const wc = canonicalWeaponMotion(player.weapon, 'attack');
     if (wc && Array.isArray(wc.hitboxes) && wc.hitboxes.length) return wc;
@@ -878,7 +884,8 @@ export class Game {
 
       const facing = Math.cos(p.angle || 0) >= 0 ? 1 : -1;
       const wcfg = getEffectiveWeapon(p.weapon, p.buffType);
-      const dmg = wcfg.damage || 10;
+      // Workshop weapon → its ENVELOPE-clamped damage; else the base weapon's.
+      const dmg = (p.workshopWeapon?.stats?.damage) || wcfg.damage || 10;
 
       for (const hb of sw.hitboxes) {
         if (phase < hb.activeStart || phase > hb.activeEnd) continue;
