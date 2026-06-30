@@ -1098,6 +1098,7 @@ function readRoomConfig() {
     healingRate: pick('healingRate', 'normal'),
     biome: pick('biome', 'day'),
     water: pick('water', 'off') === 'on',
+    allowWorkshop: pick('allowWorkshop', 'off') === 'on',
   });
 }
 
@@ -1192,7 +1193,8 @@ function doBotMatch() {
 
   const demoConfig = normalizeRoomConfig({
     arenaSize: 'medium', storm: true, platforms: 'some', platformShape: 'balanced',
-    healing: true, healingRate: 'fast', biome: 'day'
+    healing: true, healingRate: 'fast', biome: 'day',
+    allowWorkshop: true   // practice/bot match → let players try their workshop weapons
   });
 
   netManager = new NetworkManager();
@@ -2295,8 +2297,8 @@ function buildCreateInto(body) {
   const opts = (g) => [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].map(b => ({ label: b.textContent.trim(), value: b.dataset.value, on: b.classList.contains('selected') }));
   const selectedOf = (g) => opts(g).find(o => o.on) || opts(g)[0];
   const pickHidden = (g, value) => { [...(groupEl(g)?.querySelectorAll('.cfg-opt') || [])].find(b => b.dataset.value === value)?.click(); };
-  const GROUPS = [['platforms', '플랫폼'], ['platformShape', '플랫폼 모양'], ['biome', '지형'], ['storm', '자기장'], ['cover', '엄폐물'], ['water', '물 (특수 장애물)'], ['healing', '회복 아이템']];
-  const ONOFF = new Set(['storm', 'water', 'healing']);   // rendered as sliding switches
+  const GROUPS = [['platforms', '플랫폼'], ['platformShape', '플랫폼 모양'], ['biome', '지형'], ['storm', '자기장'], ['cover', '엄폐물'], ['water', '물 (특수 장애물)'], ['healing', '회복 아이템'], ['allowWorkshop', '공방 무기 허용']];
+  const ONOFF = new Set(['storm', 'water', 'healing', 'allowWorkshop']);   // rendered as sliding switches
   const healingOn = () => selectedOf('healing')?.value === 'on';
   const PLATFORM_COUNT = { none: 0, few: 2, some: 4, many: 6 };
   const PLATFORM_DESC = { none: '발판 없음', few: '발판 2개', some: '발판 4개', many: '발판 6개' };

@@ -199,6 +199,7 @@ export class Game {
       const spawnP = this._getRandomSpawnPoint();
       const hostPlayer = new Player(this.localPlayerId, localNick, localWeapon, spawnP.x, spawnP.y, this.localCostume);
       hostPlayer.isMobile = isMobileDevice(); // touch players fire instantly
+      this._enforceWorkshopPolicy(hostPlayer);
       this.players[this.localPlayerId] = hostPlayer;
 
       // Dummy room: drop a few stationary practice targets into the arena.
@@ -838,6 +839,13 @@ export class Game {
    * null. Cosmetic/peer motions never have hitboxes (dual-trust sanitize), so a
    * guest can't fabricate one — the host only ever reads its own registry here.
    */
+  /** Strip an equipped workshop weapon when the room disallows them (default).
+   *  Host-authoritative: the host clears it, so its broadcast carries null and
+   *  no peer can sneak a workshop weapon into a clean/competitive match. */
+  _enforceWorkshopPolicy(player) {
+    if (player && !this.roomConfig?.allowWorkshop) player.workshopWeapon = null;
+  }
+
   _canonicalHitboxMotion(player) {
     if (!player) return null;
     // 0) An equipped workshop weapon (per-player) defines its own attack hitboxes.
@@ -5355,6 +5363,7 @@ export class Game {
       const guestPlayer = new Player(remoteId, nickname, weapon, spawnP.x, spawnP.y, costume);
       guestPlayer.applyCosmetics(sanitizeCosmetics(joinPayload.costume?.cosmetics));
       guestPlayer.isMobile = !!joinPayload.isMobile; // touch players fire instantly
+      this._enforceWorkshopPolicy(guestPlayer);
       this.players[remoteId] = guestPlayer;
 
       this._announce(`${guestPlayer.nickname}님이 전장에 입장했습니다!`);

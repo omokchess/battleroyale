@@ -82,7 +82,9 @@ export const DEFAULT_ROOM_CONFIG = Object.freeze({
   healing: false,
   healingRate: 'normal',
   biome: 'day',
-  water: false
+  water: false,
+  // Tier-2 공방 무기 허용. 기본 OFF = 대회/클린 매치(기본 무기만).
+  allowWorkshop: false
 });
 
 const oneOf = (value, table, fallback) =>
@@ -103,7 +105,8 @@ export function normalizeRoomConfig(raw) {
     healing:     Boolean(c.healing),
     healingRate: oneOf(c.healingRate, HEAL_RATES, DEFAULT_ROOM_CONFIG.healingRate),
     biome:       oneOf(c.biome, BIOME_LABELS, DEFAULT_ROOM_CONFIG.biome),
-    water:       Boolean(c.water)
+    water:       Boolean(c.water),
+    allowWorkshop: Boolean(c.allowWorkshop)
   };
 }
 
@@ -127,5 +130,6 @@ export function roomConfigBadges(config) {
   if (cfg.platforms !== 'none') badges.push(`플랫폼 ${PLATFORM_LABELS[cfg.platforms]}`);
   if (cfg.water) badges.push('물');
   if (cfg.healing) badges.push('회복');
+  if (cfg.allowWorkshop) badges.push('공방무기');
   return badges;
 }
