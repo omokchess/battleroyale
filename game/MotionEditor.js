@@ -23,12 +23,16 @@ import { resolveMotion, weaponSetId, sanitizeMotion, registerMotionSet, MOTION_L
 import { MOTION_PRESETS } from './MotionPresets.js';
 import { captureMotionFromWebcam } from './PoseCapture.js';
 import { equippedStickLook, saveStickLook } from './StickLook.js';
+import { clampWorkshopStats, statCost, enforceBudget, clampWorkshopWeapon, POINT_BUDGET } from './Workshop.js';
 
 const MAX_KF = 16;                                 // editor keyframe budget (admin authoring)
 const HIT_WINDOW = { start: 0.3, end: 0.7 };       // fixed cosmetic impact band (normalized)
 const STORE_SETS = 'pixelroyale_motionsets_v1';    // { id: { attack: motion } }
 const STORE_EQUIP = 'pixelroyale_equipped_motion_v1';
 const STORE_CANON = 'pixelroyale_canonical_weapons_v1'; // { weapon: { attack: motion } }
+const STORE_WORKSHOP = 'pixelroyale_workshop_equipped_v1'; // clamped workshop weapon def
+
+const STAT_KEYS = ['damage', 'cooldownMs', 'maxHp', 'moveSpeed', 'range', 'knockback', 'statusDurationMs'];
 
 // Editable weapons (those whose stick attack reads clearly). Kept short on purpose.
 const EDITOR_WEAPONS = ['sword', 'spear', 'hammer', 'katana', 'axe', 'rapier', 'bow', 'scythe'];
@@ -96,6 +100,14 @@ export function cacheCanonicalWeapon(weapon, set) {
   try { localStorage.setItem(STORE_CANON, JSON.stringify(map)); } catch {}
 }
 
+/** The equipped workshop weapon def (already envelope-clamped), or null. */
+export function equippedWorkshopWeapon() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE_WORKSHOP) || 'null');
+    return raw ? clampWorkshopWeapon(raw) : null;   // re-clamp defensively
+  } catch { return null; }
+}
+
 export class MotionEditor {
   constructor() {
     this.root = document.getElementById('motionEditor');
@@ -106,6 +118,8 @@ export class MotionEditor {
     this.tctx = this.timeline?.getContext('2d');
 
     this.weapon = 'sword';
+    this.mode = 'canonical';           // 'canonical' (admin) | 'workshop' (user weapon)
+    this.stats = clampWorkshopStats({});
     this.look = equippedStickLook();   // stick appearance (live-applied + equipped)
     this.motion = null;          // working { duration, loop:false, keyframes, events }
     this.selKf = 0;
@@ -158,6 +172,10 @@ export class MotionEditor {
       this.look = saveStickLook({ ...this.look, ...patch });
       this._renderPreview();
     };
+    // Workshop stat sliders (Tier 2): live-clamp into the envelope + budget bar.
+    STAT_KEYS.forEach(k => $('ms_' + k)?.addEventListener('input', (e) => this._updateStat(k, parseFloat(e.target.value))));
+    $('ms_status')?.addEventListener('change', (e) => this._updateStat('status', e.target.value));
+
     $('meColor')?.addEventListener('input', (e) => applyLook({ color: e.target.value }));
     $('meColorClear')?.addEventListener('click', () => applyLook({ color: null }));
     $('meLineW')?.addEventListener('input', (e) => applyLook({ lineW: parseInt(e.target.value, 10) }));
@@ -172,8 +190,9 @@ export class MotionEditor {
     this.timeline?.addEventListener('pointerdown', (e) => this._timelineDown(e));
   }
 
-  open(weapon = 'sword') {
+  open(weapon = 'sword', mode = 'canonical') {
     if (!this.root) return;
+    this.mode = mode === 'workshop' ? 'workshop' : 'canonical';
     this.weapon = EDITOR_WEAPONS.includes(weapon) ? weapon : 'sword';
     const wsel = document.getElementById('meWeapon'); if (wsel) wsel.value = this.weapon;
     // Reflect the equipped look in the appearance controls.
@@ -183,8 +202,43 @@ export class MotionEditor {
     if ($('meLineW')) $('meLineW').value = String(this.look.lineW);
     if ($('meHead')) $('meHead').value = this.look.head;
     if ($('meAccessory')) $('meAccessory').value = this.look.accessory;
+
+    // Workshop mode: show the stats panel + reset to a balanced build; canonical
+    // mode hides it. Title/CTA reflect the mode.
+    const ws = this.mode === 'workshop';
+    $('meStatsPanel')?.classList.toggle('hidden', !ws);
+    const title = this.root.querySelector('h2'); if (title) title.textContent = ws ? '🔧 무기 공방' : '🎬 모션 에디터';
+    if (ws) {
+      this.stats = clampWorkshopStats({});
+      STAT_KEYS.forEach(k => { const el = $('ms_' + k); if (el) el.value = String(this.stats[k]); const v = $('ms_' + k + '_v'); if (v) v.textContent = this.stats[k]; });
+      if ($('ms_status')) $('ms_status').value = this.stats.status;
+      this._renderBudget();
+    }
     this._loadTemplate();
     this.root.classList.remove('hidden');
+  }
+
+  /** Live-update one workshop stat: clamp into the envelope, reflect the clamped
+   *  value back into the slider, and refresh the budget bar. */
+  _updateStat(key, value) {
+    const next = { ...this.stats, [key]: value };
+    this.stats = clampWorkshopStats(next);
+    const el = document.getElementById('ms_' + key);
+    if (el && key !== 'status' && Number(el.value) !== this.stats[key]) el.value = String(this.stats[key]);
+    const v = document.getElementById('ms_' + key + '_v'); if (v) v.textContent = this.stats[key];
+    if (document.getElementById('ms_status')) document.getElementById('ms_status').value = this.stats.status;
+    this._renderBudget();
+  }
+
+  _renderBudget() {
+    const cost = statCost(this.stats);
+    const bar = document.getElementById('meBudgetBar');
+    const val = document.getElementById('meBudgetVal');
+    if (val) val.textContent = cost;
+    if (bar) {
+      bar.style.width = Math.min(100, cost) + '%';
+      bar.style.background = cost > POINT_BUDGET ? '#ff5a5a' : (cost > POINT_BUDGET * 0.85 ? '#ffd24a' : '#7df09a');
+    }
   }
   close() {
     this.playing = false;
@@ -570,6 +624,7 @@ export class MotionEditor {
 
   // --- Save / equip ----------------------------------------------------------
   _save() {
+    if (this.mode === 'workshop') return this._saveWorkshop();
     const nameInput = document.getElementById('meName');
     const raw = (nameInput?.value || '').trim() || `${this.weapon}-커스텀`;
     const slug = raw.toLowerCase().replace(/[^a-z0-9가-힣]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'custom';
@@ -596,6 +651,26 @@ export class MotionEditor {
     catch {}
     const hb = this._hb() ? ' (히트박스 정본 포함)' : '';
     this._setStatus(`저장 완료: "${raw}"${hb}. ${this.weapon} 무기의 정본으로 적용됩니다${synced}.`);
+  }
+
+  /** Tier-2 workshop save: build a workshop weapon from the stats + motion, run
+   *  it through the balance envelope + budget, persist it as the equipped weapon,
+   *  and let the host wire publish/Firestore via onSaveWorkshop. */
+  _saveWorkshop() {
+    const raw = (document.getElementById('meName')?.value || '').trim() || `${this.weapon} 공방무기`;
+    const { stats, overBudget } = enforceBudget(this.stats);
+    const def = clampWorkshopWeapon({
+      name: raw, color: this.look.color || null, stats,
+      motionSet: { attack: this.motion },
+    });
+    try { localStorage.setItem(STORE_WORKSHOP, JSON.stringify(def)); } catch {}
+    try { const r = this.onSaveWorkshop?.(def); if (r && typeof r.then === 'function') r.catch(() => {}); } catch {}
+    // Reflect any budget bleed back into the sliders.
+    this.stats = def.stats;
+    STAT_KEYS.forEach(k => { const v = document.getElementById('ms_' + k + '_v'); if (v) v.textContent = def.stats[k]; const el = document.getElementById('ms_' + k); if (el) el.value = String(def.stats[k]); });
+    this._renderBudget();
+    const note = overBudget ? ' (예산 초과분은 데미지에서 자동 차감됨)' : '';
+    this._setStatus(`공방 무기 "${def.name}" 저장 + 장착 완료${note}. 다음 매치부터 적용됩니다.`);
   }
 
   _setStatus(t) { const el = document.getElementById('meStatus'); if (el) el.textContent = t; }

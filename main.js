@@ -16,7 +16,7 @@ import * as accountUI from './ui/account-ui.js';
 import { isMobileDevice, isPhoneDevice } from './game/Device.js';
 import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
 import { Sound } from './game/Sound.js';
-import { MotionEditor, loadStoredMotionSets, equippedMotionSetId, loadCanonicalWeaponCache, cacheCanonicalWeapon } from './game/MotionEditor.js';
+import { MotionEditor, loadStoredMotionSets, equippedMotionSetId, loadCanonicalWeaponCache, cacheCanonicalWeapon, equippedWorkshopWeapon } from './game/MotionEditor.js';
 import { setCanonicalWeapon } from './game/Motion.js';
 import { equippedStickLook } from './game/StickLook.js';
 
@@ -1109,6 +1109,7 @@ function localAppearance() {
     cosmetics: accountUI.getEquippedCosmetics(),
     motionSetId: equippedMotionSetId(),   // equipped custom stickman motion (cosmetic, id only)
     stick: equippedStickLook(),           // stick appearance (color/lineW/head/accessory)
+    workshopWeapon: equippedWorkshopWeapon(), // equipped Tier-2 workshop weapon (envelope-clamped)
   });
 }
 
@@ -1244,7 +1245,14 @@ const motionBtn = document.getElementById('motionBtn');
 if (motionBtn) motionBtn.addEventListener('click', () => {
   Sound.play('ui');
   const weapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
-  ensureMotionEditor().open(weapon);
+  ensureMotionEditor().open(weapon, 'canonical');
+});
+// Workshop weapon creator (all users) — opens the editor in workshop mode.
+const workshopBtn = document.getElementById('workshopBtn');
+if (workshopBtn) workshopBtn.addEventListener('click', () => {
+  Sound.play('ui');
+  const weapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
+  ensureMotionEditor().open(weapon, 'workshop');
 });
 
 // --- Onboarding controls card -------------------------------------------------
@@ -1907,10 +1915,11 @@ function setupLobbyHub() {
     // legacy-layout) buttons' handlers — the hub card just forwards the click.
     if (mod === 'quickplay') { document.getElementById('quickPlayBtn')?.click(); return; }
     if (mod === 'motion') {
-      if (!accountUI.isAdminUser?.()) return;   // admin-only for now
+      if (!accountUI.isAdminUser?.()) return;   // admin canonical editor — admin-only
       document.getElementById('motionBtn')?.click();
       return;
     }
+    if (mod === 'workshop') { document.getElementById('workshopBtn')?.click(); return; }  // user weapon workshop (all users)
     if (mod === 'shop') { openShellMove('상점', 'SHOP', 'shopModal', 'shopBtn', 'shopBody', fromLeft); return; }
     if (mod === 'rank') { openShellMove('랭킹', 'RANK', 'leaderboardModal', 'rankBtn', 'leaderboardBody', fromLeft); return; }
     if (mod === 'armory') { openShellModule('무기고', 'ARMORY', buildArmoryInto, fromLeft); return; }
