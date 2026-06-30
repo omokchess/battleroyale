@@ -19,7 +19,7 @@ import { generateWater, emptyWater } from './Water.js';
 import { buildLevel, PHYS } from './Level.js';
 import { PlatformerZone } from './PlatformerZone.js';
 import { BotBrain, BOT_DIFFICULTY, BOT_LOADOUT } from './Bot.js';
-import { resolveMotion, weaponSetId, sanitizeMotionSetId } from './Motion.js';
+import { resolveMotion, weaponSetId, sanitizeMotionSetId, canonicalWeaponMotion } from './Motion.js';
 import { STATUS } from './Status.js';
 
 // Time a dead player waits before respawning.
@@ -838,6 +838,10 @@ export class Game {
    */
   _canonicalHitboxMotion(player) {
     if (!player || player.weapon === 'magicstaff' || player.weapon === 'chakram') return null;
+    // 1) The weapon's admin-canonical motion (shared by all players of that weapon).
+    const wc = canonicalWeaponMotion(player.weapon, 'attack');
+    if (wc && Array.isArray(wc.hitboxes) && wc.hitboxes.length) return wc;
+    // 2) Fall back to this device's per-player authored set (offline/cosmetic path).
     const setId = sanitizeMotionSetId(player.motionSetId) || weaponSetId(player.weapon);
     const m = resolveMotion(setId, 'attack');
     return (m && Array.isArray(m.hitboxes) && m.hitboxes.length) ? m : null;

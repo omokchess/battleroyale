@@ -207,6 +207,33 @@ export function registerMotionSet(id, rawSet, opts = {}) {
 
 export function hasMotionSet(id) { return !!(id && MOTION_SETS[id]); }
 
+// --- Admin-canonical per-weapon motion (T1-E) ------------------------------
+// The official definition for a weapon, shared by EVERY player using it (the
+// Tier-1 "전 유저 통일" layer). Keyed by weapon id, sanitized with the gameplay
+// fields kept. Fed by the fallback chain: bundle defaults → localStorage cache →
+// Firestore (admin write / all read), then distributed per match via ROOM_JOINED.
+const CANONICAL = {};
+
+/** Install/replace a weapon's canonical motion set (admin/host path). */
+export function setCanonicalWeapon(weapon, rawSet, opts = {}) {
+  if (!weapon || typeof weapon !== 'string') return false;
+  CANONICAL[weapon] = sanitizeMotionSet(rawSet, opts);
+  return true;
+}
+
+/** The canonical motion for (weapon, state), or null when none is set. */
+export function canonicalWeaponMotion(weapon, state) {
+  const s = CANONICAL[weapon];
+  return (s && s[state]) ? s[state] : null;
+}
+
+/** Snapshot of all canonical weapon sets (for caching / ROOM_JOINED). */
+export function canonicalWeaponsSnapshot() {
+  const out = {};
+  for (const w in CANONICAL) out[w] = CANONICAL[w];
+  return out;
+}
+
 /** A loadout id received over the wire is honoured only if we actually hold that
  *  set locally; otherwise null → caller falls back to the weapon's default set. */
 export function sanitizeMotionSetId(id) {

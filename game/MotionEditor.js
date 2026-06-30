@@ -19,7 +19,7 @@
  */
 
 import { solveStickman, drawStickFromJoints, samplePose, STICK_NEUTRAL, WEAPON_STICK_COLOR } from './Stickman.js';
-import { resolveMotion, weaponSetId, sanitizeMotion, registerMotionSet, MOTION_LIMITS } from './Motion.js';
+import { resolveMotion, weaponSetId, sanitizeMotion, registerMotionSet, MOTION_LIMITS, setCanonicalWeapon } from './Motion.js';
 import { MOTION_PRESETS } from './MotionPresets.js';
 import { captureMotionFromWebcam } from './PoseCapture.js';
 import { equippedStickLook, saveStickLook } from './StickLook.js';
@@ -28,6 +28,7 @@ const MAX_KF = 16;                                 // editor keyframe budget (ad
 const HIT_WINDOW = { start: 0.3, end: 0.7 };       // fixed cosmetic impact band (normalized)
 const STORE_SETS = 'pixelroyale_motionsets_v1';    // { id: { attack: motion } }
 const STORE_EQUIP = 'pixelroyale_equipped_motion_v1';
+const STORE_CANON = 'pixelroyale_canonical_weapons_v1'; // { weapon: { attack: motion } }
 
 // Editable weapons (those whose stick attack reads clearly). Kept short on purpose.
 const EDITOR_WEAPONS = ['sword', 'spear', 'hammer', 'katana', 'axe', 'rapier', 'bow', 'scythe'];
@@ -72,6 +73,27 @@ export function loadStoredMotionSets() {
 /** The currently equipped custom motion-set id (or null). */
 export function equippedMotionSetId() {
   try { return localStorage.getItem(STORE_EQUIP) || null; } catch { return null; }
+}
+
+/**
+ * Fallback chain step 2 (localStorage canonical cache): load every cached
+ * per-weapon canonical set into the registry at app start, so an offline / bot
+ * match still uses the latest admin definitions seen on this device. Re-sanitized
+ * with allowGameplay (still clamped). Firestore (step 3) overwrites these later.
+ */
+export function loadCanonicalWeaponCache() {
+  let map = {};
+  try { map = JSON.parse(localStorage.getItem(STORE_CANON) || '{}') || {}; } catch { map = {}; }
+  for (const weapon in map) setCanonicalWeapon(weapon, map[weapon], { allowGameplay: true });
+  return map;
+}
+
+/** Persist one weapon's canonical set into the localStorage cache. */
+export function cacheCanonicalWeapon(weapon, set) {
+  let map = {};
+  try { map = JSON.parse(localStorage.getItem(STORE_CANON) || '{}') || {}; } catch { map = {}; }
+  map[weapon] = set;
+  try { localStorage.setItem(STORE_CANON, JSON.stringify(map)); } catch {}
 }
 
 export class MotionEditor {
@@ -563,7 +585,17 @@ export class MotionEditor {
       localStorage.setItem(STORE_SETS, JSON.stringify(store));
       localStorage.setItem(STORE_EQUIP, id);                 // auto-equip the just-saved motion
     } catch {}
-    this._setStatus(`저장 + 장착 완료: "${raw}". 다음 매치부터 ${this.weapon}에 적용됩니다.`);
+
+    // Tier-1 canonical: this admin tool's save IS the weapon's official definition
+    // (shared by every player of that weapon). Install it + cache it locally now,
+    // and let the host wire the Firestore upload (admin-gated) via onSaveCanonical.
+    setCanonicalWeapon(this.weapon, set, { allowGameplay: true });
+    cacheCanonicalWeapon(this.weapon, set);
+    let synced = '';
+    try { const r = this.onSaveCanonical?.({ weapon: this.weapon, set }); if (r && typeof r.then === 'function') r.catch(() => {}); }
+    catch {}
+    const hb = this._hb() ? ' (히트박스 정본 포함)' : '';
+    this._setStatus(`저장 완료: "${raw}"${hb}. ${this.weapon} 무기의 정본으로 적용됩니다${synced}.`);
   }
 
   _setStatus(t) { const el = document.getElementById('meStatus'); if (el) el.textContent = t; }

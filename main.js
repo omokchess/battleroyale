@@ -16,7 +16,8 @@ import * as accountUI from './ui/account-ui.js';
 import { isMobileDevice, isPhoneDevice } from './game/Device.js';
 import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
 import { Sound } from './game/Sound.js';
-import { MotionEditor, loadStoredMotionSets, equippedMotionSetId } from './game/MotionEditor.js';
+import { MotionEditor, loadStoredMotionSets, equippedMotionSetId, loadCanonicalWeaponCache, cacheCanonicalWeapon } from './game/MotionEditor.js';
+import { setCanonicalWeapon } from './game/Motion.js';
 import { equippedStickLook } from './game/StickLook.js';
 
 // Dom Elements
@@ -1217,16 +1218,33 @@ const quickPlayBtn = document.getElementById('quickPlayBtn');
 if (quickPlayBtn) quickPlayBtn.addEventListener('click', doBotMatch);
 
 // --- Stickman motion editor (Phase C) ----------------------------------------
-// Re-register any saved user motion sets so equipped ids resolve, then wire the
-// lobby entry button.
+// Weapon-motion fallback chain (T1-E): bundle defaults are baked into Motion.js;
+// here we load the localStorage caches (cosmetic sets + per-weapon canonical), then
+// asynchronously refresh the canonical defs from Firestore (admin write / all read).
 loadStoredMotionSets();
+loadCanonicalWeaponCache();
+accountUI.fetchCanonicalWeaponMotions?.().then((map) => {
+  if (!map) return;
+  for (const weapon in map) { setCanonicalWeapon(weapon, map[weapon], { allowGameplay: true }); cacheCanonicalWeapon(weapon, map[weapon]); }
+}).catch(() => { /* offline → cache/bundle already loaded */ });
+
 let motionEditor = null;
+function ensureMotionEditor() {
+  if (motionEditor) return motionEditor;
+  motionEditor = new MotionEditor();
+  // Admin-only: a canonical save uploads the weapon's official motion to Firestore.
+  motionEditor.onSaveCanonical = async ({ weapon, set }) => {
+    if (!accountUI.isAdminUser?.()) return;
+    try { await accountUI.saveCanonicalWeaponMotion?.(weapon, set); }
+    catch (e) { console.warn('canonical weapon save failed (kept locally):', e?.message || e); }
+  };
+  return motionEditor;
+}
 const motionBtn = document.getElementById('motionBtn');
 if (motionBtn) motionBtn.addEventListener('click', () => {
   Sound.play('ui');
-  if (!motionEditor) motionEditor = new MotionEditor();
   const weapon = document.querySelector('.weapon-card.selected')?.dataset.weapon || 'sword';
-  motionEditor.open(weapon);
+  ensureMotionEditor().open(weapon);
 });
 
 // --- Onboarding controls card -------------------------------------------------

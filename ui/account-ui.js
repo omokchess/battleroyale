@@ -30,6 +30,8 @@ import {
   adminAddCoins,
   adminGrantAllItems,
   checkIsAdmin,
+  fetchWeaponMotions,
+  saveWeaponMotion,
 } from '../firebase/game-api.js';
 import { ASSET_VERSION } from '../game/SpriteAtlas.js';
 import { WEAPON_LIST, WEAPON_SKIN_DEFS } from '../firebase/catalog.js';
@@ -135,10 +137,14 @@ export function isGoogleLinked() {
   return hasGoogleLinked();
 }
 
-/** True when the signed-in user is an admin (/admins/{uid} exists). */
+/** True when the signed-in user is an admin (/admin/{uid} exists). */
 export function isAdminUser() {
   return !!isAdmin;
 }
+
+/** Weapon-motion canonical store (pass-throughs to the Firestore data layer). */
+export function fetchCanonicalWeaponMotions() { return fetchWeaponMotions(); }
+export function saveCanonicalWeaponMotion(weaponKey, data) { return saveWeaponMotion(weaponKey, data); }
 
 /** 구글 계정 연동 (성공 시 프로필 사진 사용 가능) */
 export async function linkGoogleAccount() {
