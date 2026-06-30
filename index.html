@@ -1002,6 +1002,13 @@
               <button id="meDelKf" class="bg-[#14100b] hover:bg-gray-800 border border-red-500 text-red-300 text-[10px] py-2 uppercase cursor-pointer active:scale-95">－키프레임</button>
               <button id="mePlay" class="bg-[#14100b] hover:bg-gray-800 border border-[#45f3ff] text-[#45f3ff] text-[10px] py-2 uppercase cursor-pointer active:scale-95">▶ 재생</button>
             </div>
+            <div class="border-t border-gray-700 pt-2">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] text-[#ff7a5a] uppercase font-bold">⚔ 히트박스 (정본 · 판정)</span>
+                <button id="meAddHitbox" class="bg-[#14100b] hover:bg-gray-800 border border-[#ff7a5a] text-[#ff7a5a] text-[10px] px-2 py-1 uppercase cursor-pointer active:scale-95">＋ 추가</button>
+              </div>
+              <div class="text-[9px] text-gray-500 leading-tight">빨간 상자 = 실제 타격 판정 영역(끌어 이동 / 모서리로 크기). 타임라인의 <b style="color:#ff7a5a">주황 띠</b>가 활성 구간(이때만 맞음). 정본은 판정 창 제한 없음.</div>
+            </div>
             <div class="flex items-center gap-2">
               <input id="meName" type="text" maxlength="24" placeholder="모션 이름" class="flex-1 min-w-0 bg-[#14100b] border border-gray-600 text-white text-xs px-2 py-1.5" />
               <button id="meReset" class="bg-[#14100b] hover:bg-gray-800 border border-gray-500 text-gray-300 text-[10px] px-3 py-1.5 uppercase cursor-pointer active:scale-95">초기화</button>

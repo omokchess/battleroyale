@@ -86,6 +86,7 @@ export class MotionEditor {
     this.dragHandle = null;
     this.dragKfIndex = -1;
     this.dragImpact = false;
+    this.dragHitbox = null;     // 'move' | 'resize' | 'aStart' | 'aEnd'
     this._raf = null;
     this._lastT = 0;
 
@@ -101,6 +102,7 @@ export class MotionEditor {
     $('meReset')?.addEventListener('click', () => this._loadTemplate());
     $('meSave')?.addEventListener('click', () => this._save());
     $('meCapture')?.addEventListener('click', () => this._capture());
+    $('meAddHitbox')?.addEventListener('click', () => this._toggleHitbox());
     const dur = $('meDuration');
     dur?.addEventListener('input', () => {
       this.motion.duration = clamp(parseFloat(dur.value) || 0.5, MOTION_LIMITS.minDuration, 1.5);
@@ -164,8 +166,9 @@ export class MotionEditor {
 
   _loadTemplate() {
     // Start from the weapon's current attack swing so users tweak, not start blank.
+    // Admin authoring path → keep any canonical hitboxes (allowGameplay).
     const base = resolveMotion(weaponSetId(this.weapon), 'attack');
-    this.motion = sanitizeMotion(base);
+    this.motion = sanitizeMotion(base, undefined, { allowGameplay: true });
     if (this.motion.keyframes.length > MAX_KF) this.motion.keyframes = this.motion.keyframes.slice(0, MAX_KF);
     if (!this.motion.events.some(e => e.type === 'impact')) {
       this.motion.events.push({ t: (HIT_WINDOW.start + HIT_WINDOW.end) / 2, type: 'impact' });
@@ -188,7 +191,7 @@ export class MotionEditor {
   _loadPreset(id) {
     const preset = MOTION_PRESETS.find(p => p.id === id);
     if (!preset) return;
-    this.motion = sanitizeMotion(preset.motion);
+    this.motion = sanitizeMotion(preset.motion, undefined, { allowGameplay: true });
     if (this.motion.keyframes.length > MAX_KF) this.motion.keyframes = this.motion.keyframes.slice(0, MAX_KF);
     if (!this.motion.events.some(e => e.type === 'impact')) {
       this.motion.events.push({ t: (HIT_WINDOW.start + HIT_WINDOW.end) / 2, type: 'impact' });
@@ -244,6 +247,25 @@ export class MotionEditor {
     }
   }
 
+  // --- Hitbox (admin canonical gameplay) -------------------------------------
+  _hb() { return (this.motion.hitboxes && this.motion.hitboxes[0]) || null; }
+
+  /** Add a default hitbox to the attack motion, or remove the existing one
+   *  (MVP = a single hitbox). World px relative to the player centre. */
+  _toggleHitbox() {
+    if (!Array.isArray(this.motion.hitboxes)) this.motion.hitboxes = [];
+    if (this.motion.hitboxes.length) {
+      this.motion.hitboxes = [];
+      this._setStatus('히트박스 제거됨. 이 무기는 기본 판정으로 돌아갑니다.');
+    } else {
+      this.motion.hitboxes = [{ ox: 30, oy: -6, w: 52, h: 44, activeStart: 0.35, activeEnd: 0.6 }];
+      this._setStatus('히트박스 추가됨. 빨간 상자를 끌어 위치·크기를, 타임라인 주황 띠로 활성 구간을 잡으세요.');
+    }
+    const btn = document.getElementById('meAddHitbox');
+    if (btn) btn.textContent = this.motion.hitboxes.length ? '－ 제거' : '＋ 추가';
+    this._renderAll();
+  }
+
   // --- Pose helpers ----------------------------------------------------------
   _displayPose() {
     if (this.playing) return samplePose(this.motion, this.scrubT);
@@ -279,14 +301,45 @@ export class MotionEditor {
         ctx.fill(); ctx.strokeStyle = '#0d0a06'; ctx.lineWidth = 1.5; ctx.stroke();
       }
     }
+
+    // Hitbox overlay (admin gameplay). World px → editor px by scale/14, anchored
+    // at the body centre. Brighter while the playhead is inside its active window.
+    const hb = this._hb();
+    if (hb) {
+      const W2E = scale / 14;
+      const hcx = cx + hb.ox * W2E, hcy = cyCenter + hb.oy * W2E;
+      const hw = hb.w * W2E, hh = hb.h * W2E;
+      const active = this.scrubT >= hb.activeStart && this.scrubT <= hb.activeEnd;
+      ctx.fillStyle = active ? 'rgba(255,90,60,0.34)' : 'rgba(255,90,60,0.14)';
+      ctx.strokeStyle = active ? '#ff7a5a' : 'rgba(255,122,90,0.6)';
+      ctx.lineWidth = 2;
+      ctx.fillRect(hcx - hw / 2, hcy - hh / 2, hw, hh);
+      ctx.strokeRect(hcx - hw / 2, hcy - hh / 2, hw, hh);
+      // Move handle (centre) + resize handle (bottom-right corner).
+      ctx.fillStyle = this.dragHitbox === 'move' ? '#ffd24a' : '#ff7a5a';
+      ctx.beginPath(); ctx.arc(hcx, hcy, 5, 0, Math.PI * 2); ctx.fill();
+      const rx = hcx + hw / 2, ry = hcy + hh / 2;
+      ctx.fillStyle = this.dragHitbox === 'resize' ? '#ffd24a' : '#ffb070';
+      ctx.fillRect(rx - 5, ry - 5, 10, 10);
+      this._hbScreen = { hcx, hcy, hw, hh, rx, ry, W2E, cx, cyCenter };
+    } else {
+      this._hbScreen = null;
+    }
     this._jointCache = joints;
   }
 
   _previewDown(e) {
-    if (this.playing || !this.motion.keyframes[this.selKf]) return;
+    if (this.playing) return;
     const r = this.canvas.getBoundingClientRect();
     const mx = (e.clientX - r.left) * (this.canvas.width / r.width);
     const my = (e.clientY - r.top) * (this.canvas.height / r.height);
+    // Hitbox handles take priority (resize corner, then move centre).
+    const s = this._hbScreen;
+    if (s) {
+      if ((s.rx - mx) ** 2 + (s.ry - my) ** 2 < 12 * 12) { this.dragHitbox = 'resize'; e.preventDefault(); return; }
+      if ((s.hcx - mx) ** 2 + (s.hcy - my) ** 2 < 12 * 12) { this.dragHitbox = 'move'; e.preventDefault(); return; }
+    }
+    if (!this.motion.keyframes[this.selKf]) return;
     let best = null, bestD = 14 * 14;
     for (const h of HANDLES) {
       const p = this._jointCache?.[h.name]; if (!p) continue;
@@ -294,6 +347,21 @@ export class MotionEditor {
       if (d < bestD) { bestD = d; best = h; }
     }
     if (best) { this.dragHandle = best.name; e.preventDefault(); }
+  }
+
+  _dragHitboxTo(e) {
+    const hb = this._hb(), s = this._hbScreen; if (!hb || !s) return;
+    const r = this.canvas.getBoundingClientRect();
+    const mx = (e.clientX - r.left) * (this.canvas.width / r.width);
+    const my = (e.clientY - r.top) * (this.canvas.height / r.height);
+    if (this.dragHitbox === 'move') {
+      hb.ox = clamp(Math.round((mx - s.cx) / s.W2E), -MOTION_LIMITS.hitboxOffsetMax, MOTION_LIMITS.hitboxOffsetMax);
+      hb.oy = clamp(Math.round((my - s.cyCenter) / s.W2E), -MOTION_LIMITS.hitboxOffsetMax, MOTION_LIMITS.hitboxOffsetMax);
+    } else if (this.dragHitbox === 'resize') {
+      hb.w = clamp(Math.round(Math.abs(mx - s.hcx) * 2 / s.W2E), MOTION_LIMITS.hitboxSizeMin, MOTION_LIMITS.hitboxSizeMax);
+      hb.h = clamp(Math.round(Math.abs(my - s.hcy) * 2 / s.W2E), MOTION_LIMITS.hitboxSizeMin, MOTION_LIMITS.hitboxSizeMax);
+    }
+    this._renderPreview();
   }
 
   _dragJointTo(e) {
@@ -334,6 +402,19 @@ export class MotionEditor {
       ctx.fillStyle = i === this.selKf ? '#ffd24a' : '#e8d5a3';
       ctx.beginPath(); ctx.moveTo(x, H / 2 - 12); ctx.lineTo(x + 5, H / 2 - 4); ctx.lineTo(x - 5, H / 2 - 4); ctx.closePath(); ctx.fill();
     });
+    // Hitbox active-window band (admin) — orange band + start/end handles. No
+    // HIT_WINDOW clamp for the canonical authoring path.
+    const hb = this._hb();
+    if (hb) {
+      const xs = tx(hb.activeStart), xe = tx(hb.activeEnd);
+      ctx.fillStyle = 'rgba(255,122,90,0.22)';
+      ctx.fillRect(xs, 18, xe - xs, H - 40);
+      ctx.fillStyle = '#ff7a5a';
+      ctx.fillRect(xs - 2, 14, 4, H - 30);   // start handle
+      ctx.fillRect(xe - 2, 14, 4, H - 30);   // end handle
+      ctx.font = '8px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('활성', (xs + xe) / 2, 22);
+    }
     // Impact marker.
     const imp = this.motion.events.find(e => e.type === 'impact');
     if (imp) {
@@ -359,6 +440,12 @@ export class MotionEditor {
 
   _timelineDown(e) {
     const t = this._timelineT(e);
+    // Grab a hitbox active-window handle first (admin).
+    const hb = this._hb();
+    if (hb) {
+      if (Math.abs(hb.activeStart - t) < 0.04) { this.dragHitbox = 'aStart'; return; }
+      if (Math.abs(hb.activeEnd - t) < 0.04) { this.dragHitbox = 'aEnd'; return; }
+    }
     const imp = this.motion.events.find(ev => ev.type === 'impact');
     // Grab the impact marker if close.
     if (imp && Math.abs(imp.t - t) < 0.04) { this.dragImpact = true; return; }
@@ -372,6 +459,16 @@ export class MotionEditor {
 
   _pointerMove(e) {
     if (this.dragHandle) { this._dragJointTo(e); return; }
+    if (this.dragHitbox === 'move' || this.dragHitbox === 'resize') { this._dragHitboxTo(e); return; }
+    if (this.dragHitbox === 'aStart' || this.dragHitbox === 'aEnd') {
+      const hb = this._hb(); if (hb) {
+        const t = this._timelineT(e);
+        if (this.dragHitbox === 'aStart') hb.activeStart = clamp(Math.min(t, hb.activeEnd), 0, 1);
+        else hb.activeEnd = clamp(Math.max(t, hb.activeStart), 0, 1);
+      }
+      this._renderTimeline();
+      return;
+    }
     if (this.dragImpact) {
       const t = clamp(this._timelineT(e), HIT_WINDOW.start, HIT_WINDOW.end); // guardrail clamp
       const imp = this.motion.events.find(ev => ev.type === 'impact'); if (imp) imp.t = t;
@@ -387,7 +484,7 @@ export class MotionEditor {
   }
   _pointerUp() {
     if (this.dragKfIndex >= 0) this.motion.keyframes.sort((a, b) => a.t - b.t);
-    this.dragHandle = null; this.dragImpact = false; this.dragKfIndex = -1;
+    this.dragHandle = null; this.dragImpact = false; this.dragKfIndex = -1; this.dragHitbox = null;
   }
 
   // --- Keyframe ops ----------------------------------------------------------
@@ -450,9 +547,9 @@ export class MotionEditor {
     const slug = raw.toLowerCase().replace(/[^a-z0-9가-힣]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'custom';
     const id = `user:${this.weapon}:${slug}`;
     // The set overrides ONLY the attack motion; everything else falls back to the
-    // weapon default. Sanitize before storing + registering (guardrail).
-    const set = { attack: sanitizeMotion(this.motion) };
-    registerMotionSet(id, set);
+    // weapon default. Admin authoring → keep gameplay fields (hitboxes/active window).
+    const set = { attack: sanitizeMotion(this.motion, undefined, { allowGameplay: true }) };
+    registerMotionSet(id, set, { allowGameplay: true });
     let store = {};
     try { store = JSON.parse(localStorage.getItem(STORE_SETS) || '{}') || {}; } catch {}
     store[id] = set;
@@ -464,5 +561,9 @@ export class MotionEditor {
   }
 
   _setStatus(t) { const el = document.getElementById('meStatus'); if (el) el.textContent = t; }
-  _renderAll() { this._renderPreview(); this._renderTimeline(); }
+  _renderAll() {
+    const btn = document.getElementById('meAddHitbox');
+    if (btn) btn.textContent = this._hb() ? '－ 제거' : '＋ 추가';
+    this._renderPreview(); this._renderTimeline();
+  }
 }
