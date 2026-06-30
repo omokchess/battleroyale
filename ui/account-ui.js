@@ -32,8 +32,15 @@ import {
   checkIsAdmin,
   fetchWeaponMotions,
   saveWeaponMotion,
+  publishWorkshopWeapon,
+  fetchPublishedWorkshopWeapons,
+  fetchMyWorkshopWeapons,
+  likeWorkshopWeapon,
+  reportWorkshopWeapon,
+  setWorkshopWeaponStatus,
 } from '../firebase/game-api.js';
 import { ASSET_VERSION } from '../game/SpriteAtlas.js';
+import { clampWorkshopWeapon } from '../game/Workshop.js';
 import { WEAPON_LIST, WEAPON_SKIN_DEFS } from '../firebase/catalog.js';
 
 /**
@@ -145,6 +152,19 @@ export function isAdminUser() {
 /** Weapon-motion canonical store (pass-throughs to the Firestore data layer). */
 export function fetchCanonicalWeaponMotions() { return fetchWeaponMotions(); }
 export function saveCanonicalWeaponMotion(weaponKey, data) { return saveWeaponMotion(weaponKey, data); }
+
+// ── Workshop weapons (Tier 2). Every fetched def is RE-CLAMPED through the
+//    balance envelope so a tampered Firestore doc can never enter the game unsafe.
+function clampFetched(w) {
+  const safe = clampWorkshopWeapon({ name: w.name, desc: w.desc, color: w.color, stats: w.stats, motionSet: w.motionSet });
+  return { id: w.id, author_id: w.author_id, author_name: w.author_name, likes: w.likes, plays: w.plays, status: w.status, ...safe };
+}
+export function publishMyWorkshopWeapon(def) { return publishWorkshopWeapon(def, getUsername()); }
+export async function browseWorkshopWeapons(sort = 'likes', max = 40) { return (await fetchPublishedWorkshopWeapons(sort, max)).map(clampFetched); }
+export async function myWorkshopWeapons() { return (await fetchMyWorkshopWeapons()).map(clampFetched); }
+export function likeWorkshop(id) { return likeWorkshopWeapon(id); }
+export function reportWorkshop(id) { return reportWorkshopWeapon(id); }
+export function moderateWorkshop(id, status) { return setWorkshopWeaponStatus(id, status); }
 
 /** 구글 계정 연동 (성공 시 프로필 사진 사용 가능) */
 export async function linkGoogleAccount() {

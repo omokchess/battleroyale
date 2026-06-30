@@ -15,6 +15,7 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
+  where,
 } from 'firebase/firestore';
 import { firebaseAuth, firestore } from './client.js';
 import { DEFAULT_COSTUMES, DEFAULT_ITEMS, defaultItemById } from './catalog.js';
@@ -356,6 +357,94 @@ export async function saveWeaponMotion(weaponKey, data) {
     tx.set(ref, { weapon_key: weaponKey, data, version, updated_at: serverTimestamp(), updated_by: user.uid });
     return version;
   });
+}
+
+// ── 공방 무기 (workshop_weapons) — 작성자 write / published 전체 read ─────
+const WS_COL = 'workshop_weapons';
+const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9가-힣]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'weapon';
+
+/** Publish (create/update) a workshop weapon owned by the signed-in user. The
+ *  raw def is stored as JSON; it is re-clamped by every reader before use. */
+export async function publishWorkshopWeapon(def, authorName = 'Player') {
+  const user = currentUser();
+  if (!firestore || !user) throw new Error('로그인 필요');
+  const id = `${user.uid}_${slugify(def?.name)}`;
+  const ref = doc(firestore, WS_COL, id);
+  return runTransaction(firestore, async tx => {
+    const snap = await tx.get(ref);
+    const version = (snap.exists() ? Number(snap.data().version || 0) : 0) + 1;
+    tx.set(ref, {
+      author_id: user.uid,
+      author_name: String(authorName || 'Player').slice(0, 24),
+      name: String(def?.name || '무기').slice(0, 24),
+      desc: String(def?.desc || '').slice(0, 80),
+      color: def?.color || null,
+      stats: def?.stats || {},
+      data: def?.motionSet || {},
+      likes: snap.exists() ? Number(snap.data().likes || 0) : 0,
+      plays: snap.exists() ? Number(snap.data().plays || 0) : 0,
+      reports: snap.exists() ? Number(snap.data().reports || 0) : 0,
+      status: 'published',
+      version,
+      created_at: snap.exists() ? (snap.data().created_at || serverTimestamp()) : serverTimestamp(),
+      updated_at: serverTimestamp(),
+    }, { merge: true });
+    return id;
+  });
+}
+
+function wsRow(id, d) {
+  return { id, author_id: d.author_id, author_name: d.author_name || 'Player',
+    name: d.name || '무기', desc: d.desc || '', color: d.color || null,
+    stats: d.stats || {}, motionSet: d.data || {}, likes: Number(d.likes || 0),
+    plays: Number(d.plays || 0), status: d.status || 'published' };
+}
+
+/** Browse published workshop weapons (sort: 'likes' | 'created_at'). */
+export async function fetchPublishedWorkshopWeapons(sort = 'likes', max = 40) {
+  if (!firestore) return [];
+  try {
+    const q = query(collection(firestore, WS_COL), orderBy(sort === 'created_at' ? 'created_at' : 'likes', 'desc'), limitQuery(max));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => wsRow(d.id, d.data())).filter(w => w.status === 'published');
+  } catch (error) { console.error('[firebase] fetchPublishedWorkshopWeapons', error); return []; }
+}
+
+/** The signed-in user's own workshop weapons (any status). */
+export async function fetchMyWorkshopWeapons() {
+  const user = currentUser();
+  if (!firestore || !user) return [];
+  try {
+    const q = query(collection(firestore, WS_COL), where('author_id', '==', user.uid));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => wsRow(d.id, d.data()));
+  } catch (error) { console.error('[firebase] fetchMyWorkshopWeapons', error); return []; }
+}
+
+/** Bump a counter field (likes / plays / reports) — any signed-in user. */
+async function bumpWorkshopCounter(id, field) {
+  const user = currentUser();
+  if (!firestore || !user || !id) return false;
+  const ref = doc(firestore, WS_COL, id);
+  try {
+    await runTransaction(firestore, async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      tx.update(ref, { [field]: Number(snap.data()[field] || 0) + 1, updated_at: serverTimestamp() });
+    });
+    return true;
+  } catch (error) { console.error('[firebase] bumpWorkshopCounter', field, error); return false; }
+}
+export function likeWorkshopWeapon(id) { return bumpWorkshopCounter(id, 'likes'); }
+export function reportWorkshopWeapon(id) { return bumpWorkshopCounter(id, 'reports'); }
+
+/** Admin moderation: hide / remove / restore a weapon. */
+export async function setWorkshopWeaponStatus(id, status) {
+  const user = currentUser();
+  if (!firestore || !user || !id) throw new Error('로그인 필요');
+  const ok = new Set(['published', 'hidden', 'removed']);
+  await setDoc(doc(firestore, WS_COL, id), { status: ok.has(status) ? status : 'hidden', updated_at: serverTimestamp() }, { merge: true });
+  return status;
 }
 
 // ── 어드민 도구 ─────────────────────────────────────────────

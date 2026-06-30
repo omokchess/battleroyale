@@ -1241,6 +1241,11 @@ function ensureMotionEditor() {
     try { await accountUI.saveCanonicalWeaponMotion?.(weapon, set); }
     catch (e) { console.warn('canonical weapon save failed (kept locally):', e?.message || e); }
   };
+  // Workshop save → publish to the shared catalog (fail-soft; stays equipped locally).
+  motionEditor.onSaveWorkshop = async (def) => {
+    try { await accountUI.publishMyWorkshopWeapon?.(def); }
+    catch (e) { console.warn('workshop publish failed (kept locally):', e?.message || e); }
+  };
   return motionEditor;
 }
 const motionBtn = document.getElementById('motionBtn');
