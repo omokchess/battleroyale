@@ -108,6 +108,24 @@ export function equippedWorkshopWeapon() {
   } catch { return null; }
 }
 
+/** Equip a workshop weapon (re-clamped before storing). Returns the safe def. */
+export function equipWorkshopWeapon(def) {
+  const safe = clampWorkshopWeapon(def);
+  try { localStorage.setItem(STORE_WORKSHOP, JSON.stringify(safe)); } catch {}
+  return safe;
+}
+
+/** Unequip the workshop weapon (back to the base weapon). */
+export function clearWorkshopWeapon() {
+  try { localStorage.removeItem(STORE_WORKSHOP); } catch {}
+}
+
+/** Name of the currently equipped workshop weapon (or null). */
+export function equippedWorkshopWeaponName() {
+  const w = equippedWorkshopWeapon();
+  return w ? w.name : null;
+}
+
 export class MotionEditor {
   constructor() {
     this.root = document.getElementById('motionEditor');

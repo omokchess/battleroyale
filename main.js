@@ -16,7 +16,7 @@ import * as accountUI from './ui/account-ui.js';
 import { isMobileDevice, isPhoneDevice } from './game/Device.js';
 import { normalizeRoomConfig, roomConfigBadges } from './game/RoomConfig.js';
 import { Sound } from './game/Sound.js';
-import { MotionEditor, loadStoredMotionSets, equippedMotionSetId, loadCanonicalWeaponCache, cacheCanonicalWeapon, equippedWorkshopWeapon } from './game/MotionEditor.js';
+import { MotionEditor, loadStoredMotionSets, equippedMotionSetId, loadCanonicalWeaponCache, cacheCanonicalWeapon, equippedWorkshopWeapon, equipWorkshopWeapon, clearWorkshopWeapon, equippedWorkshopWeaponName } from './game/MotionEditor.js';
 import { setCanonicalWeapon } from './game/Motion.js';
 import { equippedStickLook } from './game/StickLook.js';
 
@@ -1953,6 +1953,67 @@ function armoryCategory(w) {
   if (ARMORY_SPECIAL.has(w)) return '특수';
   return (Weapons[w]?.type === 'projectile') ? '원거리' : '근접';
 }
+
+/**
+ * Tier-2 workshop weapons tab: browse published creations (re-clamped on fetch),
+ * equip/unequip, like/report, and (admin) hide. Equipping just stores the def
+ * locally → localAppearance → Player.
+ */
+async function renderWorkshopList(el) {
+  if (!el) return;
+  const isAdmin = !!accountUI.isAdminUser?.();
+  const equippedName = equippedWorkshopWeaponName();
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-2">
+      <span class="font-mono text-[11px] text-[#ffb070] uppercase font-bold">🔧 공방 무기 둘러보기</span>
+      <span class="font-mono text-[10px] med-muted">${equippedName ? '장착: <b style="color:#7df09a">' + escapeHtml(equippedName) + '</b>' : '장착 안 함 (기본 무기)'}</span>
+    </div>
+    <div class="flex gap-1.5 mb-2">
+      <button id="wsSortLikes" class="med-btn font-mono text-[10px] px-2 py-1 on">인기</button>
+      <button id="wsSortNew" class="med-btn font-mono text-[10px] px-2 py-1">최신</button>
+      ${equippedName ? '<button id="wsUnequip" class="med-btn font-mono text-[10px] px-2 py-1" style="color:#c0392b;border-color:#c0392b;margin-left:auto">장착 해제</button>' : ''}
+    </div>
+    <div id="wsList" class="space-y-2 max-h-[44vh] overflow-y-auto pr-1"><div class="text-center py-6 med-muted font-mono text-[11px]">불러오는 중...</div></div>`;
+
+  el.querySelector('#wsUnequip')?.addEventListener('click', () => { clearWorkshopWeapon(); renderWorkshopList(el); });
+  const load = async (sort) => {
+    const listEl = el.querySelector('#wsList');
+    let items = [];
+    try { items = await accountUI.browseWorkshopWeapons?.(sort, 40) || []; } catch {}
+    if (!items.length) {
+      listEl.innerHTML = `<div class="text-center py-6 med-muted font-mono text-[11px]">게시된 공방 무기가 없습니다.<br>무기 공방에서 만들어 게시해 보세요!</div>`;
+      return;
+    }
+    const eqName = equippedWorkshopWeaponName();
+    listEl.innerHTML = items.map((w, i) => {
+      const s = w.stats || {};
+      const equipped = w.name === eqName;
+      return `<div class="med-parch p-2.5 flex items-center justify-between gap-2" data-i="${i}">
+        <div class="min-w-0">
+          <div class="font-mono text-[12px] text-white truncate"><span style="color:${w.color || '#ffb070'}">●</span> ${escapeHtml(w.name)} <span class="med-muted text-[9px]">by ${escapeHtml(w.author_name || '익명')}</span></div>
+          <div class="font-mono text-[9px] med-muted">⚔${s.damage} · ⏱${s.cooldownMs}ms · ❤${s.maxHp} · 🏃${s.moveSpeed} · ♥${w.likes||0}</div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button class="med-btn font-mono text-[10px] px-1.5 py-1" data-act="like" title="좋아요">♥</button>
+          <button class="med-btn font-mono text-[10px] px-1.5 py-1" data-act="report" title="신고">⚑</button>
+          ${isAdmin ? '<button class="med-btn font-mono text-[10px] px-1.5 py-1" data-act="hide" title="숨김(어드민)" style="color:#c0392b">숨김</button>' : ''}
+          <button class="med-btn ${equipped ? '' : 'med-btn--blood'} font-mono text-[10px] px-2 py-1" data-act="equip">${equipped ? '장착됨' : '장착'}</button>
+        </div>
+      </div>`;
+    }).join('');
+    listEl.querySelectorAll('[data-i]').forEach(row => {
+      const w = items[Number(row.dataset.i)];
+      row.querySelector('[data-act="equip"]')?.addEventListener('click', () => { equipWorkshopWeapon(w); Sound.play('uiConfirm'); renderWorkshopList(el); });
+      row.querySelector('[data-act="like"]')?.addEventListener('click', (ev) => { ev.currentTarget.disabled = true; accountUI.likeWorkshop?.(w.id); });
+      row.querySelector('[data-act="report"]')?.addEventListener('click', (ev) => { ev.currentTarget.disabled = true; accountUI.reportWorkshop?.(w.id); ev.currentTarget.textContent = '신고됨'; });
+      row.querySelector('[data-act="hide"]')?.addEventListener('click', () => { accountUI.moderateWorkshop?.(w.id, 'hidden'); load(el._wsSort || 'likes'); });
+    });
+  };
+  el._wsSort = 'likes';
+  el.querySelector('#wsSortLikes')?.addEventListener('click', (e) => { el._wsSort = 'likes'; e.currentTarget.classList.add('on'); el.querySelector('#wsSortNew')?.classList.remove('on'); load('likes'); });
+  el.querySelector('#wsSortNew')?.addEventListener('click', (e) => { el._wsSort = 'created_at'; e.currentTarget.classList.add('on'); el.querySelector('#wsSortLikes')?.classList.remove('on'); load('created_at'); });
+  load('likes');
+}
 function armoryStatusTags(w) {
   const cfg = Weapons[w] || {};
   const text = `${cfg.description || ''} ${cfg.skill || ''} ${Object.keys(cfg).join(' ')}`;
@@ -1977,17 +2038,34 @@ function buildArmoryInto(body) {
   const maxDps = max(dps), maxHp = max(w => Weapons[w].maxHp || 0), maxMove = max(w => Weapons[w].moveSpeed || 1), maxRange = max(finiteRange);
 
   body.innerHTML = `
-    <div class="armory-grid">
-      <div class="med-parch relative p-3">
-        <div class="armory-filter" id="armoryFilter">
-          <button class="on" data-cat="전체">전체</button><button data-cat="근접">근접</button>
-          <button data-cat="원거리">원거리</button><button data-cat="특수">특수</button>
+    <div class="armory-filter mb-2" id="armoryTabs">
+      <button class="on" data-tab="base">기본 무기</button><button data-tab="workshop">🔧 공방 무기</button>
+    </div>
+    <div id="armoryBase">
+      <div class="armory-grid">
+        <div class="med-parch relative p-3">
+          <div class="armory-filter" id="armoryFilter">
+            <button class="on" data-cat="전체">전체</button><button data-cat="근접">근접</button>
+            <button data-cat="원거리">원거리</button><button data-cat="특수">특수</button>
+          </div>
+          <div class="armory-chips" id="armoryChips"></div>
+          <div class="font-mono text-[10px] med-muted mt-2 text-center">▼ ${weapons.length}종 · ⚔ ${weapons.filter(w=>armoryCategory(w)==='근접').length}</div>
         </div>
-        <div class="armory-chips" id="armoryChips"></div>
-        <div class="font-mono text-[10px] med-muted mt-2 text-center">▼ ${weapons.length}종 · ⚔ ${weapons.filter(w=>armoryCategory(w)==='근접').length}</div>
+        <div class="med-parch med-parch--hi med-ticks relative p-4" id="armoryDetail"></div>
       </div>
-      <div class="med-parch med-parch--hi med-ticks relative p-4" id="armoryDetail"></div>
-    </div>`;
+    </div>
+    <div id="armoryWorkshop" class="hidden med-parch relative p-3"></div>`;
+
+  // Tab switch: base arsenal ↔ workshop weapons (Tier 2).
+  body.querySelector('#armoryTabs')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-tab]'); if (!btn) return;
+    body.querySelectorAll('#armoryTabs button').forEach(b => b.classList.toggle('on', b === btn));
+    const ws = btn.dataset.tab === 'workshop';
+    body.querySelector('#armoryBase')?.classList.toggle('hidden', ws);
+    const wsEl = body.querySelector('#armoryWorkshop');
+    wsEl?.classList.toggle('hidden', !ws);
+    if (ws) renderWorkshopList(wsEl);
+  });
 
   const chipsEl = body.querySelector('#armoryChips');
   const detailEl = body.querySelector('#armoryDetail');
