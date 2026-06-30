@@ -19,6 +19,7 @@ import { generateWater, emptyWater } from './Water.js';
 import { buildLevel, PHYS } from './Level.js';
 import { PlatformerZone } from './PlatformerZone.js';
 import { BotBrain, BOT_DIFFICULTY, BOT_LOADOUT } from './Bot.js';
+import { resolveMotion, weaponSetId, sanitizeMotionSetId } from './Motion.js';
 import { STATUS } from './Status.js';
 
 // Time a dead player waits before respawning.
@@ -546,11 +547,19 @@ export class Game {
 
       const weaponConfig = getEffectiveWeapon(p.weapon, p.buffType);
 
-      // Automatic Attack on cooldown trigger
+      // Automatic Attack on cooldown trigger. If the equipped weapon has an
+      // ADMIN-CANONICAL hitbox motion, the hit is judged by that motion's
+      // hitboxes/active window (T1-D) instead of the code-fixed geometry; the
+      // swing animation + cooldown still go through lastAttackTime.
       if (p.canAttack(now)) {
-        this._performAutomaticAttack(p, weaponConfig, now);
+        const hbMotion = this._canonicalHitboxMotion(p);
+        if (hbMotion) this._startHitboxSwing(p, hbMotion, now);
+        else this._performAutomaticAttack(p, weaponConfig, now);
       }
     });
+
+    // 3a2. Resolve active hitbox swings against targets during their active window.
+    this._updateHitboxSwings(now);
 
     // 3b. Tick fire DoT (magic staff fireball burns).
     this._tickStatuses(deltaTime, now);
@@ -819,6 +828,73 @@ export class Game {
       .sort((a, b) => (b.kills - a.kills) || (a.deaths - b.deaths) || (a.isBot - b.isBot));
     results.forEach((r, i) => { r.rank = i + 1; });
     if (this.onMatchOver) { try { this.onMatchOver(results); } catch {} }
+  }
+
+  /**
+   * Resolve a player's ADMIN-CANONICAL attack motion IFF it carries hitboxes
+   * (authored in the editor on the canonical registry). Returns the motion or
+   * null. Cosmetic/peer motions never have hitboxes (dual-trust sanitize), so a
+   * guest can't fabricate one — the host only ever reads its own registry here.
+   */
+  _canonicalHitboxMotion(player) {
+    if (!player || player.weapon === 'magicstaff' || player.weapon === 'chakram') return null;
+    const setId = sanitizeMotionSetId(player.motionSetId) || weaponSetId(player.weapon);
+    const m = resolveMotion(setId, 'attack');
+    return (m && Array.isArray(m.hitboxes) && m.hitboxes.length) ? m : null;
+  }
+
+  /** Begin a hitbox-driven swing: manage the cooldown + render animation via
+   *  lastAttackTime, and record the active swing for _updateHitboxSwings. */
+  _startHitboxSwing(player, motion, now) {
+    player.lastAttackTime = now;
+    player.swingDirection *= -1;
+    player._hbSwing = {
+      start: now,
+      durMs: Math.max(80, (motion.duration || 0.4) * 1000),
+      hitboxes: motion.hitboxes,
+      knockback: motion.knockback || 0,
+      hit: new Set(),
+    };
+    if (player.id === this.localPlayerId) Sound.play(Sound.attackSoundFor(getEffectiveWeapon(player.weapon, player.buffType)));
+  }
+
+  /**
+   * Advance every active hitbox swing: during each hitbox's active window, test
+   * its AABB (world px relative to the attacker, forward = facing) against all
+   * live targets and apply the weapon's damage once per target per swing.
+   */
+  _updateHitboxSwings(now) {
+    for (const id in this.players) {
+      const p = this.players[id];
+      const sw = p._hbSwing;
+      if (!sw) continue;
+      if (p.isDead) { p._hbSwing = null; continue; }
+      const phase = (now - sw.start) / sw.durMs;
+      if (phase >= 1) { p._hbSwing = null; continue; }
+
+      const facing = Math.cos(p.angle || 0) >= 0 ? 1 : -1;
+      const wcfg = getEffectiveWeapon(p.weapon, p.buffType);
+      const dmg = wcfg.damage || 10;
+
+      for (const hb of sw.hitboxes) {
+        if (phase < hb.activeStart || phase > hb.activeEnd) continue;
+        const bx = p.x + hb.ox * facing, by = p.y + hb.oy;
+        const bl = bx - hb.w / 2, br = bx + hb.w / 2, bt = by - hb.h / 2, bb = by + hb.h / 2;
+        for (const tid in this.players) {
+          const t = this.players[tid];
+          if (t.id === p.id || t.isDead || sw.hit.has(t.id)) continue;
+          if (t.isInvincible && t.isInvincible()) continue;
+          const tr = t.radius || 14;
+          if (br <= t.x - tr || bl >= t.x + tr || bb <= t.y - tr || bt >= t.y + tr) continue;
+          if (this._terrainBlocksSegment(p.x, p.y, t.x, t.y)) continue;  // walls block
+          sw.hit.add(t.id);
+          if (sw.knockback) this._displace(t, facing * sw.knockback, 0);
+          const died = t.takeDamage(dmg, p.nickname);
+          if (died) this._creditKill(p.id, t);
+          if (p.id === this.localPlayerId) this._triggerHitstop(now, 42);
+        }
+      }
+    }
   }
 
   _performAutomaticAttack(player, weaponConfig, now) {

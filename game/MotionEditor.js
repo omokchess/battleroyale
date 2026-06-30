@@ -50,15 +50,21 @@ const HANDLES = [
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const DEG = Math.PI / 180;
 
-/** Load + re-register every stored user motion set (call once at app start). */
+/**
+ * Load + re-register every stored motion set (call once at app start). localStorage
+ * is this device's CANONICAL cache (only the admin-gated editor writes it), so it
+ * re-registers with allowGameplay → authored hitboxes survive a reload. Everything
+ * is still re-sanitized (clamped) on the way in, never trusting a raw blob. In
+ * multiplayer the host's ROOM_JOINED set is authoritative + re-clamped (T1-F), so
+ * a hand-edited local blob can only ever affect that device's own offline play.
+ */
 export function loadStoredMotionSets() {
   let sets = {};
   try { sets = JSON.parse(localStorage.getItem(STORE_SETS) || '{}') || {}; } catch { sets = {}; }
   for (const id in sets) {
-    // Re-sanitize on the way in — never trust a hand-edited blob.
     const safe = {};
-    for (const state in sets[id]) safe[state] = sanitizeMotion(sets[id][state]);
-    registerMotionSet(id, safe);
+    for (const state in sets[id]) safe[state] = sanitizeMotion(sets[id][state], undefined, { allowGameplay: true });
+    registerMotionSet(id, safe, { allowGameplay: true });
   }
   return sets;
 }
