@@ -24,6 +24,7 @@ import { MOTION_PRESETS } from './MotionPresets.js';
 import { captureMotionFromWebcam } from './PoseCapture.js';
 import { equippedStickLook, saveStickLook } from './StickLook.js';
 import { clampWorkshopStats, statCost, enforceBudget, clampWorkshopWeapon, POINT_BUDGET } from './Workshop.js';
+import { BlockEditor } from './BlockEditor.js';
 
 const MAX_KF = 16;                                 // editor keyframe budget (admin authoring)
 const HIT_WINDOW = { start: 0.3, end: 0.7 };       // fixed cosmetic impact band (normalized)
@@ -138,6 +139,8 @@ export class MotionEditor {
     this.weapon = 'sword';
     this.mode = 'canonical';           // 'canonical' (admin) | 'workshop' (user weapon)
     this.stats = clampWorkshopStats({});
+    this.blocks = null;                // workshop weapon's block-gimmick AST
+    this.blockEditor = null;           // lazy BlockEditor instance
     this.look = equippedStickLook();   // stick appearance (live-applied + equipped)
     this.motion = null;          // working { duration, loop:false, keyframes, events }
     this.selKf = 0;
@@ -193,6 +196,10 @@ export class MotionEditor {
     // Workshop stat sliders (Tier 2): live-clamp into the envelope + budget bar.
     STAT_KEYS.forEach(k => $('ms_' + k)?.addEventListener('input', (e) => this._updateStat(k, parseFloat(e.target.value))));
     $('ms_status')?.addEventListener('change', (e) => this._updateStat('status', e.target.value));
+    $('meBlockBtn')?.addEventListener('click', () => {
+      if (!this.blockEditor) this.blockEditor = new BlockEditor();
+      this.blockEditor.open(this.blocks, 'workshop', (ast) => { this.blocks = ast; this._updateBlockCount(); });
+    });
 
     $('meColor')?.addEventListener('input', (e) => applyLook({ color: e.target.value }));
     $('meColorClear')?.addEventListener('click', () => applyLook({ color: null }));
@@ -228,9 +235,11 @@ export class MotionEditor {
     const title = this.root.querySelector('h2'); if (title) title.textContent = ws ? '🔧 무기 공방' : '🎬 모션 에디터';
     if (ws) {
       this.stats = clampWorkshopStats({});
+      this.blocks = null;
       STAT_KEYS.forEach(k => { const el = $('ms_' + k); if (el) el.value = String(this.stats[k]); const v = $('ms_' + k + '_v'); if (v) v.textContent = this.stats[k]; });
       if ($('ms_status')) $('ms_status').value = this.stats.status;
       this._renderBudget();
+      this._updateBlockCount();
     }
     this._loadTemplate();
     this.root.classList.remove('hidden');
@@ -246,6 +255,11 @@ export class MotionEditor {
     const v = document.getElementById('ms_' + key + '_v'); if (v) v.textContent = this.stats[key];
     if (document.getElementById('ms_status')) document.getElementById('ms_status').value = this.stats.status;
     this._renderBudget();
+  }
+
+  _updateBlockCount() {
+    const el = document.getElementById('meBlockCount');
+    if (el) el.textContent = (this.blocks && this.blocks.events && this.blocks.events.length) ? '(기믹 있음)' : '';
   }
 
   _renderBudget() {
@@ -680,6 +694,7 @@ export class MotionEditor {
     const def = clampWorkshopWeapon({
       name: raw, color: this.look.color || null, stats,
       motionSet: { attack: this.motion },
+      blocks: this.blocks,
     });
     try { localStorage.setItem(STORE_WORKSHOP, JSON.stringify(def)); } catch {}
     try { const r = this.onSaveWorkshop?.(def); if (r && typeof r.then === 'function') r.catch(() => {}); } catch {}

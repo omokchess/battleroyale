@@ -1043,6 +1043,7 @@
                 <label class="flex items-center gap-1">상태이상<select id="ms_status" class="bg-[#14100b] border border-gray-600 text-white px-1 py-0.5 flex-1"><option value="none">없음</option><option value="slow">둔화</option><option value="bleed">출혈</option><option value="burn">화상</option><option value="stun">기절</option></select></label>
                 <label class="flex items-center gap-1">지속ms<input id="ms_statusDurationMs" type="range" min="0" max="3000" step="100" class="flex-1"/><span id="ms_statusDurationMs_v" class="w-9 text-right text-[#e8d5a3]">0</span></label>
               </div>
+              <button id="meBlockBtn" class="w-full mt-2 bg-[#14100b] hover:bg-gray-800 border border-[#45f3ff] text-[#45f3ff] text-[10px] py-2 uppercase cursor-pointer active:scale-95">⚙ 기믹 코딩 (블록) <span id="meBlockCount" class="text-gray-400 normal-case"></span></button>
             </div>
             <div class="flex items-center gap-2">
               <input id="meName" type="text" maxlength="24" placeholder="모션 이름" class="flex-1 min-w-0 bg-[#14100b] border border-gray-600 text-white text-xs px-2 py-1.5" />
@@ -1052,6 +1053,30 @@
             <div id="meStatus" class="text-[10px] text-gray-400 leading-snug min-h-[28px]"></div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- BLOCK GIMMICK EDITOR (weapon blockcoding) -->
+    <div id="blockEditor" class="hidden absolute inset-0 z-[80] flex flex-col bg-[#14100b] font-mono">
+      <div class="flex items-center gap-2 px-3 py-2 border-b-2 border-[#45f3ff]/40 shrink-0">
+        <span class="text-[#45f3ff] font-bold text-sm">⚙ 기믹 코딩</span>
+        <div id="beEventTabs" class="flex gap-1 overflow-x-auto flex-1"></div>
+        <button id="beClose" class="text-gray-400 hover:text-white text-lg px-2 cursor-pointer shrink-0">✕</button>
+      </div>
+      <div class="flex-1 flex min-h-0 flex-col lg:flex-row">
+        <div id="bePalette" class="lg:w-56 shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-gray-700 p-2 max-h-[28vh] lg:max-h-none"></div>
+        <div id="beWorkspace" class="flex-1 overflow-y-auto p-3 min-h-0"></div>
+        <div class="lg:w-64 shrink-0 border-t lg:border-t-0 lg:border-l border-gray-700 p-2 overflow-y-auto max-h-[26vh] lg:max-h-none">
+          <div class="text-[10px] text-gray-400 uppercase mb-1">프리뷰 · 테스트</div>
+          <canvas id="beCanvas" width="240" height="180" class="w-full bg-[#0d0a06] border border-gray-700 mb-2"></canvas>
+          <div id="beTestOut" class="text-[10px] text-gray-400 leading-snug"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 px-3 py-2 border-t-2 border-[#45f3ff]/40 shrink-0 text-[10px]">
+        <span class="text-gray-400">블록 <b id="beBlockGauge" class="text-[#7df09a]">0</b>/<span id="beBlockMax">80</span></span>
+        <div class="w-24 h-1.5 bg-[#0d0a06] border border-gray-700"><div id="beBlockBar" class="h-full bg-[#7df09a]" style="width:0%"></div></div>
+        <button id="beTest" class="ml-auto med-btn px-3 py-1.5">▶ 테스트</button>
+        <button id="beSave" class="med-btn med-btn--blood px-3 py-1.5">저장</button>
       </div>
     </div>
 
