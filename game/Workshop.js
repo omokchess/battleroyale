@@ -151,5 +151,9 @@ export function clampWorkshopWeapon(raw) {
     motionSet[state] = m;
   }
 
-  return { name, desc, color, stats, motionSet, tier: 'workshop' };
+  // Block-gimmick AST rides along as pure data; the BlockVM sanitizes + clamps it
+  // when it is constructed (host-side), so we only pass a bounded object here.
+  const blocks = (r.blocks && typeof r.blocks === 'object' && Array.isArray(r.blocks.events)) ? r.blocks : null;
+
+  return { name, desc, color, stats, motionSet, blocks, tier: 'workshop' };
 }

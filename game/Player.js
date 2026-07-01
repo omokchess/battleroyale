@@ -8,6 +8,7 @@ import { STATUS } from './Status.js';
 import { PHYS } from './Level.js';
 import { Collision } from './Collision.js';
 import { clampWorkshopWeapon } from './Workshop.js';
+import { BlockVM } from './BlockVM.js';
 
 export class Player {
   constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
@@ -142,13 +143,20 @@ export class Player {
     // hitboxes drive the hit (combat path is Tier-1's hitbox swing). Always stored
     // pre-clamped; never trust a raw def.
     this.workshopWeapon = null;
+    this.blockVM = null;       // sandboxed block-gimmick VM (host-only)
+    this.blockVars = {};       // weapon-instance locals (reset on respawn)
+    this._blockDepth = 0;      // event-nesting guard (host)
     if (costume && costume.workshopWeapon) this._applyWorkshopWeapon(costume.workshopWeapon);
   }
 
-  /** Install (and ENVELOPE re-clamp) a workshop weapon def, applying its maxHp. */
+  /** Install (and ENVELOPE re-clamp) a workshop weapon def, applying its maxHp
+   *  and building the sandboxed block VM (which sanitizes the AST). */
   _applyWorkshopWeapon(def) {
     const safe = clampWorkshopWeapon(def);
     this.workshopWeapon = safe;
+    // Block-gimmick VM (host runs it; the constructor sanitizes + caps the AST).
+    this.blockVM = safe.blocks ? new BlockVM(safe.blocks, 'workshop') : null;
+    this.blockVars = {};       // weapon-instance locals (reset on respawn)
     if (safe.stats && Number.isFinite(safe.stats.maxHp)) {
       this.maxHp = safe.stats.maxHp;
       this.hp = Math.min(this.hp, this.maxHp);
@@ -426,6 +434,7 @@ export class Player {
     this.gauntletPunchSide = -1;
     this.comboStep = 0;
     this.comboDelayUntil = 0;
+    this.blockVars = {};       // weapon-instance locals reset on death/respawn
   }
 
   /**

@@ -552,10 +552,21 @@ export class Game {
       // ADMIN-CANONICAL hitbox motion, the hit is judged by that motion's
       // hitboxes/active window (T1-D) instead of the code-fixed geometry; the
       // swing animation + cooldown still go through lastAttackTime.
+      // Per-tick block gimmick (bounded by the VM's tick step budget).
+      if (p.blockVM && p.blockVM.hasHandler('onTick')) this._runBlockEvent(p, 'onTick', now);
+
       if (p.canAttack(now)) {
-        const hbMotion = this._canonicalHitboxMotion(p);
-        if (hbMotion) this._startHitboxSwing(p, hbMotion, now);
-        else this._performAutomaticAttack(p, weaponConfig, now);
+        // A block program's basicAttack IS the attack (spawns its own hits);
+        // else fall back to a canonical hitbox swing, else the coded attack.
+        if (p.blockVM && p.blockVM.hasHandler('basicAttack')) {
+          p.lastAttackTime = now; p.swingDirection *= -1;
+          this._runBlockEvent(p, 'basicAttack', now);
+          if (p.id === this.localPlayerId) Sound.play(Sound.attackSoundFor(weaponConfig));
+        } else {
+          const hbMotion = this._canonicalHitboxMotion(p);
+          if (hbMotion) this._startHitboxSwing(p, hbMotion, now);
+          else this._performAutomaticAttack(p, weaponConfig, now);
+        }
       }
     });
 
@@ -651,6 +662,19 @@ export class Game {
           if (proj.ownerId === this.localPlayerId && !target.isInvincible?.()) {
             this._triggerHitstop(now, 34);
           }
+          if (proj.kind === 'block') {
+            // Block-gimmick projectile: deal its (clamped) damage via the block
+            // damage path (fires the owner's onHit/onKill), then run the owner's
+            // projectileHit[tag] handler. Non-piercing shots die on contact.
+            const owner = this.players[proj.ownerId];
+            if (owner) {
+              this._blockDealDamage(owner, target, proj.damage || 0, now);
+              this._runBlockEvent(owner, 'projectileHit', now, { tag: proj.blockTag || '' });
+            }
+            if (!proj.piercing) proj.isDead = true;
+            return;
+          }
+
           if (proj.kind === 'swordwave') {
             // Direct contact damage, then the explosion AoE.
             const died = target.takeDamage(proj.damage, 'swordwave');
@@ -914,6 +938,127 @@ export class Game {
         }
       }
     }
+  }
+
+  // ── Block-gimmick VM host integration (weapon blockcoding) ─────────────────
+  /** Nearest LIVE enemy to a player → { target, dist, dir } or null. */
+  _nearestEnemy(player) {
+    let best = null, bestD = Infinity;
+    for (const id in this.players) {
+      const t = this.players[id];
+      if (t.id === player.id || t.isDead) continue;
+      const d = Math.hypot(t.x - player.x, t.y - player.y);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best ? { target: best, dist: bestD, dir: Math.atan2(best.y - player.y, best.x - player.x) } : null;
+  }
+
+  /** Read-only sense snapshot handed to a block program. Angles are in DEGREES
+   *  (the block language convention — matches the spec's "조준각 + i×12°"). */
+  _blockSense(player, now) {
+    const near = this._nearestEnemy(player);
+    const R2D = 180 / Math.PI;
+    return {
+      aimAngle: (player.angle || 0) * R2D, hp: player.hp, maxHp: player.maxHp,
+      x: player.x, y: player.y, speed: Math.hypot(player.vx || 0, player.vy || 0),
+      grounded: !!player.grounded, combo: player.comboStep || 0,
+      lastDamage: player._lastDealt || 0, time: now / 1000,
+      nearestDist: near ? near.dist : 99999, nearestDir: near ? near.dir * R2D : 0,
+    };
+  }
+
+  /**
+   * Run a weapon's block handler for `eventName` on the host (only). Bounded to a
+   * nesting depth of 2 so onHit→spawn→onHit can't recurse forever. Returns true
+   * if a handler existed + ran.
+   */
+  _runBlockEvent(player, eventName, now, extra = {}) {
+    const vm = player.blockVM;
+    if (!vm || !vm.hasHandler(eventName)) return false;
+    if ((player._blockDepth || 0) >= 2) return false;
+    player._blockDepth = (player._blockDepth || 0) + 1;
+    try {
+      vm.run(eventName, {
+        api: this._blockApi(player, now),
+        vars: player.blockVars || (player.blockVars = {}),
+        rng: Math.random,                        // host-side; clients only render results
+        now,
+        damageBase: player.workshopWeapon?.stats?.damage || 20,
+        sense: this._blockSense(player, now),
+        tag: extra.tag,
+      });
+    } catch { /* never let a gimmick crash the sim */ }
+    finally { player._blockDepth--; }
+    return true;
+  }
+
+  /** Apply block-dealt damage to a target + fire the attacker's onHit / onKill. */
+  _blockDealDamage(attacker, target, dmg, now) {
+    if (!target || target.isDead || (target.isInvincible && target.isInvincible())) return false;
+    if (this._terrainBlocksSegment(attacker.x, attacker.y, target.x, target.y)) return false;
+    attacker._lastDealt = dmg;
+    const died = target.takeDamage(dmg, attacker.nickname);
+    if (attacker.id === this.localPlayerId) this._triggerHitstop(now, 40);
+    this._runBlockEvent(attacker, 'onHit', now, { damage: dmg });
+    if (died) { this._creditKill(attacker.id, target); this._runBlockEvent(attacker, 'onKill', now); }
+    return true;
+  }
+
+  /** The whitelisted host API a block program calls. All numbers arrive already
+   *  envelope-clamped by the VM; here we turn them into real game effects. */
+  _blockApi(player, now) {
+    const near = () => this._nearestEnemy(player);
+    const D2R = Math.PI / 180;   // block angles are DEGREES → radians for the sim
+    return {
+      spawnMelee: ({ frontOffset, width, height, damage }) => {
+        const cx = player.x + Math.cos(player.angle) * frontOffset;
+        const cy = player.y + Math.sin(player.angle) * frontOffset;
+        for (const id in this.players) {
+          const t = this.players[id];
+          if (t.id === player.id || t.isDead) continue;
+          if (Math.abs(t.x - cx) > width / 2 + (t.radius || 14) || Math.abs(t.y - cy) > height / 2 + (t.radius || 14)) continue;
+          this._blockDealDamage(player, t, damage, now);
+        }
+      },
+      spawnProjectile: ({ angle, speed, range, pierce, gravity, tag, damage }) => {
+        const rad = angle * D2R;
+        const sx = player.x + Math.cos(rad) * 20, sy = player.y + Math.sin(rad) * 20;
+        const proj = new Projectile(`blk_${player.id}_${this._blockProjSeq = (this._blockProjSeq || 0) + 1}`, player.id, sx, sy, rad, speed, range, damage, 'block');
+        proj.weapon = player.weapon; proj.blockTag = tag || ''; proj.piercing = !!pierce; proj.blockGravity = !!gravity;
+        this.projectiles.push(proj);
+      },
+      spawnArea: ({ cx, cy, radius, damage }) => {
+        const ax = Number.isFinite(cx) ? cx : player.x, ay = Number.isFinite(cy) ? cy : player.y;
+        for (const id in this.players) {
+          const t = this.players[id];
+          if (t.id === player.id || t.isDead) continue;
+          if (Math.hypot(t.x - ax, t.y - ay) > radius + (t.radius || 14)) continue;
+          this._blockDealDamage(player, t, damage, now);
+        }
+        this.effects.push({ attackerId: player.id, x: ax, y: ay, weapon: '', type: 'mine_blast', progress: 0, timestamp: now, lifetime: 360 });
+      },
+      applyStatus: ({ status, durationMs }) => {
+        const n = near(); if (!n) return;
+        if (status === 'slow') this._applySlow(n.target, durationMs);
+        else if (status === 'bleed') this._applyBleed(n.target, player.id);
+        else if (status === 'burn') this._applyBurn(n.target, player.id, 2, durationMs);
+        else if (status === 'stun') this._applyStun(n.target, durationMs, now);
+      },
+      knockback: ({ force, angle }) => { const n = near(); if (!n) return; const a = Number.isFinite(angle) ? angle * D2R : n.dir; this._displace(n.target, Math.cos(a) * force, Math.sin(a) * force); },
+      heal: ({ amountPct, ofLastDamagePct }) => {
+        const amt = (player.maxHp * (amountPct || 0) / 100) + ((player._lastDealt || 0) * (ofLastDamagePct || 0) / 100);
+        if (amt > 0) player.hp = Math.min(player.maxHp, player.hp + amt);
+      },
+      dash: ({ angle, distance }) => { const a = angle * D2R; this._displace(player, Math.cos(a) * distance, Math.sin(a) * distance); },
+      teleport: ({ distance }) => { this._displace(player, Math.cos(player.angle) * distance, Math.sin(player.angle) * distance); this._resolveOutOfTerrain(player); },
+      jump: ({ power }) => { player.vy = -PHYS.jumpSpeed * power; player.grounded = false; },
+      pull: ({ distance }) => { const n = near(); if (!n) return; const a = n.dir + Math.PI; this._displace(n.target, Math.cos(a) * distance, Math.sin(a) * distance); },
+      spawnPlacement: () => { /* placements land in a later pass; no-op keeps it safe for now */ },
+      particle: (id) => this.effects.push({ attackerId: player.id, x: player.x, y: player.y, weapon: '', type: id === 'explosion' ? 'mine_blast' : 'danger_pop', progress: 0, timestamp: now, lifetime: 360 }),
+      sfx: (id) => { if (player.id === this.localPlayerId) Sound.play(String(id)); },
+      shake: (level) => { if (this.camera?.startShake) this.camera.startShake(level === 'strong' ? 14 : 7, 220); },
+      cooldownGate: () => { /* the weapon's clamped cooldownMs already floors fire rate */ },
+    };
   }
 
   _performAutomaticAttack(player, weaponConfig, now) {
