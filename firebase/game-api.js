@@ -381,6 +381,7 @@ export async function publishWorkshopWeapon(def, authorName = 'Player') {
       color: def?.color || null,
       stats: def?.stats || {},
       data: def?.motionSet || {},
+      blocks: def?.blocks || null,        // block-gimmick AST (sanitized on load by the VM)
       likes: snap.exists() ? Number(snap.data().likes || 0) : 0,
       plays: snap.exists() ? Number(snap.data().plays || 0) : 0,
       reports: snap.exists() ? Number(snap.data().reports || 0) : 0,
@@ -396,8 +397,8 @@ export async function publishWorkshopWeapon(def, authorName = 'Player') {
 function wsRow(id, d) {
   return { id, author_id: d.author_id, author_name: d.author_name || 'Player',
     name: d.name || '무기', desc: d.desc || '', color: d.color || null,
-    stats: d.stats || {}, motionSet: d.data || {}, likes: Number(d.likes || 0),
-    plays: Number(d.plays || 0), status: d.status || 'published' };
+    stats: d.stats || {}, motionSet: d.data || {}, blocks: d.blocks || null,
+    likes: Number(d.likes || 0), plays: Number(d.plays || 0), status: d.status || 'published' };
 }
 
 /** Browse published workshop weapons (sort: 'likes' | 'created_at'). */

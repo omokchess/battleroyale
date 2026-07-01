@@ -156,7 +156,7 @@ export function saveCanonicalWeaponMotion(weaponKey, data) { return saveWeaponMo
 // ── Workshop weapons (Tier 2). Every fetched def is RE-CLAMPED through the
 //    balance envelope so a tampered Firestore doc can never enter the game unsafe.
 function clampFetched(w) {
-  const safe = clampWorkshopWeapon({ name: w.name, desc: w.desc, color: w.color, stats: w.stats, motionSet: w.motionSet });
+  const safe = clampWorkshopWeapon({ name: w.name, desc: w.desc, color: w.color, stats: w.stats, motionSet: w.motionSet, blocks: w.blocks });
   return { id: w.id, author_id: w.author_id, author_name: w.author_name, likes: w.likes, plays: w.plays, status: w.status, ...safe };
 }
 export function publishMyWorkshopWeapon(def) { return publishWorkshopWeapon(def, getUsername()); }
