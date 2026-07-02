@@ -2,317 +2,389 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Free-canvas drag-snap block editor (Scratch/Entry-style) for weapon gimmicks.
- * Blocks are absolutely-positioned DOM nodes on a scrollable canvas: hat (event)
- * blocks start a stack, statement blocks snap top→bottom, and C-blocks (if /
- * repeat / repeatVar) nest a child stack in a mouth. Dragging a block carries its
- * whole sub-stack; dropping near a connector snaps in (inserting if occupied).
- * The graph serializes to the same AST BlockVM runs — and the host VM always
- * re-sanitizes + clamps it, so the editor is convenience, not a trust boundary.
+ * Weapon-gimmick block editor — Entry/Scratch-style drag-snap, modeled on
+ * 13_block_editor_demo.html: a flow-layout stack of DOM blocks with an insertion
+ * indicator, C-block inner dropzones, palette drag-to-insert / click-to-append,
+ * reporter (pill) + boolean (hex) blocks that nest into value slots, and
+ * live AST serialization.
+ *
+ * SCHEMA NOTE: BlockVM.js is frozen (sandbox interpreter, resource limits,
+ * envelope). We keep ITS AST — statement = { op, ...flatArgs, then/else/body },
+ * value/boolean expr = { op, a, b, ... } — so existing saved weapons round-trip
+ * and the host VM is unchanged. (The demo groups args under `args:{}`; here they
+ * sit flat on the stmt, which is what BlockVM reads.) A dropped reporter/boolean
+ * becomes the slot's value-expr; a plain slot is a number/string literal.
+ *
+ * Drag uses HTML5 DnD (like the demo) for desktop; touch keeps the demo's
+ * click-to-append + a tap ✕ delete as the accessible fallback (spec §6).
  */
 
 import { BlockVM, VM_LIMITS, countBlocks, EVENTS } from './BlockVM.js';
 
-const EVENT_LABEL = {
-  basicAttack: '평타 시', skillF: 'F스킬 시', skillR: 'R 시', lmb: 'LMB 시',
-  charging: '충전 중', chargeRelease: '충전 해제 시', onHit: '명중 시', onHurt: '피격 시',
-  onKill: '처치 시', onJump: '점프 시', onLand: '착지 시', onRespawn: '부활 시', onTick: '매 틱',
-  projectileHit: '투사체 명중 시', placementTrigger: '설치물 발동 시',
-};
-const P = (key, kind, def, opts) => ({ key, kind, def, opts });
-const BLOCK_DEFS = {
-  // events (hat)
-  ...Object.fromEntries([...EVENTS].map(e => [e, { cat: 'event', label: EVENT_LABEL[e] || e, hat: true, params: (e === 'projectileHit' || e === 'placementTrigger') ? [P('tag', 'text', '')] : [] }])),
-  // actions
-  spawnProjectile: { cat: 'action', label: '투사체 발사', params: [P('angle', 'angle', 0), P('speed', 'num', 520), P('range', 'num', 280), P('damagePct', 'pct', 90), P('tag', 'text', ''), P('pierce', 'bool', false)] },
-  spawnMelee: { cat: 'action', label: '근접 판정', params: [P('frontOffset', 'num', 60), P('width', 'num', 50), P('height', 'num', 44), P('damagePct', 'pct', 100)] },
-  spawnArea: { cat: 'action', label: '범위 판정', params: [P('radius', 'num', 60), P('damagePct', 'pct', 70)] },
-  applyStatus: { cat: 'action', label: '상태이상', params: [P('status', 'select', 'burn', ['bleed', 'burn', 'slow', 'stun']), P('durationMs', 'num', 1000)] },
-  knockback: { cat: 'action', label: '넉백', params: [P('force', 'num', 80)] },
-  heal: { cat: 'action', label: '회복', params: [P('ofLastDamagePct', 'pct', 20), P('amountPct', 'pct', 0)] },
-  dash: { cat: 'action', label: '대시', params: [P('angle', 'angle', 0), P('distance', 'num', 120)] },
-  teleport: { cat: 'action', label: '텔레포트', params: [P('distance', 'num', 120)] },
-  jump: { cat: 'action', label: '점프', params: [P('power', 'num', 1)] },
-  pull: { cat: 'action', label: '끌어오기', params: [P('distance', 'num', 120)] },
-  particle: { cat: 'action', label: '파티클', params: [P('id', 'select', 'explosion', ['explosion', 'danger_pop'])] },
-  sfx: { cat: 'action', label: '사운드', params: [P('id', 'select', 'shoot', ['shoot', 'hit', 'slash', 'slam', 'explosion'])] },
-  shake: { cat: 'action', label: '흔들림', params: [P('level', 'select', 'weak', ['weak', 'strong'])] },
-  setVar: { cat: 'action', label: '변수 설정', params: [P('var', 'text', 'charge'), P('value', 'num', 0)] },
-  // control (C-blocks)
-  if: { cat: 'control', label: '만약', params: [], cond: true, containers: ['then', 'else'] },
-  repeat: { cat: 'control', label: '반복', params: [P('count', 'num', 3)], containers: ['body'] },
-  repeatVar: { cat: 'control', label: 'i를 a..b', params: [P('var', 'text', 'i'), P('from', 'num', -1), P('to', 'num', 1)], containers: ['body'] },
-  wait: { cat: 'control', label: '대기(ms)', params: [P('ms', 'num', 200)] },
-  stop: { cat: 'control', label: '정지', params: [] },
-};
-const CATS = [['event', '이벤트'], ['action', '동작'], ['control', '제어']];
-const CMP = [['lt', '<'], ['le', '≤'], ['eq', '='], ['ge', '≥'], ['gt', '>']];
-const SENSE = [['nearestDist', '적 거리'], ['myHp', '내 HP'], ['charge', '충전량'], ['mySpeed', '속도'], ['combo', '콤보']];
-const COL = { event: '#7df09a', action: '#45f3ff', control: '#c9a227' };
+const C = { ev: '#c9a227', act: '#3a6ea5', ctl: '#c96f27', val: '#3a8f7a', op: '#5a8f3c', vr: '#b32d2d' };
+const CATN = { ev: '이벤트', act: '동작', ctl: '제어', val: '값', op: '연산', vr: '변수' };
 
-const HDR = 30, INDENT = 16, MOUTH_MIN = 22, FOOT = 8, SNAP = 40;
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// s = string token; or { a:key, t:type, d:default, o:[opts] }
+const s = (a, t, d, o) => ({ a, t, d, o });
+const DEFS = {
+  // ── events (hat) — op maps to BlockVM EVENTS ──
+  basicAttack: { cat: 'ev', hat: 1, op: 'basicAttack', parts: ['평타 시'] },
+  skillF: { cat: 'ev', hat: 1, op: 'skillF', parts: ['F스킬 시'] },
+  onHit: { cat: 'ev', hat: 1, op: 'onHit', parts: ['명중 시'] },
+  onKill: { cat: 'ev', hat: 1, op: 'onKill', parts: ['처치 시'] },
+  onTick: { cat: 'ev', hat: 1, op: 'onTick', parts: ['매 틱'] },
+  projectileHit: { cat: 'ev', hat: 1, op: 'projectileHit', parts: ['투사체', s('tag', 'text', ''), '명중 시'] },
+  // ── actions ──
+  spawnProjectile: { cat: 'act', op: 'spawnProjectile', parts: ['투사체 발사 각도', s('angle', 'num', 0), '속도', s('speed', 'num', 520), '사거리', s('range', 'num', 280), '데미지', s('damagePct', 'num', 90), '% 태그', s('tag', 'text', ''), '관통', s('pierce', 'check', false)] },
+  spawnMelee: { cat: 'act', op: 'spawnMelee', parts: ['근접 판정 앞', s('frontOffset', 'num', 60), '폭', s('width', 'num', 50), '높이', s('height', 'num', 44), '데미지', s('damagePct', 'num', 100), '%'] },
+  spawnArea: { cat: 'act', op: 'spawnArea', parts: ['범위 판정 반경', s('radius', 'num', 60), '데미지', s('damagePct', 'num', 70), '%'] },
+  applyStatus: { cat: 'act', op: 'applyStatus', parts: ['상태이상', s('status', 'sel', 'burn', ['bleed', 'burn', 'slow', 'stun']), '지속', s('durationMs', 'num', 1000), 'ms'] },
+  heal: { cat: 'act', op: 'heal', parts: ['회복 마지막 피해의', s('ofLastDamagePct', 'num', 20), '%'] },
+  knockback: { cat: 'act', op: 'knockback', parts: ['넉백 힘', s('force', 'num', 80)] },
+  dash: { cat: 'act', op: 'dash', parts: ['대시 각도', s('angle', 'num', 0), '거리', s('distance', 'num', 120)] },
+  teleport: { cat: 'act', op: 'teleport', parts: ['텔레포트 거리', s('distance', 'num', 120)] },
+  jump: { cat: 'act', op: 'jump', parts: ['점프 세기', s('power', 'num', 1)] },
+  pull: { cat: 'act', op: 'pull', parts: ['끌어오기 거리', s('distance', 'num', 120)] },
+  particle: { cat: 'act', op: 'particle', parts: ['파티클', s('id', 'sel', 'explosion', ['explosion', 'danger_pop'])] },
+  sfx: { cat: 'act', op: 'sfx', parts: ['사운드', s('id', 'sel', 'shoot', ['shoot', 'hit', 'slash', 'slam', 'explosion'])] },
+  shake: { cat: 'act', op: 'shake', parts: ['화면 흔들림', s('level', 'sel', 'weak', ['weak', 'strong'])] },
+  // ── control (C-blocks) ──
+  if: { cat: 'ctl', c: 1, op: 'if', parts: ['만약', s('cond', 'bool')], containers: ['then', 'else'] },
+  repeat: { cat: 'ctl', c: 1, op: 'repeat', parts: [s('count', 'num', 3), '번 반복'], containers: ['body'] },
+  repeatVar: { cat: 'ctl', c: 1, op: 'repeatVar', parts: [s('var', 'text', 'i'), '를', s('from', 'num', -1), '부터', s('to', 'num', 1), '까지'], containers: ['body'] },
+  wait: { cat: 'ctl', op: 'wait', parts: ['대기', s('ms', 'num', 200), 'ms'] },
+  stop: { cat: 'ctl', op: 'stop', parts: ['정지'] },
+  // ── values (reporters, pill) ──
+  aimAngle: { cat: 'val', rep: 1, op: 'aimAngle', parts: ['조준각'] },
+  nearestDist: { cat: 'val', rep: 1, op: 'nearestDist', parts: ['가까운 적 거리'] },
+  myHp: { cat: 'val', rep: 1, op: 'myHp', parts: ['내 HP'] },
+  charge: { cat: 'val', rep: 1, op: 'charge', parts: ['충전량'] },
+  combo: { cat: 'val', rep: 1, op: 'combo', parts: ['콤보'] },
+  lastDamage: { cat: 'val', rep: 1, op: 'lastDamage', parts: ['마지막 피해'] },
+  rand: { cat: 'val', rep: 1, op: 'rand', parts: ['난수', s('a', 'num', 1), '~', s('b', 'num', 10)] },
+  // ── operators (reporters + booleans) ──
+  add: { cat: 'op', rep: 1, op: 'add', parts: [s('a', 'num', 0), '+', s('b', 'num', 12)] },
+  sub: { cat: 'op', rep: 1, op: 'sub', parts: [s('a', 'num', 0), '−', s('b', 'num', 0)] },
+  mul: { cat: 'op', rep: 1, op: 'mul', parts: [s('a', 'num', 1), '×', s('b', 'num', 2)] },
+  div: { cat: 'op', rep: 1, op: 'div', parts: [s('a', 'num', 1), '÷', s('b', 'num', 2)] },
+  lt: { cat: 'op', bool: 1, op: 'lt', parts: [s('a', 'num', 0), '<', s('b', 'num', 90)] },
+  gt: { cat: 'op', bool: 1, op: 'gt', parts: [s('a', 'num', 0), '>', s('b', 'num', 0)] },
+  ge: { cat: 'op', bool: 1, op: 'ge', parts: [s('a', 'num', 0), '≥', s('b', 'num', 0)] },
+  le: { cat: 'op', bool: 1, op: 'le', parts: [s('a', 'num', 0), '≤', s('b', 'num', 0)] },
+  eq: { cat: 'op', bool: 1, op: 'eq', parts: [s('a', 'num', 0), '=', s('b', 'num', 0)] },
+  and: { cat: 'op', bool: 1, op: 'and', parts: [s('a', 'bool'), '그리고', s('b', 'bool')] },
+  or: { cat: 'op', bool: 1, op: 'or', parts: [s('a', 'bool'), '또는', s('b', 'bool')] },
+  // ── variables ──
+  setVar: { cat: 'vr', op: 'setVar', parts: ['변수', s('var', 'text', 'charge'), '=', s('value', 'num', 0)] },
+};
+// op → def id (for import).
+const OP2ID = {}; for (const id in DEFS) OP2ID[DEFS[id].op] = id;
+
+function ensureStyles() {
+  if (document.getElementById('beStyles')) return;
+  const st = document.createElement('style'); st.id = 'beStyles';
+  st.textContent = `
+  #beWorkspace .stack{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+  .be-blk{position:relative;border-radius:5px;padding:5px 10px 6px;color:#fff;font-size:11px;width:fit-content;max-width:100%;box-shadow:0 1px 0 rgba(0,0,0,.3);cursor:grab;line-height:1.9;font-family:system-ui,sans-serif}
+  .be-blk::after{content:'';position:absolute;left:12px;bottom:-4px;width:16px;height:5px;background:inherit;border-radius:0 0 4px 4px}
+  .be-hat{border-radius:16px 16px 5px 5px;font-weight:500}
+  .be-rep{border-radius:999px;padding:2px 9px;display:inline-flex;vertical-align:middle}
+  .be-rep::after{display:none}
+  .be-bool{clip-path:polygon(8px 0,calc(100% - 8px) 0,100% 50%,calc(100% - 8px) 100%,8px 100%,0 50%);padding:2px 13px;display:inline-flex;vertical-align:middle}
+  .be-bool::after{display:none}
+  .be-sl{width:42px;background:#fff;border:none;border-radius:999px;padding:2px 6px;font-size:11px;color:#1a1a1a;text-align:center;margin:0 2px}
+  select.be-sl{width:auto}
+  .be-slot{display:inline-flex;align-items:center;min-height:18px;margin:0 2px}
+  .be-bslot{display:inline-flex;align-items:center;min-width:34px;min-height:16px;margin:0 3px;background:rgba(0,0,0,.28);border-radius:0;clip-path:polygon(8px 0,calc(100% - 8px) 0,100% 50%,calc(100% - 8px) 100%,8px 100%,0 50%);padding:0 8px}
+  .be-cwrap{width:fit-content}
+  .be-cinner{margin-left:14px;border-left:14px solid;padding:3px 0 3px 5px;display:flex;flex-direction:column;gap:2px;min-height:16px;min-width:130px;border-radius:0 0 0 4px}
+  .be-cfoot{height:11px;width:90px;border-radius:0 0 5px 5px;position:relative}
+  .be-cfoot::after{content:'';position:absolute;left:12px;bottom:-4px;width:16px;height:5px;background:inherit;border-radius:0 0 4px 4px}
+  .be-del{position:absolute;top:-6px;right:-6px;width:15px;height:15px;line-height:13px;text-align:center;background:#241710;color:#e8d5a3;border:1px solid #6b4a2b;border-radius:50%;font-size:10px;cursor:pointer;display:none;z-index:3}
+  .be-blk:hover>.be-del{display:block}
+  .be-ind{height:3px;background:#ffd75e;border-radius:2px;width:150px;margin:1px 0;flex:none}
+  .be-orphan{opacity:.5}
+  .be-orphan-badge{font-size:8px;color:#ff9e9e;margin-left:4px}
+  .be-shake{animation:beShake .28s}
+  @keyframes beShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+  #bePalette .be-blk{cursor:pointer;margin-bottom:6px}`;
+  document.head.appendChild(st);
+}
+
+const numOr = (v) => { const n = Number(v); return isNaN(n) ? v : n; };
 
 export class BlockEditor {
   constructor() {
     this.root = document.getElementById('blockEditor');
     if (!this.root) return;
+    ensureStyles();
     this.ws = document.getElementById('beWorkspace');
-    this.blocks = new Map();
-    this.seq = 0; this.tier = 'workshop'; this.onSave = null;
-    this.drag = null;
+    this.cat = 'ev'; this.tier = 'workshop'; this.onSave = null;
+    this.ind = document.createElement('div'); this.ind.className = 'be-ind';
     document.getElementById('beClose')?.addEventListener('click', () => this.close());
     document.getElementById('beSave')?.addEventListener('click', () => { this.onSave?.(this.buildAST()); this._status('저장됨. 무기 저장 시 함께 적용됩니다.'); });
     document.getElementById('beTest')?.addEventListener('click', () => this._test());
-    window.addEventListener('pointermove', (e) => this._move(e));
-    window.addEventListener('pointerup', () => this._up());
-    // Event-tab row is repurposed as a hint in the free-canvas editor.
-    const tabs = document.getElementById('beEventTabs'); if (tabs) tabs.innerHTML = '<span class="text-[10px] text-gray-500">팔레트에서 블록을 캔버스로 끌어놓고, 위·아래로 붙이세요. 초록 = 이벤트(시작)</span>';
+    // Category tabs live in the top tab row.
+    const tabs = document.getElementById('beEventTabs');
+    if (tabs) { tabs.innerHTML = ''; for (const k in CATN) { const t = document.createElement('button'); t.className = 'med-btn text-[10px] px-2 py-1'; t.dataset.cat = k; t.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${C[k]};margin-right:3px"></span>${CATN[k]}`; t.addEventListener('click', () => { this.cat = k; this._renderPalette(); this._syncTabs(); }); tabs.appendChild(t); } }
   }
 
   open(ast, tier = 'workshop', onSave = null) {
     if (!this.root) return;
     this.tier = VM_LIMITS[tier] ? tier : 'workshop';
     this.onSave = onSave;
-    this.blocks.clear(); this.seq = 0;
     document.getElementById('beBlockMax').textContent = VM_LIMITS[this.tier].maxBlocks;
+    if (!this.ws.querySelector('.stack')) { this.stack = document.createElement('div'); this.stack.className = 'stack'; this.ws.innerHTML = ''; this.ws.appendChild(this.stack); this._dz(this.stack); }
+    this.stack.innerHTML = '';
     this._import(ast);
-    if (!this.blocks.size) this._newBlock('basicAttack', 30, 24);
-    this._renderPalette();
-    this._layoutAndRender();
+    if (!this.stack.children.length) this.stack.appendChild(this._mk('basicAttack'));
+    this._renderPalette(); this._syncTabs(); this._refresh();
     this.root.classList.remove('hidden');
   }
   close() { this.root?.classList.add('hidden'); }
+  _syncTabs() { document.querySelectorAll('#beEventTabs [data-cat]').forEach(t => t.classList.toggle('on', t.dataset.cat === this.cat)); }
+
+  // ── build a block DOM node ──
+  _mk(id) {
+    const d = DEFS[id]; if (!d) return document.createElement('div');
+    const b = document.createElement('div');
+    b.className = 'be-blk' + (d.hat ? ' be-hat' : '') + (d.rep ? ' be-rep' : '') + (d.bool ? ' be-bool' : '');
+    b.style.background = C[d.cat]; b.dataset.id = id; b.dataset.op = d.op;
+    for (const part of d.parts) {
+      if (typeof part === 'string') { b.appendChild(document.createTextNode(' ' + part + ' ')); continue; }
+      b.appendChild(this._slot(part));
+    }
+    const del = document.createElement('span'); del.className = 'be-del'; del.textContent = '×'; del.title = '삭제';
+    del.addEventListener('click', (e) => { e.stopPropagation(); (b.dataset.cwrap ? b : (b.closest('.be-cwrap') && b.closest('.be-cwrap').querySelector(':scope>.be-blk') === b ? b.closest('.be-cwrap') : b)).remove(); this._refresh(); });
+    b.appendChild(del);
+    if (d.c) {
+      const wrap = document.createElement('div'); wrap.className = 'be-cwrap'; wrap.dataset.cwrap = id; wrap.dataset.op = d.op; wrap.dataset.id = id;
+      wrap.appendChild(b);
+      for (const cont of d.containers) {
+        const inner = document.createElement('div'); inner.className = 'be-cinner'; inner.style.borderColor = C[d.cat]; inner.dataset.container = cont;
+        if (cont === 'else') { const lbl = document.createElement('div'); lbl.style.cssText = 'font-size:10px;color:#fff;opacity:.8'; lbl.textContent = '아니면'; wrap.appendChild(lbl); }
+        this._dz(inner); wrap.appendChild(inner);
+      }
+      const foot = document.createElement('div'); foot.className = 'be-cfoot'; foot.style.background = C[d.cat]; wrap.appendChild(foot);
+      this._hookDrag(b, wrap);
+      // del on the head removes the whole wrap
+      del.onclick = (e) => { e.stopPropagation(); wrap.remove(); this._refresh(); };
+      return wrap;
+    }
+    this._hookDrag(b, b);
+    return b;
+  }
+
+  // ── a value/boolean slot (holds an input/select, or a nested block) ──
+  _slot(part) {
+    if (part.t === 'bool') {
+      const slot = document.createElement('span'); slot.className = 'be-bslot'; slot.dataset.a = part.a; slot.dataset.slotType = 'bool';
+      this._slotDrop(slot); return slot;
+    }
+    const slot = document.createElement('span'); slot.className = 'be-slot'; slot.dataset.a = part.a; slot.dataset.slotType = part.t;
+    let inp;
+    if (part.t === 'sel') { inp = document.createElement('select'); inp.className = 'be-sl'; inp.innerHTML = part.o.map(o => `<option>${o}</option>`).join(''); inp.value = part.d; }
+    else if (part.t === 'check') { inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!part.d; }
+    else if (part.t === 'text') { inp = document.createElement('input'); inp.className = 'be-sl'; inp.value = part.d ?? ''; }
+    else { inp = document.createElement('input'); inp.className = 'be-sl'; inp.value = part.d ?? 0; }
+    inp.dataset.a = part.a;
+    inp.addEventListener('input', () => this._refresh());
+    inp.addEventListener('change', () => this._refresh());
+    inp.addEventListener('mousedown', (e) => e.stopPropagation());
+    inp.draggable = false;
+    slot.appendChild(inp);
+    if (part.t === 'num') this._slotDrop(slot);   // only number slots accept reporters
+    return slot;
+  }
+
+  // ── drag hooks (HTML5 DnD, demo-style) ──
+  _hookDrag(headEl, rootEl) {
+    rootEl.draggable = true;
+    rootEl.addEventListener('dragstart', (e) => {
+      e.stopPropagation();
+      // sub-stack drag: carry this node + following siblings up to the next hat.
+      window._beMv = this._collectRun(rootEl);
+      window._bePal = null; window._beRep = null;
+      try { e.dataTransfer.setData('text/plain', ''); } catch {}
+    });
+    headEl.querySelectorAll('.be-sl').forEach(sl => sl.addEventListener('mousedown', e => e.stopPropagation()));
+  }
+
+  // Contiguous run: the block + siblings after it until the next hat (Scratch feel).
+  _collectRun(node) {
+    if (node.closest('.be-cinner') || DEFS[node.dataset.id]?.hat) {
+      // inside a C mouth OR a hat: dragging a hat carries its trailing stack too
+      if (DEFS[node.dataset.id]?.hat) return this._runFrom(node);
+      return [node];
+    }
+    return this._runFrom(node);
+  }
+  _runFrom(node) {
+    const run = [node]; let n = node.nextElementSibling;
+    while (n && n !== this.ind) { if (this._isHat(n)) break; run.push(n); n = n.nextElementSibling; }
+    return run;
+  }
+  _isHat(node) { const id = node.dataset && node.dataset.id; return id && DEFS[id] && DEFS[id].hat; }
+
+  _dz(zone) {
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (window._beRep) return;    // reporter drags target slots, not stacks
+      const kids = [...zone.children].filter(k => k !== this.ind && !(window._beMv || []).includes(k));
+      let ref = null; const y = e.clientY;
+      for (const k of kids) { const r = k.getBoundingClientRect(); if (y < r.top + r.height / 2) { ref = k; break; } }
+      zone.insertBefore(this.ind, ref);
+    });
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (window._beRep) { this.ind.remove(); return; }
+      let nodes = window._beMv;
+      if (window._bePal) nodes = [this._mk(window._bePal)];
+      window._beMv = null; window._bePal = null;
+      if (nodes) for (const nd of nodes) zone.insertBefore(nd, this.ind);
+      this.ind.remove(); this._refresh();
+    });
+    zone.addEventListener('dragleave', (e) => { if (e.target === zone) this.ind.remove(); });
+  }
+
+  // Reporter/boolean dropped into a slot.
+  _slotDrop(slot) {
+    slot.addEventListener('dragover', (e) => { if (window._beRep) { e.preventDefault(); e.stopPropagation(); slot.style.outline = '2px solid #ffd75e'; } });
+    slot.addEventListener('dragleave', () => { slot.style.outline = ''; });
+    slot.addEventListener('drop', (e) => {
+      const rep = window._beRep; if (!rep) return;
+      e.preventDefault(); e.stopPropagation(); slot.style.outline = '';
+      const def = DEFS[rep];
+      const wantBool = slot.dataset.slotType === 'bool';
+      if (wantBool !== !!def.bool) { slot.classList.add('be-shake'); setTimeout(() => slot.classList.remove('be-shake'), 300); window._beRep = null; return; } // type mismatch
+      slot.innerHTML = ''; const node = this._mk(rep); slot.appendChild(node);
+      window._beRep = null; window._beMv = null; this._refresh();
+    });
+  }
 
   // ── palette ──
   _renderPalette() {
-    const el = document.getElementById('bePalette'); if (!el) return;
-    let html = '';
-    for (const [cat, label] of CATS) {
-      html += `<div class="text-[10px] text-gray-400 uppercase mt-1 mb-1">${label}</div>`;
-      for (const op in BLOCK_DEFS) if (BLOCK_DEFS[op].cat === cat) {
-        html += `<button data-op="${op}" class="block w-full text-left mb-1 px-2 py-1 text-[11px] border cursor-grab active:cursor-grabbing" style="border-color:${COL[cat]};color:${COL[cat]}">${BLOCK_DEFS[op].hat ? '▸ ' : ''}${BLOCK_DEFS[op].label}</button>`;
-      }
-    }
-    el.innerHTML = html;
-    el.querySelectorAll('[data-op]').forEach(b => b.addEventListener('pointerdown', (e) => this._paletteDown(e, b.dataset.op)));
-  }
-
-  _paletteDown(e, op) {
-    e.preventDefault();
-    if (countBlocks(this.buildAST()) >= VM_LIMITS[this.tier].maxBlocks) { this._status('블록 한계 도달.'); return; }
-    const r = this.ws.getBoundingClientRect();
-    const x = e.clientX - r.left + this.ws.scrollLeft - 40, y = e.clientY - r.top + this.ws.scrollTop - 12;
-    const id = this._newBlock(op, Math.max(4, x), Math.max(4, y));
-    this._layoutAndRender();
-    this._startDrag(id, e.clientX, e.clientY);
-  }
-
-  // ── block model ──
-  _newBlock(op, x, y) {
-    const def = BLOCK_DEFS[op]; const id = 'b' + (++this.seq);
-    const b = { id, op, x, y, next: null, body: null, elseBody: null };
-    for (const p of def.params) b[p.key] = (p.kind === 'angle') ? { op: 'add', a: { op: 'aimAngle' }, b: 0 } : p.def;
-    if (def.cond) b.cond = { op: 'lt', a: { op: 'nearestDist' }, b: 90 };
-    this.blocks.set(id, b);
-    return id;
-  }
-  _parentOf(id) {
-    for (const b of this.blocks.values()) { if (b.next === id) return { p: b, slot: 'next' }; if (b.body === id) return { p: b, slot: 'body' }; if (b.elseBody === id) return { p: b, slot: 'elseBody' }; }
-    return null;
-  }
-  _tail(id) { let b = this.blocks.get(id); while (b.next) b = this.blocks.get(b.next); return b; }
-  _inSubtree(rootId, targetId) { if (rootId === targetId) return true; const b = this.blocks.get(rootId); if (!b) return false; return [b.next, b.body, b.elseBody].some(c => c && this._inSubtree(c, targetId)); }
-  _delete(id) { const b = this.blocks.get(id); if (!b) return; for (const c of [b.next, b.body, b.elseBody]) if (c) this._delete(c); this.blocks.get(id)?._dom && Object.values(b._dom).forEach(el => el?.remove()); this.blocks.delete(id); }
-
-  // ── layout (compute x,y for every block; returns stack bottom) ──
-  _layoutStack(id, x, y) {
-    while (id) {
-      const b = this.blocks.get(id); b.x = x; b.y = y;
-      const def = BLOCK_DEFS[b.op];
-      if (def.containers) {
-        let cy = y + HDR;
-        const bBottom = b.body ? this._layoutStack(b.body, x + INDENT, cy) : cy + MOUTH_MIN;
-        b._mouthH = bBottom - cy;
-        let by = bBottom + FOOT;
-        if (def.containers.includes('else')) {
-          b._elseY = by; by += HDR;
-          const eBottom = b.elseBody ? this._layoutStack(b.elseBody, x + INDENT, by) : by + MOUTH_MIN;
-          b._elseMouthH = eBottom - by;
-          by = eBottom + FOOT;
-        }
-        y = by;
-      } else { b._mouthH = 0; y += HDR; }
-      id = b.next;
-    }
-    return y;
-  }
-
-  _layoutAndRender() {
-    let maxX = 400, maxY = 300;
-    for (const b of this.blocks.values()) if (!this._parentOf(b.id)) { const bottom = this._layoutStack(b.id, b.x, b.y); maxY = Math.max(maxY, bottom + 60); maxX = Math.max(maxX, b.x + 340); }
-    this.ws.style.position = 'relative'; this.ws.style.minWidth = maxX + 'px'; this.ws.style.minHeight = maxY + 'px';
-    for (const b of this.blocks.values()) this._renderBlock(b);
-    this._gauge();
-  }
-
-  _renderBlock(b) {
-    const def = BLOCK_DEFS[b.op];
-    if (!b._dom) b._dom = {};
-    let h = b._dom.header;
-    if (!h) {
-      h = b._dom.header = document.createElement('div');
-      h.className = 'be-blk'; h.style.position = 'absolute'; h.style.whiteSpace = 'nowrap';
-      h.style.borderLeft = `4px solid ${COL[def.cat]}`; h.style.background = '#1b1b22'; h.style.padding = '4px 6px';
-      h.style.font = '11px monospace'; h.style.cursor = 'grab'; h.style.zIndex = '2'; h.style.userSelect = 'none';
-      const head = document.createElement('span'); head.style.color = COL[def.cat]; head.textContent = (def.hat ? '▸ ' : '') + def.label; head.style.marginRight = '4px';
-      h.appendChild(head);
-      for (const p of def.params) h.appendChild(this._param(b, p));
-      if (def.cond) h.appendChild(this._condWidget(b));
-      const del = document.createElement('button'); del.textContent = '✕'; del.style.marginLeft = '6px'; del.style.color = '#888'; del.style.cursor = 'pointer';
-      del.addEventListener('pointerdown', (e) => { e.stopPropagation(); const par = this._parentOf(b.id); if (par) par.p[par.slot] = b.next; this._delete(b.id); this._layoutAndRender(); });
-      h.appendChild(del);
-      h.addEventListener('pointerdown', (e) => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return; e.preventDefault(); this._startDrag(b.id, e.clientX, e.clientY); });
-      this.ws.appendChild(h);
-    }
-    h.style.left = b.x + 'px'; h.style.top = b.y + 'px';
-    // C-block mouth accent + footer
-    if (def.containers) {
-      const mk = (key, top, height) => { let el = b._dom[key]; if (!el) { el = b._dom[key] = document.createElement('div'); el.style.position = 'absolute'; el.style.width = (INDENT - 2) + 'px'; el.style.background = COL[def.cat]; el.style.opacity = '0.35'; el.style.zIndex = '1'; this.ws.appendChild(el); } el.style.left = b.x + 'px'; el.style.top = top + 'px'; el.style.height = Math.max(6, height) + 'px'; };
-      mk('mouth', b.y + HDR, b._mouthH);
-      if (def.containers.includes('else')) {
-        let eh = b._dom.elseHdr; if (!eh) { eh = b._dom.elseHdr = document.createElement('div'); eh.style.position = 'absolute'; eh.style.font = '10px monospace'; eh.style.color = COL[def.cat]; eh.textContent = '아니면'; eh.style.zIndex = '2'; this.ws.appendChild(eh); }
-        eh.style.left = b.x + 'px'; eh.style.top = b._elseY + 'px';
-        mk('elseMouth', b._elseY + HDR, b._elseMouthH);
-      }
+    const pal = document.getElementById('bePalette'); if (!pal) return;
+    pal.innerHTML = '';
+    for (const id in DEFS) {
+      if (DEFS[id].cat !== this.cat) continue;
+      const d = DEFS[id];
+      const p = document.createElement('div');
+      p.className = 'be-blk' + (d.hat ? ' be-hat' : '') + (d.rep ? ' be-rep' : '') + (d.bool ? ' be-bool' : '');
+      p.style.background = C[d.cat];
+      for (const part of d.parts) p.appendChild(typeof part === 'string' ? document.createTextNode(' ' + part + ' ') : this._slot(part));
+      p.querySelectorAll('.be-sl,input,select').forEach(x => { x.disabled = true; });
+      p.draggable = true;
+      p.addEventListener('dragstart', (e) => { if (d.rep || d.bool) { window._beRep = id; window._beMv = null; } else { window._bePal = id; window._beMv = null; window._beRep = null; } try { e.dataTransfer.setData('text/plain', id); } catch {} });
+      p.addEventListener('click', () => { if (d.rep || d.bool) { this._status('값/조건 블록은 슬롯으로 드래그하세요.'); return; } this.stack.appendChild(this._mk(id)); this._refresh(); });
+      pal.appendChild(p);
     }
   }
 
-  // ── drag + snap ──
-  _startDrag(id, cx, cy) {
-    const par = this._parentOf(id); if (par) par.p[par.slot] = null;   // detach from parent
-    const b = this.blocks.get(id);
-    this.drag = { id, offX: cx - (this.ws.getBoundingClientRect().left - this.ws.scrollLeft + b.x), offY: cy - (this.ws.getBoundingClientRect().top - this.ws.scrollTop + b.y) };
-    b._dom.header.style.zIndex = '10'; b._dom.header.style.cursor = 'grabbing';
-    this._layoutAndRender();
-  }
-  _move(e) {
-    if (!this.drag) return;
-    const r = this.ws.getBoundingClientRect();
-    const b = this.blocks.get(this.drag.id);
-    b.x = Math.max(2, e.clientX - r.left + this.ws.scrollLeft - this.drag.offX);
-    b.y = Math.max(2, e.clientY - r.top + this.ws.scrollTop - this.drag.offY);
-    this._layoutStack(b.id, b.x, b.y);
-    for (const bb of this.blocks.values()) if (this._inSubtree(this.drag.id, bb.id)) this._renderBlock(bb);
-    this._highlightSnap();
-  }
-  _up() {
-    if (!this.drag) return;
-    const id = this.drag.id; this.drag = null;
-    const target = this._findSnap(id);
-    if (target) { const old = target.p[target.slot]; target.p[target.slot] = id; if (old) this._tail(id).next = old; }
-    this.blocks.get(id)._dom.header.style.zIndex = '2'; this.blocks.get(id)._dom.header.style.cursor = 'grab';
-    if (this._snapMark) { this._snapMark.remove(); this._snapMark = null; }
-    this._layoutAndRender();
-  }
-  // Connection points on every block NOT in the dragged subtree: bottom(next),
-  // mouth-top(body), else-mouth-top(elseBody). Nearest to the dragged top wins.
-  _connectors(exceptId) {
-    const out = [];
-    for (const b of this.blocks.values()) {
-      if (this._inSubtree(exceptId, b.id)) continue;
-      const def = BLOCK_DEFS[b.op];
-      if (!b.next) out.push({ p: b, slot: 'next', x: b.x, y: b.y + (def.containers ? this._blockFullH(b) : HDR) });
-      if (def.containers) { if (!b.body) out.push({ p: b, slot: 'body', x: b.x + INDENT, y: b.y + HDR }); if (def.containers.includes('else') && !b.elseBody) out.push({ p: b, slot: 'elseBody', x: b.x + INDENT, y: b._elseY + HDR }); }
-    }
-    return out;
-  }
-  _blockFullH(b) { const def = BLOCK_DEFS[b.op]; if (!def.containers) return HDR; let h = HDR + (b._mouthH || MOUTH_MIN) + FOOT; if (def.containers.includes('else')) h += HDR + (b._elseMouthH || MOUTH_MIN) + FOOT; return h; }
-  _findSnap(id) {
-    const b = this.blocks.get(id);
-    let best = null, bd = SNAP * SNAP;
-    for (const c of this._connectors(id)) { const d = (c.x - b.x) ** 2 + (c.y - b.y) ** 2; if (d < bd) { bd = d; best = c; } }
-    // a hat block can't snap under anything (it starts a stack)
-    return (best && !BLOCK_DEFS[b.op].hat) ? best : null;
-  }
-  _highlightSnap() {
-    const c = this._findSnap(this.drag.id);
-    if (!this._snapMark) { this._snapMark = document.createElement('div'); this._snapMark.style.position = 'absolute'; this._snapMark.style.height = '3px'; this._snapMark.style.width = '120px'; this._snapMark.style.background = '#ffd24a'; this._snapMark.style.zIndex = '9'; this.ws.appendChild(this._snapMark); }
-    this._snapMark.style.display = c ? 'block' : 'none';
-    if (c) { this._snapMark.style.left = c.x + 'px'; this._snapMark.style.top = (c.y - 1) + 'px'; }
-  }
-
-  // ── param widgets (edit AST in place) ──
-  _param(b, p) {
-    const span = document.createElement('span'); span.style.marginRight = '3px';
-    const stop = (el) => { el.addEventListener('pointerdown', e => e.stopPropagation()); return el; };
-    if (p.kind === 'bool') { const cb = stop(document.createElement('input')); cb.type = 'checkbox'; cb.checked = !!b[p.key]; cb.addEventListener('change', () => b[p.key] = cb.checked); span.append(this._lbl(p.key), cb); return span; }
-    if (p.kind === 'select') { const s = stop(document.createElement('select')); s.style.font = '10px monospace'; s.innerHTML = p.opts.map(o => `<option ${b[p.key] === o ? 'selected' : ''}>${o}</option>`).join(''); s.addEventListener('change', () => b[p.key] = s.value); span.append(this._lbl(p.key), s); return span; }
-    if (p.kind === 'text') { const i = stop(document.createElement('input')); i.type = 'text'; i.maxLength = 16; i.value = b[p.key] ?? ''; i.style.width = '52px'; i.style.font = '10px monospace'; i.addEventListener('input', () => b[p.key] = i.value.slice(0, 16)); span.append(this._lbl(p.key), i); return span; }
-    if (p.kind === 'angle') {
-      const cur = b[p.key] || { op: 'add', a: { op: 'aimAngle' }, b: 0 }; const bb = cur.b; const perI = !!(bb && bb.op === 'mul'); const off = perI ? (bb.b || 0) : (typeof bb === 'number' ? bb : 0);
-      const num = stop(document.createElement('input')); num.type = 'number'; num.value = off; num.style.width = '44px'; num.style.font = '10px monospace';
-      const chk = stop(document.createElement('input')); chk.type = 'checkbox'; chk.checked = perI;
-      const w = () => { const v = Number(num.value) || 0; b[p.key] = { op: 'add', a: { op: 'aimAngle' }, b: chk.checked ? { op: 'mul', a: { var: 'i' }, b: v } : v }; };
-      num.addEventListener('input', w); chk.addEventListener('change', w);
-      span.append(this._lbl('조준각+'), num, this._lbl('°×i'), chk); return span;
-    }
-    const i = stop(document.createElement('input')); i.type = 'number'; i.value = typeof b[p.key] === 'number' ? b[p.key] : (p.def || 0); i.style.width = '52px'; i.style.font = '10px monospace';
-    i.addEventListener('input', () => b[p.key] = Number(i.value) || 0);
-    span.append(this._lbl(p.key + (p.kind === 'pct' ? '%' : '')), i); return span;
-  }
-  _condWidget(b) {
-    const span = document.createElement('span'); const stop = (el) => { el.addEventListener('pointerdown', e => e.stopPropagation()); return el; };
-    const c = b.cond = b.cond || { op: 'lt', a: { op: 'nearestDist' }, b: 90 };
-    const sense = stop(document.createElement('select')); sense.style.font = '10px monospace'; sense.innerHTML = SENSE.map(([o, l]) => `<option value="${o}" ${c.a?.op === o ? 'selected' : ''}>${l}</option>`).join('');
-    const cmp = stop(document.createElement('select')); cmp.style.font = '10px monospace'; cmp.innerHTML = CMP.map(([o, l]) => `<option value="${o}" ${c.op === o ? 'selected' : ''}>${l}</option>`).join('');
-    const num = stop(document.createElement('input')); num.type = 'number'; num.value = typeof c.b === 'number' ? c.b : 0; num.style.width = '44px'; num.style.font = '10px monospace';
-    const w = () => b.cond = { op: cmp.value, a: { op: sense.value }, b: Number(num.value) || 0 };
-    sense.addEventListener('change', w); cmp.addEventListener('change', w); num.addEventListener('input', w);
-    span.append(sense, cmp, num); return span;
-  }
-  _lbl(t) { const s = document.createElement('span'); s.style.color = '#888'; s.textContent = t; s.style.margin = '0 2px'; return s; }
-
-  // ── serialize graph → AST ──
+  // ── serialize DOM → AST (BlockVM schema) ──
   buildAST() {
-    const events = [];
-    for (const b of this.blocks.values()) if (!this._parentOf(b.id) && EVENTS.has(b.op)) events.push({ on: b.op, tag: b.tag || undefined, do: this._chain(b.next) });
+    const events = []; let cur = null;
+    for (const node of this.stack.children) {
+      if (node === this.ind) continue;
+      if (this._isHat(node)) { cur = { on: node.dataset.op, do: [] }; const tag = this._headTag(node); if (tag) cur.tag = tag; events.push(cur); continue; }
+      const stmt = this._nodeStmt(node); if (!stmt) continue;
+      if (!cur) { cur = { on: 'basicAttack', do: [] }; events.push(cur); }
+      cur.do.push(stmt);
+    }
     return { events };
   }
-  _chain(id) { const out = []; while (id) { const b = this.blocks.get(id); out.push(this._stmt(b)); id = b.next; } return out; }
-  _stmt(b) {
-    const def = BLOCK_DEFS[b.op]; const s = { op: b.op };
-    for (const p of def.params) if (b.op !== 'projectileHit' && b.op !== 'placementTrigger') s[p.key] = b[p.key];
-    if (def.cond) s.cond = b.cond;
-    if (def.containers) for (const c of def.containers) s[c] = this._chain(c === 'else' ? b.elseBody : b.body);
-    return s;
+  _headTag(hatNode) { const t = hatNode.querySelector(':scope .be-slot[data-a="tag"] input'); return t ? t.value : ''; }
+
+  _nodeStmt(node) {
+    const isWrap = node.dataset && node.dataset.cwrap;
+    const head = isWrap ? node.querySelector(':scope>.be-blk') : node;
+    if (!head || !head.dataset.op) return null;
+    const stmt = { op: head.dataset.op };
+    this._readSlots(head, stmt);
+    if (isWrap) {
+      const inners = node.querySelectorAll(':scope>.be-cinner');
+      const def = DEFS[node.dataset.id];
+      def.containers.forEach((cont, i) => {
+        const inner = inners[i]; const arr = [];
+        if (inner) for (const k of inner.children) { if (k === this.ind) continue; const st = this._nodeStmt(k); if (st) arr.push(st); }
+        stmt[cont] = arr;
+      });
+    }
+    return stmt;
+  }
+  // Read the block head's direct slots into args (nested reporter → value-expr).
+  _readSlots(head, target) {
+    for (const slot of head.querySelectorAll(':scope > .be-slot, :scope > .be-bslot')) {
+      const key = slot.dataset.a; if (!key) continue;
+      const nested = slot.querySelector(':scope > .be-blk, :scope > .be-rep, :scope > .be-bool, :scope > .be-cwrap, :scope > [data-op]');
+      if (nested) { target[key] = this._exprOf(nested); continue; }
+      const inp = slot.querySelector('input,select');
+      if (!inp) { if (slot.dataset.slotType === 'bool') target[key] = { op: 'lt', a: { op: 'nearestDist' }, b: 90 }; continue; }
+      if (inp.type === 'checkbox') target[key] = inp.checked;
+      else target[key] = numOr(inp.value);
+    }
+  }
+  // A reporter/boolean block → value-expr AST.
+  _exprOf(node) {
+    const expr = { op: node.dataset.op };
+    this._readSlots(node, expr);
+    return expr;
   }
 
+  // ── import AST → DOM ──
   _import(ast) {
     if (!ast || !Array.isArray(ast.events)) return;
-    let y = 20;
     for (const ev of ast.events) {
-      if (!EVENTS.has(ev.on)) continue;
-      const hatId = this._newBlock(ev.on, 30, y);
-      if (ev.tag) this.blocks.get(hatId).tag = String(ev.tag);
-      this.blocks.get(hatId).next = this._importChain(ev.do);
-      y += 40 + (this._layoutStack(hatId, 30, y) - y) + 30;
+      const hatId = OP2ID[ev.on]; if (!hatId || !DEFS[hatId].hat) continue;
+      const hat = this._mk(hatId);
+      if (ev.tag) { const t = hat.querySelector('.be-slot[data-a="tag"] input'); if (t) t.value = ev.tag; }
+      this.stack.appendChild(hat);
+      for (const st of (ev.do || [])) { const node = this._buildFromStmt(st); if (node) this.stack.appendChild(node); }
     }
   }
-  _importChain(arr) {
-    let firstId = null, prevId = null;
-    for (const st of arr || []) {
-      if (!BLOCK_DEFS[st.op]) continue;
-      const id = this._newBlock(st.op, 0, 0); const b = this.blocks.get(id);
-      const def = BLOCK_DEFS[st.op];
-      for (const p of def.params) if (st[p.key] !== undefined) b[p.key] = st[p.key];
-      if (def.cond && st.cond) b.cond = st.cond;
-      if (def.containers) { b.body = this._importChain(st.then || st.body); if (def.containers.includes('else')) b.elseBody = this._importChain(st.else); }
-      if (!firstId) firstId = id; if (prevId) this.blocks.get(prevId).next = id; prevId = id;
+  _buildFromStmt(st) {
+    const id = OP2ID[st.op]; if (!id) return null;
+    const node = this._mk(id); const def = DEFS[id];
+    const head = node.dataset.cwrap ? node.querySelector(':scope>.be-blk') : node;
+    this._fillSlots(head, st);
+    if (def.containers) {
+      const inners = node.querySelectorAll(':scope>.be-cinner');
+      def.containers.forEach((cont, i) => { const arr = st[cont]; if (Array.isArray(arr) && inners[i]) for (const c of arr) { const cn = this._buildFromStmt(c); if (cn) inners[i].appendChild(cn); } });
     }
-    return firstId;
+    return node;
+  }
+  _fillSlots(head, src) {
+    for (const slot of head.querySelectorAll(':scope > .be-slot, :scope > .be-bslot')) {
+      const key = slot.dataset.a; if (!key || !(key in src)) continue;
+      const v = src[key];
+      if (v && typeof v === 'object' && v.op) { slot.innerHTML = ''; const rn = this._buildExpr(v); if (rn) slot.appendChild(rn); continue; }
+      const inp = slot.querySelector('input,select'); if (!inp) continue;
+      if (inp.type === 'checkbox') inp.checked = !!v; else inp.value = v;
+    }
+  }
+  _buildExpr(expr) {
+    const id = OP2ID[expr.op]; if (!id) return null;
+    const node = this._mk(id); this._fillSlots(node, expr); return node;
   }
 
+  // ── orphan marking + gauge ──
+  _refresh() {
+    // Dim leading blocks before the first hat (won't run).
+    let seenHat = false;
+    for (const node of this.stack.children) {
+      if (node === this.ind) continue;
+      if (this._isHat(node)) { seenHat = true; node.classList.remove('be-orphan'); this._badge(node, false); continue; }
+      node.classList.toggle('be-orphan', !seenHat);
+      this._badge(node, !seenHat);
+    }
+    this._gauge();
+  }
+  _badge(node, on) {
+    const head = node.dataset.cwrap ? node.querySelector(':scope>.be-blk') : node;
+    let b = head.querySelector(':scope>.be-orphan-badge');
+    if (on && !b) { b = document.createElement('span'); b.className = 'be-orphan-badge'; b.textContent = '실행 안 됨'; head.appendChild(b); }
+    else if (!on && b) b.remove();
+  }
   _gauge() {
     const n = countBlocks(this.buildAST()), max = VM_LIMITS[this.tier].maxBlocks;
     const g = document.getElementById('beBlockGauge'); if (g) g.textContent = n;
@@ -321,13 +393,13 @@ export class BlockEditor {
   }
 
   _test() {
-    const vm = new BlockVM(this.buildAST(), this.tier);
-    const events = this.buildAST().events; const ev = events[0];
+    const events = this.buildAST().events; const ev = events.find(e => e.do && e.do.length) || events[0];
     if (!ev) { this._status('실행할 이벤트 블록이 없습니다.'); return; }
-    const calls = []; const api = {}; for (const n of ['spawnMelee', 'spawnProjectile', 'spawnArea', 'applyStatus', 'knockback', 'heal', 'dash', 'teleport', 'jump', 'pull', 'spawnPlacement', 'particle', 'sfx', 'shake', 'cooldownGate']) api[n] = (p) => calls.push(n + (p && p.damage ? `(${Math.round(p.damage)})` : p && p.angle !== undefined ? `(${Math.round(p.angle)}°)` : ''));
+    const vm = new BlockVM(this.buildAST(), this.tier);
+    const calls = []; const api = {}; for (const nm of ['spawnMelee', 'spawnProjectile', 'spawnArea', 'applyStatus', 'knockback', 'heal', 'dash', 'teleport', 'jump', 'pull', 'spawnPlacement', 'particle', 'sfx', 'shake', 'cooldownGate']) api[nm] = (p) => calls.push(nm + (p && p.damage ? `(${Math.round(p.damage)})` : p && p.angle !== undefined ? `(${Math.round(p.angle)}°)` : ''));
     const r = vm.run(ev.on, { api, vars: {}, rng: () => 0.5, now: 0, damageBase: 20, sense: { aimAngle: 0, hp: 60, maxHp: 100, x: 0, y: 0, speed: 0, grounded: true, nearestDist: 70, nearestDir: 0, combo: 0, lastDamage: 18, time: 0 } });
     const out = document.getElementById('beTestOut');
-    if (out) out.innerHTML = `<b class="text-[#7df09a]">${esc(EVENT_LABEL[ev.on] || ev.on)}</b> → ${calls.length}개 호출<br>${calls.slice(0, 14).map(esc).join(' · ') || '(효과 없음)'}${r.halted ? '<br><span class="text-[#ff5a5a]">⚠ 자원 한계로 중단</span>' : ''}`;
+    if (out) out.innerHTML = `<b class="text-[#7df09a]">${(ev.on)}</b> → ${calls.length}개 호출<br>${calls.slice(0, 14).join(' · ') || '(효과 없음)'}${r.halted ? '<br><span class="text-[#ff5a5a]">⚠ 자원 한계로 중단</span>' : ''}`;
   }
   _status(t) { const el = document.getElementById('beTestOut'); if (el) el.textContent = t; }
 }
