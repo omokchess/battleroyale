@@ -49,6 +49,8 @@ const ACTION_OPS = new Set([
   'callFunc',
   // Signals + lists (BlockVM 2.0 ③).
   'broadcast', 'listPush', 'listClear',
+  // Self-movement / physics (BlockVM 2.0 ④) — velocity is move-budget clamped.
+  'moveSelf', 'impulse',
 ]);
 const VALUE_OPS = new Set([
   'add', 'sub', 'mul', 'div', 'mod', 'lt', 'le', 'eq', 'ge', 'gt', 'and', 'or', 'not',
@@ -338,6 +340,8 @@ export class BlockVM {
       case 'removeSelf': api.removeSelf?.(); return;
       case 'callFunc': this._callFunc(s, ctx, S); return;
       // ── signals + lists (BlockVM 2.0 ③) ──
+      case 'moveSelf': api.moveSelf?.({ angle: this._num(s.angle, ctx, S), speed: clampNum(this._num(s.speed, ctx, S) || 300, 0, 900) }); return;
+      case 'impulse': api.impulse?.({ angle: this._num(s.angle, ctx, S), force: clampNum(this._num(s.force, ctx, S) || 300, 0, 700) }); return;
       case 'broadcast': this._broadcast(s, ctx, S); return;
       case 'listPush': {
         const nm = String(s.list || '').slice(0, 24); if (!nm) return;

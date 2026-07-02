@@ -1084,6 +1084,15 @@ export class Game {
       dash: ({ angle, distance }) => { const a = angle * D2R; this._displace(player, Math.cos(a) * distance, Math.sin(a) * distance); },
       teleport: ({ distance }) => { this._displace(player, Math.cos(player.angle) * distance, Math.sin(player.angle) * distance); this._resolveOutOfTerrain(player); },
       jump: ({ power }) => { player.vy = -PHYS.jumpSpeed * power; player.grounded = false; },
+      // Self-movement (BlockVM 2.0 ④): set/boost own velocity → jetpacks, recoil,
+      // air-dashes. Speed is move-budget clamped (VM caps + a hard total cap here).
+      moveSelf: ({ angle, speed }) => { const a = angle * D2R; player.vx = Math.cos(a) * speed; player.vy = Math.sin(a) * speed; if (player.vy < 0) player.grounded = false; },
+      impulse: ({ angle, force }) => {
+        const a = angle * D2R; player.vx += Math.cos(a) * force; player.vy += Math.sin(a) * force;
+        const sp = Math.hypot(player.vx, player.vy), cap = 950;
+        if (sp > cap) { player.vx *= cap / sp; player.vy *= cap / sp; }
+        if (player.vy < 0) player.grounded = false;
+      },
       pull: ({ distance }) => { const n = near(); if (!n) return; const a = n.dir + Math.PI; this._displace(n.target, Math.cos(a) * distance, Math.sin(a) * distance); },
       spawnPlacement: () => { /* placements land in a later pass; no-op keeps it safe for now */ },
       particle: (id) => this.effects.push({ attackerId: player.id, x: player.x, y: player.y, weapon: '', type: id === 'explosion' ? 'mine_blast' : 'danger_pop', progress: 0, timestamp: now, lifetime: 360 }),
