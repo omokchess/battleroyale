@@ -20,6 +20,7 @@
  */
 
 import { BlockVM, VM_LIMITS, countBlocks, EVENTS } from './BlockVM.js';
+import { estimateBudget } from './BlockBudget.js';
 
 const C = { ev: '#c9a227', act: '#3a6ea5', ctl: '#c96f27', val: '#3a8f7a', op: '#5a8f3c', vr: '#b32d2d' };
 const CATN = { ev: '이벤트', act: '동작', ctl: '제어', val: '값', op: '연산', vr: '변수' };
@@ -129,10 +130,11 @@ export class BlockEditor {
     if (tabs) { tabs.innerHTML = ''; for (const k in CATN) { const t = document.createElement('button'); t.className = 'med-btn text-[10px] px-2 py-1'; t.dataset.cat = k; t.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${C[k]};margin-right:3px"></span>${CATN[k]}`; t.addEventListener('click', () => { this.cat = k; this._renderPalette(); this._syncTabs(); }); tabs.appendChild(t); } }
   }
 
-  open(ast, tier = 'workshop', onSave = null) {
+  open(ast, tier = 'workshop', onSave = null, stats = null) {
     if (!this.root) return;
     this.tier = VM_LIMITS[tier] ? tier : 'workshop';
     this.onSave = onSave;
+    this.stats = stats || { damage: 18, cooldownMs: 600 };
     document.getElementById('beBlockMax').textContent = VM_LIMITS[this.tier].maxBlocks;
     if (!this.ws.querySelector('.stack')) { this.stack = document.createElement('div'); this.stack.className = 'stack'; this.ws.innerHTML = ''; this.ws.appendChild(this.stack); this._dz(this.stack); }
     this.stack.innerHTML = '';
@@ -386,10 +388,33 @@ export class BlockEditor {
     else if (!on && b) b.remove();
   }
   _gauge() {
-    const n = countBlocks(this.buildAST()), max = VM_LIMITS[this.tier].maxBlocks;
+    const ast = this.buildAST();
+    const n = countBlocks(ast), max = VM_LIMITS[this.tier].maxBlocks;
     const g = document.getElementById('beBlockGauge'); if (g) g.textContent = n;
     const bar = document.getElementById('beBlockBar'); if (bar) { bar.style.width = Math.min(100, n / max * 100) + '%'; bar.style.background = n > max ? '#ff5a5a' : n > max * 0.85 ? '#ffd24a' : '#7df09a'; }
     const cnt = document.getElementById('meBlockCount'); if (cnt) cnt.textContent = n ? `(${n} 블록)` : '';
+    this._budgetGauge(ast);
+  }
+
+  /** Live OUTPUT-budget gauge: shows how hard the combo pushes each per-second
+   *  cap (damage / entities / CC). >100% = the host will soft-cap it in a match
+   *  — the "형태는 자유, 출력은 예산" idea, made visible while authoring. */
+  _budgetGauge(ast) {
+    const host = document.getElementById('beBudget'); if (!host) return;
+    const est = estimateBudget(ast, this.stats || {}, this.tier);
+    const rows = [['피해', est.damage], ['엔티티', est.spawn], ['CC', est.cc]];
+    const barColor = (f) => f > 1 ? '#ff5a5a' : f > 0.85 ? '#ffd24a' : '#7df09a';
+    host.innerHTML = rows.map(([label, f]) => {
+      const pct = Math.min(100, Math.max(0, f * 100));
+      return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+        <span style="width:44px;font-size:10px;color:#cbd5e1">${label}</span>
+        <span style="flex:1;height:6px;border-radius:3px;background:#1e293b;overflow:hidden;display:inline-block">
+          <span style="display:block;height:100%;width:${pct}%;background:${barColor(f)}"></span></span>
+        <span style="width:34px;text-align:right;font-size:10px;color:${barColor(f)}">${Math.round(f * 100)}%</span>
+      </div>`;
+    }).join('') + (est.throttled
+      ? `<div style="font-size:10px;color:#ffb454;margin-top:3px">⚠ 예산 초과 — 실전에서 초과 출력은 자동 감쇠됩니다(형태는 자유, 출력은 예산).</div>`
+      : `<div style="font-size:10px;color:#64748b;margin-top:3px">예산 이내 — 출력이 온전히 적용됩니다.</div>`);
   }
 
   _test() {

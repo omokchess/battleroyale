@@ -198,7 +198,7 @@ export class MotionEditor {
     $('ms_status')?.addEventListener('change', (e) => this._updateStat('status', e.target.value));
     $('meBlockBtn')?.addEventListener('click', () => {
       if (!this.blockEditor) this.blockEditor = new BlockEditor();
-      this.blockEditor.open(this.blocks, 'workshop', (ast) => { this.blocks = ast; this._updateBlockCount(); });
+      this.blockEditor.open(this.blocks, 'workshop', (ast) => { this.blocks = ast; this._updateBlockCount(); }, this.stats);
     });
 
     $('meColor')?.addEventListener('input', (e) => applyLook({ color: e.target.value }));

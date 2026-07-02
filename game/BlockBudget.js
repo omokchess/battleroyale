@@ -93,3 +93,60 @@ export function weaponBaseDps(stats) {
   const cdSec = Math.max(0.2, (Number(stats?.cooldownMs) || 600) / 1000);
   return dmg / cdSec;
 }
+
+/**
+ * Static, worst-case estimate of a program's OUTPUT per second vs. the budget —
+ * drives the editor's live warning gauge so a user sees when a combo will be
+ * throttled BEFORE they take it into a match. Pure (no sim); loops multiply
+ * their body, conditionals take the heavier branch. Returns 0..1+ fills where
+ * >1 means "the host will soft-cap this" (not broken — just no extra reward).
+ */
+export function estimateBudget(program, stats, tier = 'workshop') {
+  const base = Number(stats?.damage) || 18;
+  const cap = Math.max(BUDGET.minDpsCap, weaponBaseDps(stats) * BUDGET.damageMul);
+  const cdMs = Math.max(200, Number(stats?.cooldownMs) || 600);
+  const attacksPerSec = 1000 / cdMs;
+  const loopCap = tier === 'admin' ? 100 : 50;
+
+  // Sum one activation's worst-case output over a statement list.
+  const walk = (stmts, mult) => {
+    let dmg = 0, cc = 0, spawns = 0;
+    for (const s of stmts || []) {
+      if (!s || typeof s !== 'object') continue;
+      if (s.op === 'repeat' || s.op === 'repeatVar') {
+        const n = Math.min(loopCap, s.op === 'repeat' ? litOr(s.count, 3) : Math.abs(litOr(s.to, 3) - litOr(s.from, 0)) + 1);
+        const r = walk(s.body, mult * n); dmg += r.dmg; cc += r.cc; spawns += r.spawns;
+      } else if (s.op === 'while') {
+        const r = walk(s.body, mult * loopCap); dmg += r.dmg; cc += r.cc; spawns += r.spawns; // worst case
+      } else if (s.op === 'if') {
+        const a = walk(s.then, mult), b = walk(s.else, mult);
+        dmg += Math.max(a.dmg, b.dmg); cc += Math.max(a.cc, b.cc); spawns += Math.max(a.spawns, b.spawns);
+      } else if (s.op === 'spawnMelee' || s.op === 'spawnArea' || s.op === 'spawnProjectile') {
+        dmg += mult * base * clamp01to300(s.damagePct, 100) / 100; spawns += mult;
+      } else if (s.op === 'split') {
+        const c = Math.min(8, litOr(s.count, 2));
+        dmg += mult * c * base * clamp01to300(s.damagePct, 60) / 100; spawns += mult * c;
+      } else if (s.op === 'applyStatus') {
+        cc += mult * litOr(s.durationMs, 1000);
+      }
+    }
+    return { dmg, cc, spawns };
+  };
+
+  // Aggregate every attack-ish handler + entity bursts.
+  let dmg = 0, cc = 0, spawns = 0;
+  for (const ev of program?.events || []) { const r = walk(ev.do, 1); dmg += r.dmg; cc += r.cc; spawns += r.spawns; }
+  for (const tag of Object.keys(program?.entities || {})) {
+    for (const ev of program.entities[tag].events || []) { const r = walk(ev.do, 1); dmg += r.dmg; cc += r.cc; spawns += r.spawns; }
+  }
+
+  return {
+    damage: (dmg * attacksPerSec) / cap,
+    cc: (cc * attacksPerSec) / BUDGET.ccCapMs,
+    spawn: (spawns * attacksPerSec) / BUDGET.spawnPerSec,
+    throttled: (dmg * attacksPerSec) > cap * (1 + BUDGET.overflow) || (spawns * attacksPerSec) > BUDGET.spawnPerSec,
+  };
+}
+// Literal value of an AST expr slot (a reporter block → assume its default N).
+function litOr(v, def) { return typeof v === 'number' && Number.isFinite(v) ? v : def; }
+function clamp01to300(v, def) { const n = typeof v === 'number' ? v : def; return Math.max(0, Math.min(300, n)); }
