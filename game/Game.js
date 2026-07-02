@@ -996,6 +996,10 @@ export class Game {
   _blockDealDamage(attacker, target, dmg, now) {
     if (!target || target.isDead || (target.isInvincible && target.isInvincible())) return false;
     if (this._terrainBlocksSegment(attacker.x, attacker.y, target.x, target.y)) return false;
+    // Damage budget (BlockVM 2.0): soft-cap per player per second so no combo
+    // can exceed ~baseDPS×1.2 in total, however the hits are stacked.
+    if (attacker.blockBudget) dmg = attacker.blockBudget.grantDamage(now, dmg);
+    if (!(dmg > 0)) return false;
     attacker._lastDealt = dmg;
     const died = target.takeDamage(dmg, attacker.nickname);
     if (attacker.id === this.localPlayerId) this._triggerHitstop(now, 40);
@@ -1021,6 +1025,11 @@ export class Game {
         }
       },
       spawnProjectile: ({ angle, speed, range, pierce, gravity, tag, damage }) => {
+        // Entity budget: cap spawns/sec + concurrent block entities per owner.
+        if (player.blockBudget) {
+          const live = this.projectiles.reduce((n, p) => n + (p.ownerId === player.id && p.kind === 'block' ? 1 : 0), 0);
+          if (!player.blockBudget.allowSpawn(now, live)) return;
+        }
         const rad = angle * D2R;
         const sx = player.x + Math.cos(rad) * 20, sy = player.y + Math.sin(rad) * 20;
         const proj = new Projectile(`blk_${player.id}_${this._blockProjSeq = (this._blockProjSeq || 0) + 1}`, player.id, sx, sy, rad, speed, range, damage, 'block');
@@ -1039,6 +1048,8 @@ export class Game {
       },
       applyStatus: ({ status, durationMs }) => {
         const n = near(); if (!n) return;
+        // CC budget: cap status-effect seconds granted per second.
+        if (player.blockBudget) { durationMs = player.blockBudget.grantCC(now, durationMs); if (!(durationMs > 0)) return; }
         if (status === 'slow') this._applySlow(n.target, durationMs);
         else if (status === 'bleed') this._applyBleed(n.target, player.id);
         else if (status === 'burn') this._applyBurn(n.target, player.id, 2, durationMs);

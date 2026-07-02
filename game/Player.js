@@ -9,6 +9,7 @@ import { PHYS } from './Level.js';
 import { Collision } from './Collision.js';
 import { clampWorkshopWeapon } from './Workshop.js';
 import { BlockVM } from './BlockVM.js';
+import { BlockBudget, weaponBaseDps } from './BlockBudget.js';
 
 export class Player {
   constructor(id, nickname, weaponType, x = 0, y = 0, costume = null) {
@@ -157,6 +158,9 @@ export class Player {
     // Block-gimmick VM (host runs it; the constructor sanitizes + caps the AST).
     this.blockVM = safe.blocks ? new BlockVM(safe.blocks, 'workshop') : null;
     this.blockVars = {};       // weapon-instance locals (reset on respawn)
+    // Runtime OUTPUT budget (BlockVM 2.0): meters damage/CC/spawn per second so
+    // any combo stays fair. Cap derives from the weapon's intended DPS.
+    this.blockBudget = new BlockBudget(weaponBaseDps(safe.stats));
     if (safe.stats && Number.isFinite(safe.stats.maxHp)) {
       this.maxHp = safe.stats.maxHp;
       this.hp = Math.min(this.hp, this.maxHp);
@@ -435,6 +439,7 @@ export class Player {
     this.comboStep = 0;
     this.comboDelayUntil = 0;
     this.blockVars = {};       // weapon-instance locals reset on death/respawn
+    if (this.blockBudget) this.blockBudget.reset();
   }
 
   /**
