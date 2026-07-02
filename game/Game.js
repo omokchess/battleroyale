@@ -601,13 +601,27 @@ export class Game {
         return;
       }
 
+      // Block-gimmick entity (BlockVM 2.0 ①): let its script steer itself
+      // (onEntityTick — homing/gravity) before it moves this frame.
+      if (proj.kind === 'block' && proj._entScript) this._blockEntityStep(proj, deltaTime, now);
+      if (proj.isDead) return;
+
       proj.update(deltaTime);
+
+      // Block entity reached its range → onExpire (cluster-split etc.).
+      if (proj.isDead && proj.kind === 'block' && proj._entScript) {
+        this._runEntityEvent(this.players[proj.ownerId], proj, 'onExpire', now, 0);
+        return;
+      }
 
       // Solid level geometry (walls / ground / ledges) blocks projectiles;
       // one-way platforms let them pass (shoot up through a platform).
       if (this._levelSolidBlocks(proj.x, proj.y, proj.radius || 4)) {
+        // A block entity with an onWallHit handler may bounce/redirect instead.
+        if (proj.kind === 'block' && proj._entScript && this._blockEntityWall(proj, now)) return;
         proj.isDead = true;
         if (proj.kind === 'swordwave') this._explodeSwordWave(proj, now);
+        else if (proj.kind === 'block' && proj._entScript) this._runEntityEvent(this.players[proj.ownerId], proj, 'onExpire', now, 0);
         else this.effects.push({
           attackerId: proj.ownerId, x: proj.x, y: proj.y,
           angle: Math.atan2(proj.vy, proj.vx),
@@ -618,6 +632,7 @@ export class Game {
       }
       // Cover blocks projectiles just like the arena wall.
       if (this.cover.length && coverBlocksCircle(this.cover, proj.x, proj.y, proj.radius || 4)) {
+        if (proj.kind === 'block' && proj._entScript && this._blockEntityWall(proj, now)) return;
         proj.isDead = true;
         if (proj.kind === 'swordwave') {
           this._explodeSwordWave(proj, now);
@@ -633,6 +648,7 @@ export class Game {
       }
 
       if (proj.checkWallCollision(this.mapWidth, this.mapHeight)) {
+        if (proj.kind === 'block' && proj._entScript && this._blockEntityWall(proj, now)) return;
         if (proj.kind === 'swordwave') {
           this._explodeSwordWave(proj, now);
         } else {
@@ -670,8 +686,10 @@ export class Game {
             if (owner) {
               this._blockDealDamage(owner, target, proj.damage || 0, now);
               this._runBlockEvent(owner, 'projectileHit', now, { tag: proj.blockTag || '' });
+              // Entity's own onEntityHit (split-on-contact, redirect, etc.).
+              if (proj._entScript) this._runEntityEvent(owner, proj, 'onEntityHit', now, 0);
             }
-            if (!proj.piercing) proj.isDead = true;
+            if (!proj.piercing && !proj._keepAlive) proj.isDead = true;
             return;
           }
 
@@ -1034,7 +1052,9 @@ export class Game {
         const sx = player.x + Math.cos(rad) * 20, sy = player.y + Math.sin(rad) * 20;
         const proj = new Projectile(`blk_${player.id}_${this._blockProjSeq = (this._blockProjSeq || 0) + 1}`, player.id, sx, sy, rad, speed, range, damage, 'block');
         proj.weapon = player.weapon; proj.blockTag = tag || ''; proj.piercing = !!pierce; proj.blockGravity = !!gravity;
+        this._initBlockEntity(proj, player, now);
         this.projectiles.push(proj);
+        if (proj._entScript) this._runEntityEvent(player, proj, 'onSpawn', now, 0);
       },
       spawnArea: ({ cx, cy, radius, damage }) => {
         const ax = Number.isFinite(cx) ? cx : player.x, ay = Number.isFinite(cy) ? cy : player.y;
@@ -1070,6 +1090,148 @@ export class Game {
       shake: (level) => { if (this.camera?.startShake) this.camera.startShake(level === 'strong' ? 14 : 7, 220); },
       cooldownGate: () => { /* the weapon's clamped cooldownMs already floors fire rate */ },
     };
+  }
+
+  // ── Entity scripting (BlockVM 2.0 ①): a spawned projectile runs its own
+  //    lifecycle handlers (onSpawn/onEntityTick/onEntityHit/onWallHit/onExpire).
+  //    All output (damage, spawns, CC) still flows through the owner's budget. ──
+
+  /** Tag a fresh block projectile with its per-entity runtime state. */
+  _initBlockEntity(proj, owner, now) {
+    proj.bornAt = now; proj._bounces = 0; proj._entVars = {};
+    proj._entGravity = proj.blockGravity ? 900 : 0; proj._lifeMs = 0;
+    proj._keepAlive = false;
+    const tag = proj.blockTag || '';
+    const vm = owner && owner.blockVM;
+    proj._entScript = !!(vm && vm.program.entities && vm.program.entities[tag]);
+  }
+
+  _nearestEnemyFrom(x, y, excludeId) {
+    let best = null, bestD = Infinity;
+    for (const id in this.players) {
+      const t = this.players[id];
+      if (t.id === excludeId || t.isDead) continue;
+      const d = Math.hypot(t.x - x, t.y - y);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best ? { target: best, dist: bestD, dir: Math.atan2(best.y - y, best.x - x) } : null;
+  }
+
+  /** Read-only sense for an entity script — the entity's OWN motion state. */
+  _blockEntitySense(proj, now) {
+    const R2D = 180 / Math.PI;
+    const near = this._nearestEnemyFrom(proj.x, proj.y, proj.ownerId);
+    return {
+      x: proj.x, y: proj.y, vx: proj.vx, vy: proj.vy,
+      speed: Math.hypot(proj.vx, proj.vy), aimAngle: Math.atan2(proj.vy, proj.vx) * R2D,
+      life: (now - (proj.bornAt || now)) / 1000, bounces: proj._bounces || 0,
+      nearestDist: near ? near.dist : 99999, nearestDir: near ? near.dir * R2D : 0,
+      time: now / 1000,
+    };
+  }
+
+  /** The entity-acting api: steer/redirect/split THIS projectile. */
+  _blockEntityApi(owner, proj, now, dt) {
+    const D2R = Math.PI / 180;
+    const setVel = (angleDeg, speed) => {
+      const a = angleDeg * D2R;
+      proj.vx = Math.cos(a) * speed; proj.vy = Math.sin(a) * speed;
+      proj.angle = a; proj.speed = speed; proj._keepAlive = true;
+    };
+    // Owner-budgeted effects (applyStatus/spawnArea/particle…) fired from the
+    // entity's position reuse the player api but centred on the projectile.
+    const ownerApi = this._blockApi(owner, now);
+    return {
+      ...ownerApi,
+      setVelocity: ({ angle, speed }) => setVel(angle, speed),
+      homing: ({ turnDeg }) => {
+        const near = this._nearestEnemyFrom(proj.x, proj.y, proj.ownerId);
+        if (!near) return;
+        const cur = Math.atan2(proj.vy, proj.vx);
+        let diff = near.dir - cur;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const maxTurn = turnDeg * D2R * (dt || 0.016);
+        const step = Math.max(-maxTurn, Math.min(maxTurn, diff));
+        const spd = Math.hypot(proj.vx, proj.vy) || proj.speed || 300;
+        setVel((cur + step) / D2R, spd);
+      },
+      setGravity: ({ value }) => { proj._entGravity = value; },
+      setLifetime: ({ ms }) => { proj._lifeMs = ms; },
+      removeSelf: () => { proj.isDead = true; },
+      // spawnArea centred on the projectile (override owner-centred default).
+      spawnArea: ({ radius, damage }) => ownerApi.spawnArea({ cx: proj.x, cy: proj.y, radius, damage }),
+      split: ({ count, spreadDeg, speed, damage, tag }) => {
+        const baseA = Math.atan2(proj.vy, proj.vx) * (180 / Math.PI);
+        const childTag = tag || proj.blockTag || '';
+        for (let i = 0; i < count; i++) {
+          if (owner.blockBudget) {
+            const live = this.projectiles.reduce((n, p) => n + (p.ownerId === owner.id && p.kind === 'block' ? 1 : 0), 0);
+            if (!owner.blockBudget.allowSpawn(now, live)) break;
+          }
+          const frac = count > 1 ? (i / (count - 1) - 0.5) : 0;
+          const a = (baseA + frac * spreadDeg) * D2R;
+          const child = new Projectile(`blk_${owner.id}_${this._blockProjSeq = (this._blockProjSeq || 0) + 1}`, owner.id, proj.x, proj.y, a, speed, 260, damage, 'block');
+          child.weapon = owner.weapon; child.blockTag = childTag; child.piercing = false;
+          this._initBlockEntity(child, owner, now);
+          child._childDepth = (proj._childDepth || 0) + 1;
+          if (child._childDepth > 2) child._entScript = false;   // no infinite split chains
+          this.projectiles.push(child);
+        }
+      },
+    };
+  }
+
+  /** Run one entity lifecycle handler; depth-bounded like _runBlockEvent. */
+  _runEntityEvent(owner, proj, eventName, now, dt) {
+    if (!owner || !proj || !proj._entScript) return;
+    const vm = owner.blockVM;
+    if (!vm || !vm.hasEntityHandler(proj.blockTag || '', eventName)) return;
+    if ((owner._blockDepth || 0) >= 2) return;
+    owner._blockDepth = (owner._blockDepth || 0) + 1;
+    try {
+      vm.runEntity(proj.blockTag || '', eventName, {
+        api: this._blockEntityApi(owner, proj, now, dt),
+        vars: proj._entVars || (proj._entVars = {}),
+        rng: Math.random, now,
+        damageBase: owner.workshopWeapon?.stats?.damage || 20,
+        sense: this._blockEntitySense(proj, now),
+      });
+    } catch { /* never let a gimmick crash the sim */ }
+    finally { owner._blockDepth--; }
+  }
+
+  /** Per-frame entity step: run onEntityTick, then apply gravity + lifetime. */
+  _blockEntityStep(proj, dt, now) {
+    const owner = this.players[proj.ownerId];
+    if (!owner) return;
+    this._runEntityEvent(owner, proj, 'onEntityTick', now, dt);
+    if (proj.isDead) return;
+    if (proj._entGravity) proj.vy += proj._entGravity * dt;
+    if (proj._lifeMs && now - proj.bornAt >= proj._lifeMs) {
+      this._runEntityEvent(owner, proj, 'onExpire', now, 0);
+      proj.isDead = true;
+    }
+  }
+
+  /** onWallHit: give the script a chance to bounce/redirect. Returns true if the
+   *  entity survived (was redirected) — the caller then skips the death path. */
+  _blockEntityWall(proj, now) {
+    const owner = this.players[proj.ownerId];
+    if (!owner || !owner.blockVM?.hasEntityHandler(proj.blockTag || '', 'onWallHit')) return false;
+    if ((proj._bounces || 0) >= 30) return false;   // safety: no eternal bouncers
+    proj._keepAlive = false;
+    proj._bounces = (proj._bounces || 0) + 1;
+    this._runEntityEvent(owner, proj, 'onWallHit', now, 0);
+    if (proj.isDead || !proj._keepAlive) return false;
+    // Redirected: nudge out of the wall along the new heading so it doesn't
+    // re-collide on the same frame; if still buried, give up and die.
+    const spd = Math.hypot(proj.vx, proj.vy) || 1;
+    proj.x += (proj.vx / spd) * ((proj.radius || 5) + 8);
+    proj.y += (proj.vy / spd) * ((proj.radius || 5) + 8);
+    proj.startX = proj.x; proj.startY = proj.y;   // reset range origin so it isn't cut short
+    if (this._levelSolidBlocks(proj.x, proj.y, proj.radius || 4)) { proj.isDead = true; return false; }
+    return true;
   }
 
   _performAutomaticAttack(player, weaponConfig, now) {

@@ -41,13 +41,20 @@ const ACTION_OPS = new Set([
   'spawnMelee', 'spawnProjectile', 'spawnArea', 'applyStatus', 'knockback',
   'heal', 'dash', 'teleport', 'jump', 'pull', 'spawnPlacement',
   'particle', 'sfx', 'shake', 'cooldownGate', 'setVar',
+  // Entity-scoped actions (valid inside an `entities` script; the host supplies
+  // the entity-acting api, so they are no-ops in the owner-script context).
+  'setVelocity', 'homing', 'setGravity', 'setLifetime', 'removeSelf', 'split',
 ]);
 const VALUE_OPS = new Set([
   'add', 'sub', 'mul', 'div', 'mod', 'lt', 'le', 'eq', 'ge', 'gt', 'and', 'or', 'not',
   'min', 'max', 'clamp', 'abs', 'round', 'sin', 'cos', 'rand',
   'aimAngle', 'myHp', 'myMaxHp', 'myX', 'myY', 'mySpeed', 'grounded',
   'nearestDist', 'nearestDir', 'charge', 'combo', 'lastDamage', 'time', 'var',
+  // Entity-scoped senses (the entity's own motion state).
+  'myVx', 'myVy', 'myLife', 'bounces',
 ]);
+// Per-entity lifecycle events for the `entities` section (BlockVM 2.0 axis ①).
+export const ENTITY_EVENTS = new Set(['onSpawn', 'onEntityTick', 'onEntityHit', 'onWallHit', 'onExpire']);
 const STATUS_TYPES = new Set(['bleed', 'burn', 'slow', 'stun']);
 
 const clampNum = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo);
@@ -94,7 +101,7 @@ export function sanitizeProgram(raw, tier = 'workshop') {
         blocks++;
         const a = { op };
         // Copy known params as sanitized exprs; the runtime clamps final numbers.
-        for (const k of ['frontOffset', 'width', 'height', 'durFrames', 'damagePct', 'angle', 'speed', 'range', 'radius', 'cx', 'cy', 'force', 'distance', 'power', 'amountPct', 'ofLastDamagePct', 'durationMs', 'activateDelayMs', 'triggerRadius', 'max', 'seconds', 'value', 'level']) {
+        for (const k of ['frontOffset', 'width', 'height', 'durFrames', 'damagePct', 'angle', 'speed', 'range', 'radius', 'cx', 'cy', 'force', 'distance', 'power', 'amountPct', 'ofLastDamagePct', 'durationMs', 'activateDelayMs', 'triggerRadius', 'max', 'seconds', 'value', 'level', 'turnDeg', 'count', 'spreadDeg', 'ms']) {
           if (s[k] !== undefined) a[k] = sanExpr(s[k], 0);
         }
         for (const k of ['status', 'tag', 'id', 'key', 'var', 'trigger']) if (s[k] !== undefined) a[k] = String(s[k]).slice(0, 24);
@@ -111,6 +118,26 @@ export function sanitizeProgram(raw, tier = 'workshop') {
     if (!ev || !EVENTS.has(ev.on)) continue;
     out.events.push({ on: ev.on, tag: ev.tag ? String(ev.tag).slice(0, 24) : undefined, do: sanStmts(ev.do, 0) });
   }
+
+  // Entity scripts (BlockVM 2.0 axis ①): `entities: { <tag>: { events:[{on,do}] } }`.
+  // A spawned projectile/placement tagged <tag> runs these lifecycle handlers on
+  // the host, letting it steer/home/split itself — all output still budgeted.
+  if (raw.entities && typeof raw.entities === 'object') {
+    out.entities = {};
+    let etags = 0;
+    for (const tag of Object.keys(raw.entities)) {
+      if (etags >= L.maxHandlers || !budget()) break;
+      const spec = raw.entities[tag];
+      if (!spec || !Array.isArray(spec.events)) continue;
+      const evs = [];
+      for (const ev of spec.events.slice(0, L.maxHandlers)) {
+        if (!budget()) break;
+        if (!ev || !ENTITY_EVENTS.has(ev.on)) continue;
+        evs.push({ on: ev.on, do: sanStmts(ev.do, 0) });
+      }
+      if (evs.length) { out.entities[String(tag).slice(0, 24)] = { events: evs }; etags++; }
+    }
+  }
   return out;
 }
 
@@ -119,6 +146,7 @@ export function countBlocks(program) {
   let n = 0;
   const walk = (arr) => { for (const s of arr || []) { n++; if (s.then) walk(s.then); if (s.else) walk(s.else); if (s.body) walk(s.body); } };
   for (const ev of program?.events || []) walk(ev.do);
+  for (const tag of Object.keys(program?.entities || {})) for (const ev of program.entities[tag].events || []) walk(ev.do);
   return n;
 }
 
@@ -133,6 +161,31 @@ export class BlockVM {
   }
 
   hasHandler(eventName) { return this.program.events.some(e => e.on === eventName); }
+
+  /** Does entity `tag` define a handler for `eventName`? (host tick gate). */
+  hasEntityHandler(tag, eventName) {
+    const ent = this.program.entities && this.program.entities[tag];
+    return !!(ent && ent.events.some(e => e.on === eventName));
+  }
+
+  /**
+   * Run entity-script handlers for `eventName` on the spawned entity tagged
+   * `tag`. Same ctx shape as run(); ctx.sense/api/vars are ENTITY-scoped (the
+   * host binds them to the projectile/placement). Output stays host-budgeted.
+   */
+  runEntity(tag, eventName, ctx) {
+    const ent = this.program.entities && this.program.entities[tag];
+    if (!ent) return { steps: 0, halted: false };
+    const isTick = eventName === 'onEntityTick';
+    const stepMax = isTick ? this.limits.tickSteps : this.limits.maxSteps;
+    const S = { steps: 0, stepMax, spawns: 0, spawnMax: this.limits.maxSpawns, halted: false };
+    for (const ev of ent.events) {
+      if (ev.on !== eventName) continue;
+      try { this._execBlock(ev.do, ctx, S); }
+      catch (e) { if (e instanceof Halt) S.halted = true; else S.halted = true; }
+    }
+    return { steps: S.steps, halted: S.halted };
+  }
 
   /**
    * Run every handler for `eventName`. `ctx` (host-provided):
@@ -245,6 +298,18 @@ export class BlockVM {
         if (name && Object.keys(ctx.vars).length < this.limits.maxVars) ctx.vars[name] = clampNum(this._num(s.value, ctx, S), -100000, 100000);
         return;
       }
+      // ── entity-scoped actions (api present only in an entity script) ──
+      case 'setVelocity': api.setVelocity?.({ angle: this._num(s.angle, ctx, S), speed: clampNum(this._num(s.speed, ctx, S) || 400, 0, ENVELOPE.projectileSpeed[1]) }); return;
+      case 'homing': api.homing?.({ turnDeg: clampNum(this._num(s.turnDeg, ctx, S) || 160, 0, 720) }); return;
+      case 'setGravity': api.setGravity?.({ value: clampNum(this._num(s.value, ctx, S), -1200, 2400) }); return;
+      case 'setLifetime': api.setLifetime?.({ ms: clampNum(this._num(s.ms, ctx, S) || 1200, 50, 8000) }); return;
+      case 'removeSelf': api.removeSelf?.(); return;
+      case 'split': spawnGuard(); api.split?.({
+        count: clampNum(Math.floor(this._num(s.count, ctx, S)) || 2, 1, 8),
+        spreadDeg: clampNum(this._num(s.spreadDeg, ctx, S) || 30, 0, 180),
+        speed: clampNum(this._num(s.speed, ctx, S) || 380, 80, ENVELOPE.projectileSpeed[1]),
+        damage: dmg(s.damagePct ?? 60), tag: s.tag || '',
+      }); return;
     }
   }
 
@@ -278,6 +343,8 @@ export class BlockVM {
       case 'grounded': return !!sn.grounded;
       case 'nearestDist': return Number.isFinite(sn.nearestDist) ? sn.nearestDist : 99999;
       case 'nearestDir': return sn.nearestDir || 0;
+      case 'myVx': return sn.vx || 0; case 'myVy': return sn.vy || 0;
+      case 'myLife': return sn.life || 0; case 'bounces': return sn.bounces || 0;
       case 'charge': return Number.isFinite(ctx.vars.charge) ? ctx.vars.charge : 0;
       case 'combo': return sn.combo || 0; case 'lastDamage': return sn.lastDamage || 0; case 'time': return sn.time || 0;
       default: return 0;
