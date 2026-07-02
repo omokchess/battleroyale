@@ -44,6 +44,8 @@ const ACTION_OPS = new Set([
   // Entity-scoped actions (valid inside an `entities` script; the host supplies
   // the entity-acting api, so they are no-ops in the owner-script context).
   'setVelocity', 'homing', 'setGravity', 'setLifetime', 'removeSelf', 'split',
+  // Custom-block call (BlockVM 2.0 ②): invoke a user-defined function.
+  'callFunc',
 ]);
 const VALUE_OPS = new Set([
   'add', 'sub', 'mul', 'div', 'mod', 'lt', 'le', 'eq', 'ge', 'gt', 'and', 'or', 'not',
@@ -97,6 +99,9 @@ export function sanitizeProgram(raw, tier = 'workshop') {
         else if (op === 'repeat') { res.push({ op: 'repeat', count: sanExpr(s.count, 0), body: sanStmts(s.body, depth + 1) }); }
         else if (op === 'repeatVar') { res.push({ op: 'repeatVar', var: String(s.var || 'i').slice(0, 24), from: sanExpr(s.from, 0), to: sanExpr(s.to, 0), body: sanStmts(s.body, depth + 1) }); }
         else if (op === 'while') { res.push({ op: 'while', cond: sanExpr(s.cond, 0), body: sanStmts(s.body, depth + 1) }); }
+      } else if (op === 'callFunc') {
+        blocks++;
+        res.push({ op: 'callFunc', name: String(s.name || '').slice(0, 24), args: Array.isArray(s.args) ? s.args.slice(0, 4).map(a => sanExpr(a, 0)) : [] });
       } else if (ACTION_OPS.has(op)) {
         blocks++;
         const a = { op };
@@ -138,6 +143,22 @@ export function sanitizeProgram(raw, tier = 'workshop') {
       if (evs.length) { out.entities[String(tag).slice(0, 24)] = { events: evs }; etags++; }
     }
   }
+
+  // Custom blocks (BlockVM 2.0 ②): `funcs: { <name>: { params:[…], do:[…] } }`.
+  // Reusable, parameterised routines. No true recursion — the VM's call-depth
+  // cap halts self/mutual calls, so a runaway can't hang the sim.
+  if (raw.funcs && typeof raw.funcs === 'object') {
+    out.funcs = {};
+    let fc = 0;
+    for (const name of Object.keys(raw.funcs)) {
+      if (fc >= L.maxHandlers || !budget()) break;
+      const f = raw.funcs[name];
+      if (!f || !Array.isArray(f.do)) continue;
+      const params = Array.isArray(f.params) ? f.params.slice(0, 4).map(p => String(p).slice(0, 24)) : [];
+      out.funcs[String(name).slice(0, 24)] = { params, do: sanStmts(f.do, 0) };
+      fc++;
+    }
+  }
   return out;
 }
 
@@ -147,6 +168,7 @@ export function countBlocks(program) {
   const walk = (arr) => { for (const s of arr || []) { n++; if (s.then) walk(s.then); if (s.else) walk(s.else); if (s.body) walk(s.body); } };
   for (const ev of program?.events || []) walk(ev.do);
   for (const tag of Object.keys(program?.entities || {})) for (const ev of program.entities[tag].events || []) walk(ev.do);
+  for (const nm of Object.keys(program?.funcs || {})) walk(program.funcs[nm].do);
   return n;
 }
 
@@ -304,6 +326,7 @@ export class BlockVM {
       case 'setGravity': api.setGravity?.({ value: clampNum(this._num(s.value, ctx, S), -1200, 2400) }); return;
       case 'setLifetime': api.setLifetime?.({ ms: clampNum(this._num(s.ms, ctx, S) || 1200, 50, 8000) }); return;
       case 'removeSelf': api.removeSelf?.(); return;
+      case 'callFunc': this._callFunc(s, ctx, S); return;
       case 'split': spawnGuard(); api.split?.({
         count: clampNum(Math.floor(this._num(s.count, ctx, S)) || 2, 1, 8),
         spreadDeg: clampNum(this._num(s.spreadDeg, ctx, S) || 30, 0, 180),
@@ -311,6 +334,19 @@ export class BlockVM {
         damage: dmg(s.damagePct ?? 60), tag: s.tag || '',
       }); return;
     }
+  }
+
+  /** Invoke a user-defined function: bind params as locals, run its body, then
+   *  restore. Call depth is capped (no real recursion) so it can never hang. */
+  _callFunc(s, ctx, S) {
+    const f = this.program.funcs && this.program.funcs[s.name];
+    if (!f) return;
+    if ((S.callDepth || 0) >= 8) throw new Halt('callDepth');
+    const names = f.params || [], argv = s.args || [], saved = {};
+    for (let i = 0; i < names.length; i++) { const nm = names[i]; saved[nm] = ctx.vars[nm]; ctx.vars[nm] = this._num(argv[i], ctx, S); }
+    S.callDepth = (S.callDepth || 0) + 1;
+    try { this._execBlock(f.do, ctx, S); }
+    finally { S.callDepth--; for (const nm of names) { if (saved[nm] === undefined) delete ctx.vars[nm]; else ctx.vars[nm] = saved[nm]; } }
   }
 
   // ── value expressions (pure) ──

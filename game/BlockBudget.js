@@ -108,18 +108,23 @@ export function estimateBudget(program, stats, tier = 'workshop') {
   const attacksPerSec = 1000 / cdMs;
   const loopCap = tier === 'admin' ? 100 : 50;
 
-  // Sum one activation's worst-case output over a statement list.
-  const walk = (stmts, mult) => {
+  const funcs = program?.funcs || {};
+  // Sum one activation's worst-case output over a statement list. `depth` guards
+  // against mutual/self function calls blowing up the static estimate.
+  const walk = (stmts, mult, depth = 0) => {
     let dmg = 0, cc = 0, spawns = 0;
     for (const s of stmts || []) {
       if (!s || typeof s !== 'object') continue;
-      if (s.op === 'repeat' || s.op === 'repeatVar') {
+      if (s.op === 'callFunc') {
+        const f = funcs[s.name];
+        if (f && depth < 8) { const r = walk(f.do, mult, depth + 1); dmg += r.dmg; cc += r.cc; spawns += r.spawns; }
+      } else if (s.op === 'repeat' || s.op === 'repeatVar') {
         const n = Math.min(loopCap, s.op === 'repeat' ? litOr(s.count, 3) : Math.abs(litOr(s.to, 3) - litOr(s.from, 0)) + 1);
-        const r = walk(s.body, mult * n); dmg += r.dmg; cc += r.cc; spawns += r.spawns;
+        const r = walk(s.body, mult * n, depth); dmg += r.dmg; cc += r.cc; spawns += r.spawns;
       } else if (s.op === 'while') {
-        const r = walk(s.body, mult * loopCap); dmg += r.dmg; cc += r.cc; spawns += r.spawns; // worst case
+        const r = walk(s.body, mult * loopCap, depth); dmg += r.dmg; cc += r.cc; spawns += r.spawns; // worst case
       } else if (s.op === 'if') {
-        const a = walk(s.then, mult), b = walk(s.else, mult);
+        const a = walk(s.then, mult, depth), b = walk(s.else, mult, depth);
         dmg += Math.max(a.dmg, b.dmg); cc += Math.max(a.cc, b.cc); spawns += Math.max(a.spawns, b.spawns);
       } else if (s.op === 'spawnMelee' || s.op === 'spawnArea' || s.op === 'spawnProjectile') {
         dmg += mult * base * clamp01to300(s.damagePct, 100) / 100; spawns += mult;
