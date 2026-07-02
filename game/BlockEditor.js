@@ -28,14 +28,20 @@ const CATN = { ev: '이벤트', act: '동작', ctl: '제어', val: '값', op: '�
 // s = string token; or { a:key, t:type, d:default, o:[opts] }
 const s = (a, t, d, o) => ({ a, t, d, o });
 const DEFS = {
-  // ── events (hat) — op maps to BlockVM EVENTS ──
-  basicAttack: { cat: 'ev', hat: 1, op: 'basicAttack', parts: ['평타 시'] },
-  skillF: { cat: 'ev', hat: 1, op: 'skillF', parts: ['F스킬 시'] },
-  onHit: { cat: 'ev', hat: 1, op: 'onHit', parts: ['명중 시'] },
-  onKill: { cat: 'ev', hat: 1, op: 'onKill', parts: ['처치 시'] },
-  onTick: { cat: 'ev', hat: 1, op: 'onTick', parts: ['매 틱'] },
-  projectileHit: { cat: 'ev', hat: 1, op: 'projectileHit', parts: ['투사체', s('tag', 'text', ''), '명중 시'] },
-  onSignal: { cat: 'ev', hat: 1, op: 'onSignal', parts: ['신호', s('sig', 'text', 'boom'), '받을 때'] },
+  // ── events (hat) — op maps to BlockVM EVENTS. scope 'main' = weapon context. ──
+  basicAttack: { cat: 'ev', hat: 1, scope: 'main', op: 'basicAttack', parts: ['평타 시'] },
+  skillF: { cat: 'ev', hat: 1, scope: 'main', op: 'skillF', parts: ['F스킬 시'] },
+  onHit: { cat: 'ev', hat: 1, scope: 'main', op: 'onHit', parts: ['명중 시'] },
+  onKill: { cat: 'ev', hat: 1, scope: 'main', op: 'onKill', parts: ['처치 시'] },
+  onTick: { cat: 'ev', hat: 1, scope: 'main', op: 'onTick', parts: ['매 틱'] },
+  projectileHit: { cat: 'ev', hat: 1, scope: 'main', op: 'projectileHit', parts: ['투사체', s('tag', 'text', ''), '명중 시'] },
+  onSignal: { cat: 'ev', hat: 1, scope: 'main', op: 'onSignal', parts: ['신호', s('sig', 'text', 'boom'), '받을 때'] },
+  // ── entity lifecycle events (hat, scope 'entity') ──
+  onSpawn: { cat: 'ev', hat: 1, scope: 'entity', op: 'onSpawn', parts: ['생성 시'] },
+  onEntityTick: { cat: 'ev', hat: 1, scope: 'entity', op: 'onEntityTick', parts: ['엔티티 매 틱'] },
+  onEntityHit: { cat: 'ev', hat: 1, scope: 'entity', op: 'onEntityHit', parts: ['엔티티 적중 시'] },
+  onWallHit: { cat: 'ev', hat: 1, scope: 'entity', op: 'onWallHit', parts: ['벽 충돌 시'] },
+  onExpire: { cat: 'ev', hat: 1, scope: 'entity', op: 'onExpire', parts: ['소멸 시'] },
   // ── actions ──
   spawnProjectile: { cat: 'act', op: 'spawnProjectile', parts: ['투사체 발사 각도', s('angle', 'num', 0), '속도', s('speed', 'num', 520), '사거리', s('range', 'num', 280), '데미지', s('damagePct', 'num', 90), '% 태그', s('tag', 'text', ''), '관통', s('pierce', 'check', false)] },
   spawnMelee: { cat: 'act', op: 'spawnMelee', parts: ['근접 판정 앞', s('frontOffset', 'num', 60), '폭', s('width', 'num', 50), '높이', s('height', 'num', 44), '데미지', s('damagePct', 'num', 100), '%'] },
@@ -55,6 +61,13 @@ const DEFS = {
   particle: { cat: 'act', op: 'particle', parts: ['파티클', s('id', 'sel', 'explosion', ['explosion', 'danger_pop'])] },
   sfx: { cat: 'act', op: 'sfx', parts: ['사운드', s('id', 'sel', 'shoot', ['shoot', 'hit', 'slash', 'slam', 'explosion'])] },
   shake: { cat: 'act', op: 'shake', parts: ['화면 흔들림', s('level', 'sel', 'weak', ['weak', 'strong'])] },
+  // ── entity-scoped actions (scope 'entity') ──
+  setVelocity: { cat: 'act', scope: 'entity', op: 'setVelocity', parts: ['속도 설정 각도', s('angle', 'num', 0), '속도', s('speed', 'num', 400)] },
+  homing: { cat: 'act', scope: 'entity', op: 'homing', parts: ['유도 회전', s('turnDeg', 'num', 200), '°/s'] },
+  setGravity: { cat: 'act', scope: 'entity', op: 'setGravity', parts: ['중력', s('value', 'num', 900)] },
+  setLifetime: { cat: 'act', scope: 'entity', op: 'setLifetime', parts: ['수명', s('ms', 'num', 1200), 'ms'] },
+  removeSelf: { cat: 'act', scope: 'entity', op: 'removeSelf', parts: ['자신 제거'] },
+  split: { cat: 'act', scope: 'entity', op: 'split', parts: ['분열', s('count', 'num', 4), '개 퍼짐', s('spreadDeg', 'num', 60), '° 속도', s('speed', 'num', 300), '데미지', s('damagePct', 'num', 40), '% 태그', s('tag', 'text', '')] },
   // ── control (C-blocks) ──
   if: { cat: 'ctl', c: 1, op: 'if', parts: ['만약', s('cond', 'bool')], containers: ['then', 'else'] },
   repeat: { cat: 'ctl', c: 1, op: 'repeat', parts: [s('count', 'num', 3), '번 반복'], containers: ['body'] },
@@ -71,6 +84,11 @@ const DEFS = {
   rand: { cat: 'val', rep: 1, op: 'rand', parts: ['난수', s('a', 'num', 1), '~', s('b', 'num', 10)] },
   listGet: { cat: 'val', rep: 1, op: 'listGet', parts: ['리스트', s('list', 'text', 'marks'), s('i', 'num', 0), '번째'] },
   listLen: { cat: 'val', rep: 1, op: 'listLen', parts: ['리스트', s('list', 'text', 'marks'), '길이'] },
+  // ── entity-scoped senses (scope 'entity') ──
+  myVx: { cat: 'val', rep: 1, scope: 'entity', op: 'myVx', parts: ['내 X속도'] },
+  myVy: { cat: 'val', rep: 1, scope: 'entity', op: 'myVy', parts: ['내 Y속도'] },
+  myLife: { cat: 'val', rep: 1, scope: 'entity', op: 'myLife', parts: ['생존 시간'] },
+  bounces: { cat: 'val', rep: 1, scope: 'entity', op: 'bounces', parts: ['튕긴 횟수'] },
   // ── operators (reporters + booleans) ──
   add: { cat: 'op', rep: 1, op: 'add', parts: [s('a', 'num', 0), '+', s('b', 'num', 12)] },
   sub: { cat: 'op', rep: 1, op: 'sub', parts: [s('a', 'num', 0), '−', s('b', 'num', 0)] },
@@ -145,13 +163,78 @@ export class BlockEditor {
     this.stats = stats || { damage: 18, cooldownMs: 600 };
     document.getElementById('beBlockMax').textContent = VM_LIMITS[this.tier].maxBlocks;
     if (!this.ws.querySelector('.stack')) { this.stack = document.createElement('div'); this.stack.className = 'stack'; this.ws.innerHTML = ''; this.ws.appendChild(this.stack); this._dz(this.stack); }
-    this.stack.innerHTML = '';
-    this._import(ast);
-    if (!this.stack.children.length) this.stack.appendChild(this._mk('basicAttack'));
-    this._renderPalette(); this._syncTabs(); this._refresh();
+    // Multi-context model: the weapon's main events + per-entity scripts + funcs.
+    this.model = this._parseModel(ast);
+    this.ctxKind = 'main'; this.ctxName = '';
+    this._renderCtxBar();
+    this._loadCtx();
+    this._renderPalette(); this._syncTabs();
     this.root.classList.remove('hidden');
   }
   close() { this.root?.classList.add('hidden'); }
+
+  _parseModel(ast) {
+    const m = { events: [], entities: {}, funcs: {} };
+    if (ast && Array.isArray(ast.events)) m.events = ast.events;
+    if (ast && ast.entities) for (const k in ast.entities) m.entities[k] = { events: Array.isArray(ast.entities[k].events) ? ast.entities[k].events : [] };
+    if (ast && ast.funcs && typeof ast.funcs === 'object') m.funcs = ast.funcs;   // AST-only for now, preserved verbatim
+    return m;
+  }
+
+  // ── context (weapon / entity script) switching ──
+  _renderCtxBar() {
+    let bar = document.getElementById('beCtxBar');
+    if (!bar) {
+      bar = document.createElement('div'); bar.id = 'beCtxBar';
+      bar.style.cssText = 'display:flex;gap:4px;align-items:center;padding:4px 8px;border-bottom:1px solid #333;overflow-x:auto;flex:none;background:#0f0b07';
+      // Insert the context bar just above the palette/workspace row (a direct
+      // child of the editor root, so insertBefore is valid).
+      const row = this.ws.parentElement;
+      this.root.insertBefore(bar, row);
+    }
+    bar.innerHTML = '';
+    const mkTab = (label, kind, name, active) => { const b = document.createElement('button'); b.textContent = label; b.className = 'med-btn text-[10px] px-2 py-0.5' + (active ? ' on' : ''); b.onclick = () => this._switchCtx(kind, name); return b; };
+    bar.appendChild(mkTab('⚔ 무기', 'main', '', this.ctxKind === 'main'));
+    for (const k of Object.keys(this.model.entities)) {
+      const wrap = document.createElement('span'); wrap.style.cssText = 'display:inline-flex;align-items:center;flex:none';
+      wrap.appendChild(mkTab('🎯 ' + k, 'entity', k, this.ctxKind === 'entity' && this.ctxName === k));
+      const del = document.createElement('button'); del.textContent = '×'; del.className = 'text-[10px] px-1 text-gray-500 hover:text-red-400 cursor-pointer'; del.title = '엔티티 삭제';
+      del.onclick = (e) => { e.stopPropagation(); this._deleteEntity(k); }; wrap.appendChild(del);
+      bar.appendChild(wrap);
+    }
+    const add = document.createElement('button'); add.textContent = '＋ 엔티티'; add.className = 'med-btn text-[10px] px-2 py-0.5'; add.title = '투사체/설치물의 자기 스크립트 추가';
+    add.onclick = () => this._addEntity(); bar.appendChild(add);
+  }
+  _addEntity() {
+    const name = String(window.prompt('엔티티(투사체) 태그 — 발사 블록의 태그와 일치시키세요:', 'missile') || '').trim().slice(0, 24);
+    if (!name) return;
+    if (!this.model.entities[name]) this.model.entities[name] = { events: [] };
+    this._switchCtx('entity', name);
+  }
+  _deleteEntity(k) {
+    this._saveCtx(); delete this.model.entities[k];
+    if (this.ctxKind === 'entity' && this.ctxName === k) { this.ctxKind = 'main'; this.ctxName = ''; }
+    this._renderCtxBar(); this._loadCtx(); this._renderPalette();
+  }
+  _switchCtx(kind, name) {
+    this._saveCtx();
+    this.ctxKind = kind; this.ctxName = name || '';
+    this._renderCtxBar(); this._loadCtx(); this._renderPalette();
+  }
+  /** Serialize the visible stack back into the model at the current context. */
+  _saveCtx() {
+    const evs = this._stackEvents();
+    if (this.ctxKind === 'entity') { (this.model.entities[this.ctxName] || (this.model.entities[this.ctxName] = { events: [] })).events = evs; }
+    else this.model.events = evs;
+  }
+  /** Load the current context's events into the stack. */
+  _loadCtx() {
+    this.stack.innerHTML = '';
+    const evs = this.ctxKind === 'entity' ? (this.model.entities[this.ctxName]?.events || []) : this.model.events;
+    this._importEvents(evs);
+    if (!this.stack.children.length && this.ctxKind === 'main') this.stack.appendChild(this._mk('basicAttack'));
+    this._refresh();
+  }
   _syncTabs() { document.querySelectorAll('#beEventTabs [data-cat]').forEach(t => t.classList.toggle('on', t.dataset.cat === this.cat)); }
 
   // ── build a block DOM node ──
@@ -277,8 +360,12 @@ export class BlockEditor {
     const pal = document.getElementById('bePalette'); if (!pal) return;
     pal.innerHTML = '';
     for (const id in DEFS) {
-      if (DEFS[id].cat !== this.cat) continue;
       const d = DEFS[id];
+      if (d.cat !== this.cat) continue;
+      // Context-scoped palette: entity blocks only in an entity script, and the
+      // weapon's own event hats only in the weapon context.
+      if (this.ctxKind === 'entity') { if (d.scope === 'main') continue; }
+      else if (d.scope === 'entity') continue;
       const p = document.createElement('div');
       p.className = 'be-blk' + (d.hat ? ' be-hat' : '') + (d.rep ? ' be-rep' : '') + (d.bool ? ' be-bool' : '');
       p.style.background = C[d.cat];
@@ -291,17 +378,27 @@ export class BlockEditor {
     }
   }
 
-  // ── serialize DOM → AST (BlockVM schema) ──
-  buildAST() {
+  // ── serialize the visible stack → events array ──
+  _stackEvents() {
     const events = []; let cur = null;
     for (const node of this.stack.children) {
       if (node === this.ind) continue;
       if (this._isHat(node)) { cur = { on: node.dataset.op, do: [] }; const tag = this._headTag(node); if (tag) cur.tag = tag; const sig = this._headSlot(node, 'sig'); if (sig) cur.sig = sig; events.push(cur); continue; }
       const stmt = this._nodeStmt(node); if (!stmt) continue;
-      if (!cur) { cur = { on: 'basicAttack', do: [] }; events.push(cur); }
+      if (!cur) { cur = { on: this.ctxKind === 'entity' ? 'onEntityTick' : 'basicAttack', do: [] }; events.push(cur); }
       cur.do.push(stmt);
     }
-    return { events };
+    return events;
+  }
+  // ── assemble the full multi-context AST ({events, entities?, funcs?}) ──
+  buildAST() {
+    this._saveCtx();
+    const out = { events: this.model.events };
+    const ents = {};
+    for (const k of Object.keys(this.model.entities)) if ((this.model.entities[k].events || []).length) ents[k] = { events: this.model.entities[k].events };
+    if (Object.keys(ents).length) out.entities = ents;
+    if (this.model.funcs && Object.keys(this.model.funcs).length) out.funcs = this.model.funcs;
+    return out;
   }
   _headTag(hatNode) { return this._headSlot(hatNode, 'tag'); }
   _headSlot(hatNode, key) { const t = hatNode.querySelector(`:scope .be-slot[data-a="${key}"] input`); return t ? t.value : ''; }
@@ -342,10 +439,10 @@ export class BlockEditor {
     return expr;
   }
 
-  // ── import AST → DOM ──
-  _import(ast) {
-    if (!ast || !Array.isArray(ast.events)) return;
-    for (const ev of ast.events) {
+  // ── import an events array → DOM stack ──
+  _importEvents(events) {
+    if (!Array.isArray(events)) return;
+    for (const ev of events) {
       const hatId = OP2ID[ev.on]; if (!hatId || !DEFS[hatId].hat) continue;
       const hat = this._mk(hatId);
       if (ev.tag) { const t = hat.querySelector('.be-slot[data-a="tag"] input'); if (t) t.value = ev.tag; }
