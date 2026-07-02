@@ -35,6 +35,7 @@ const DEFS = {
   onKill: { cat: 'ev', hat: 1, op: 'onKill', parts: ['처치 시'] },
   onTick: { cat: 'ev', hat: 1, op: 'onTick', parts: ['매 틱'] },
   projectileHit: { cat: 'ev', hat: 1, op: 'projectileHit', parts: ['투사체', s('tag', 'text', ''), '명중 시'] },
+  onSignal: { cat: 'ev', hat: 1, op: 'onSignal', parts: ['신호', s('sig', 'text', 'boom'), '받을 때'] },
   // ── actions ──
   spawnProjectile: { cat: 'act', op: 'spawnProjectile', parts: ['투사체 발사 각도', s('angle', 'num', 0), '속도', s('speed', 'num', 520), '사거리', s('range', 'num', 280), '데미지', s('damagePct', 'num', 90), '% 태그', s('tag', 'text', ''), '관통', s('pierce', 'check', false)] },
   spawnMelee: { cat: 'act', op: 'spawnMelee', parts: ['근접 판정 앞', s('frontOffset', 'num', 60), '폭', s('width', 'num', 50), '높이', s('height', 'num', 44), '데미지', s('damagePct', 'num', 100), '%'] },
@@ -46,6 +47,11 @@ const DEFS = {
   teleport: { cat: 'act', op: 'teleport', parts: ['텔레포트 거리', s('distance', 'num', 120)] },
   jump: { cat: 'act', op: 'jump', parts: ['점프 세기', s('power', 'num', 1)] },
   pull: { cat: 'act', op: 'pull', parts: ['끌어오기 거리', s('distance', 'num', 120)] },
+  moveSelf: { cat: 'act', op: 'moveSelf', parts: ['내 속도 각도', s('angle', 'num', -90), '속도', s('speed', 'num', 400)] },
+  impulse: { cat: 'act', op: 'impulse', parts: ['추진 각도', s('angle', 'num', -90), '힘', s('force', 'num', 300)] },
+  broadcast: { cat: 'act', op: 'broadcast', parts: ['신호 보내기', s('sig', 'text', 'boom')] },
+  listPush: { cat: 'act', op: 'listPush', parts: ['리스트', s('list', 'text', 'marks'), '에', s('value', 'num', 0), '추가'] },
+  listClear: { cat: 'act', op: 'listClear', parts: ['리스트', s('list', 'text', 'marks'), '비우기'] },
   particle: { cat: 'act', op: 'particle', parts: ['파티클', s('id', 'sel', 'explosion', ['explosion', 'danger_pop'])] },
   sfx: { cat: 'act', op: 'sfx', parts: ['사운드', s('id', 'sel', 'shoot', ['shoot', 'hit', 'slash', 'slam', 'explosion'])] },
   shake: { cat: 'act', op: 'shake', parts: ['화면 흔들림', s('level', 'sel', 'weak', ['weak', 'strong'])] },
@@ -63,6 +69,8 @@ const DEFS = {
   combo: { cat: 'val', rep: 1, op: 'combo', parts: ['콤보'] },
   lastDamage: { cat: 'val', rep: 1, op: 'lastDamage', parts: ['마지막 피해'] },
   rand: { cat: 'val', rep: 1, op: 'rand', parts: ['난수', s('a', 'num', 1), '~', s('b', 'num', 10)] },
+  listGet: { cat: 'val', rep: 1, op: 'listGet', parts: ['리스트', s('list', 'text', 'marks'), s('i', 'num', 0), '번째'] },
+  listLen: { cat: 'val', rep: 1, op: 'listLen', parts: ['리스트', s('list', 'text', 'marks'), '길이'] },
   // ── operators (reporters + booleans) ──
   add: { cat: 'op', rep: 1, op: 'add', parts: [s('a', 'num', 0), '+', s('b', 'num', 12)] },
   sub: { cat: 'op', rep: 1, op: 'sub', parts: [s('a', 'num', 0), '−', s('b', 'num', 0)] },
@@ -288,14 +296,15 @@ export class BlockEditor {
     const events = []; let cur = null;
     for (const node of this.stack.children) {
       if (node === this.ind) continue;
-      if (this._isHat(node)) { cur = { on: node.dataset.op, do: [] }; const tag = this._headTag(node); if (tag) cur.tag = tag; events.push(cur); continue; }
+      if (this._isHat(node)) { cur = { on: node.dataset.op, do: [] }; const tag = this._headTag(node); if (tag) cur.tag = tag; const sig = this._headSlot(node, 'sig'); if (sig) cur.sig = sig; events.push(cur); continue; }
       const stmt = this._nodeStmt(node); if (!stmt) continue;
       if (!cur) { cur = { on: 'basicAttack', do: [] }; events.push(cur); }
       cur.do.push(stmt);
     }
     return { events };
   }
-  _headTag(hatNode) { const t = hatNode.querySelector(':scope .be-slot[data-a="tag"] input'); return t ? t.value : ''; }
+  _headTag(hatNode) { return this._headSlot(hatNode, 'tag'); }
+  _headSlot(hatNode, key) { const t = hatNode.querySelector(`:scope .be-slot[data-a="${key}"] input`); return t ? t.value : ''; }
 
   _nodeStmt(node) {
     const isWrap = node.dataset && node.dataset.cwrap;
@@ -340,6 +349,7 @@ export class BlockEditor {
       const hatId = OP2ID[ev.on]; if (!hatId || !DEFS[hatId].hat) continue;
       const hat = this._mk(hatId);
       if (ev.tag) { const t = hat.querySelector('.be-slot[data-a="tag"] input'); if (t) t.value = ev.tag; }
+      if (ev.sig) { const t = hat.querySelector('.be-slot[data-a="sig"] input'); if (t) t.value = ev.sig; }
       this.stack.appendChild(hat);
       for (const st of (ev.do || [])) { const node = this._buildFromStmt(st); if (node) this.stack.appendChild(node); }
     }
