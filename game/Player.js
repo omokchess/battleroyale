@@ -158,6 +158,7 @@ export class Player {
     // Block-gimmick VM (host runs it; the constructor sanitizes + caps the AST).
     this.blockVM = safe.blocks ? new BlockVM(safe.blocks, 'workshop') : null;
     this.blockVars = {};       // weapon-instance locals (reset on respawn)
+    this.blockLists = {};      // weapon-instance lists (reset on respawn)
     // Runtime OUTPUT budget (BlockVM 2.0): meters damage/CC/spawn per second so
     // any combo stays fair. Cap derives from the weapon's intended DPS.
     this.blockBudget = new BlockBudget(weaponBaseDps(safe.stats));
@@ -439,6 +440,7 @@ export class Player {
     this.comboStep = 0;
     this.comboDelayUntil = 0;
     this.blockVars = {};       // weapon-instance locals reset on death/respawn
+    this.blockLists = {};      // weapon-instance lists reset on death/respawn
     if (this.blockBudget) this.blockBudget.reset();
   }
 

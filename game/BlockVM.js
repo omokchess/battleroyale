@@ -35,6 +35,7 @@ export const EVENTS = new Set([
   'basicAttack', 'skillF', 'skillR', 'lmb', 'charging', 'chargeRelease',
   'onHit', 'onHurt', 'onKill', 'onJump', 'onLand', 'onRespawn', 'onTick',
   'projectileHit', 'placementTrigger',
+  'onSignal',   // BlockVM 2.0 ③: custom broadcast channel
 ]);
 const CONTROL_OPS = new Set(['if', 'repeat', 'repeatVar', 'while', 'wait', 'stop']);
 const ACTION_OPS = new Set([
@@ -46,6 +47,8 @@ const ACTION_OPS = new Set([
   'setVelocity', 'homing', 'setGravity', 'setLifetime', 'removeSelf', 'split',
   // Custom-block call (BlockVM 2.0 ②): invoke a user-defined function.
   'callFunc',
+  // Signals + lists (BlockVM 2.0 ③).
+  'broadcast', 'listPush', 'listClear',
 ]);
 const VALUE_OPS = new Set([
   'add', 'sub', 'mul', 'div', 'mod', 'lt', 'le', 'eq', 'ge', 'gt', 'and', 'or', 'not',
@@ -54,6 +57,8 @@ const VALUE_OPS = new Set([
   'nearestDist', 'nearestDir', 'charge', 'combo', 'lastDamage', 'time', 'var',
   // Entity-scoped senses (the entity's own motion state).
   'myVx', 'myVy', 'myLife', 'bounces',
+  // List reads (BlockVM 2.0 ③).
+  'listGet', 'listLen',
 ]);
 // Per-entity lifecycle events for the `entities` section (BlockVM 2.0 axis ①).
 export const ENTITY_EVENTS = new Set(['onSpawn', 'onEntityTick', 'onEntityHit', 'onWallHit', 'onExpire']);
@@ -80,6 +85,11 @@ export function sanitizeProgram(raw, tier = 'workshop') {
     if (typeof e === 'string') return String(e).slice(0, 32);
     if (!e || typeof e !== 'object' || !VALUE_OPS.has(e.op || (e.var !== undefined ? 'var' : ''))) return 0;
     if (e.var !== undefined) return { op: 'var', name: String(e.var || e.name || '').slice(0, 24) };
+    if (e.op === 'listGet' || e.op === 'listLen') {
+      const o = { op: e.op, list: String(e.list || '').slice(0, 24) };
+      if (e.i !== undefined) o.i = sanExpr(e.i, depth + 1);
+      return o;
+    }
     const o = { op: e.op };
     for (const k of ['a', 'b', 'c', 'lo', 'hi', 'x']) if (e[k] !== undefined) o[k] = sanExpr(e[k], depth + 1);
     return o;
@@ -109,7 +119,7 @@ export function sanitizeProgram(raw, tier = 'workshop') {
         for (const k of ['frontOffset', 'width', 'height', 'durFrames', 'damagePct', 'angle', 'speed', 'range', 'radius', 'cx', 'cy', 'force', 'distance', 'power', 'amountPct', 'ofLastDamagePct', 'durationMs', 'activateDelayMs', 'triggerRadius', 'max', 'seconds', 'value', 'level', 'turnDeg', 'count', 'spreadDeg', 'ms']) {
           if (s[k] !== undefined) a[k] = sanExpr(s[k], 0);
         }
-        for (const k of ['status', 'tag', 'id', 'key', 'var', 'trigger']) if (s[k] !== undefined) a[k] = String(s[k]).slice(0, 24);
+        for (const k of ['status', 'tag', 'id', 'key', 'var', 'trigger', 'sig', 'list']) if (s[k] !== undefined) a[k] = String(s[k]).slice(0, 24);
         a.pierce = !!s.pierce; a.gravity = !!s.gravity;
         res.push(a);
       }
@@ -121,7 +131,7 @@ export function sanitizeProgram(raw, tier = 'workshop') {
   for (const ev of raw.events.slice(0, L.maxHandlers)) {
     if (!budget()) break;
     if (!ev || !EVENTS.has(ev.on)) continue;
-    out.events.push({ on: ev.on, tag: ev.tag ? String(ev.tag).slice(0, 24) : undefined, do: sanStmts(ev.do, 0) });
+    out.events.push({ on: ev.on, tag: ev.tag ? String(ev.tag).slice(0, 24) : undefined, sig: ev.sig ? String(ev.sig).slice(0, 24) : undefined, do: sanStmts(ev.do, 0) });
   }
 
   // Entity scripts (BlockVM 2.0 axis ①): `entities: { <tag>: { events:[{on,do}] } }`.
@@ -327,6 +337,17 @@ export class BlockVM {
       case 'setLifetime': api.setLifetime?.({ ms: clampNum(this._num(s.ms, ctx, S) || 1200, 50, 8000) }); return;
       case 'removeSelf': api.removeSelf?.(); return;
       case 'callFunc': this._callFunc(s, ctx, S); return;
+      // ── signals + lists (BlockVM 2.0 ③) ──
+      case 'broadcast': this._broadcast(s, ctx, S); return;
+      case 'listPush': {
+        const nm = String(s.list || '').slice(0, 24); if (!nm) return;
+        const lists = ctx.lists || (ctx.lists = {});
+        if (!lists[nm] && Object.keys(lists).length >= 6) return;   // cap distinct lists
+        const L = lists[nm] || (lists[nm] = []);
+        if (L.length < 32) L.push(clampNum(this._num(s.value, ctx, S), -1e6, 1e6));
+        return;
+      }
+      case 'listClear': { const nm = String(s.list || '').slice(0, 24); if (ctx.lists && ctx.lists[nm]) ctx.lists[nm].length = 0; return; }
       case 'split': spawnGuard(); api.split?.({
         count: clampNum(Math.floor(this._num(s.count, ctx, S)) || 2, 1, 8),
         spreadDeg: clampNum(this._num(s.spreadDeg, ctx, S) || 30, 0, 180),
@@ -347,6 +368,18 @@ export class BlockVM {
     S.callDepth = (S.callDepth || 0) + 1;
     try { this._execBlock(f.do, ctx, S); }
     finally { S.callDepth--; for (const nm of names) { if (saved[nm] === undefined) delete ctx.vars[nm]; else ctx.vars[nm] = saved[nm]; } }
+  }
+
+  /** Broadcast a signal → run matching onSignal handlers now, depth-bounded so
+   *  a signal storm (A→B→A…) can't recurse forever. */
+  _broadcast(s, ctx, S) {
+    if ((S.sigDepth || 0) >= 4) return;
+    S.sigDepth = (S.sigDepth || 0) + 1;
+    try {
+      for (const ev of this.program.events) {
+        if (ev.on === 'onSignal' && (!ev.sig || !s.sig || ev.sig === s.sig)) this._execBlock(ev.do, ctx, S);
+      }
+    } finally { S.sigDepth--; }
   }
 
   // ── value expressions (pure) ──
@@ -381,6 +414,8 @@ export class BlockVM {
       case 'nearestDir': return sn.nearestDir || 0;
       case 'myVx': return sn.vx || 0; case 'myVy': return sn.vy || 0;
       case 'myLife': return sn.life || 0; case 'bounces': return sn.bounces || 0;
+      case 'listGet': { const L = (ctx.lists || {})[e.list]; if (!Array.isArray(L)) return 0; const i = Math.floor(this._n(this._eval(e.i, ctx, S))); return Number.isFinite(L[i]) ? L[i] : 0; }
+      case 'listLen': { const L = (ctx.lists || {})[e.list]; return Array.isArray(L) ? L.length : 0; }
       case 'charge': return Number.isFinite(ctx.vars.charge) ? ctx.vars.charge : 0;
       case 'combo': return sn.combo || 0; case 'lastDamage': return sn.lastDamage || 0; case 'time': return sn.time || 0;
       default: return 0;

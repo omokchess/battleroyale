@@ -999,6 +999,7 @@ export class Game {
       vm.run(eventName, {
         api: this._blockApi(player, now),
         vars: player.blockVars || (player.blockVars = {}),
+        lists: player.blockLists || (player.blockLists = {}),
         rng: Math.random,                        // host-side; clients only render results
         now,
         damageBase: player.workshopWeapon?.stats?.damage || 20,
@@ -1193,6 +1194,7 @@ export class Game {
       vm.runEntity(proj.blockTag || '', eventName, {
         api: this._blockEntityApi(owner, proj, now, dt),
         vars: proj._entVars || (proj._entVars = {}),
+        lists: owner.blockLists || (owner.blockLists = {}),
         rng: Math.random, now,
         damageBase: owner.workshopWeapon?.stats?.damage || 20,
         sense: this._blockEntitySense(proj, now),
